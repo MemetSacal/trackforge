@@ -1,0 +1,26 @@
+# Ortam değişkenleri — asla GitHub'a gitmemeli
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+
+# PyCharm
+.idea/
+
+# Storage dosyaları — kişisel veriler
+storage/diet_plans/*
+storage/progress_photos/*
+storage/reports/*
+storage/compliance_files/*
+
+# Log dosyaları
+logs/*.log
+
+# Test cache
+.pytest_cache/
