@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     STORAGE_TYPE: str = "local"
     STORAGE_BASE_PATH: str = "storage/"
 
+    # Dosya yükleme ayarları
+    UPLOAD_DIR: str = "uploads"  # Dosyaların kaydedileceği klasör
+    MAX_FILE_SIZE_MB: int = 10  # Maksimum dosya boyutu (MB)
+    ALLOWED_IMAGE_TYPES: list = ["image/jpeg", "image/png", "image/webp"]  # İzin verilen resim tipleri
+    ALLOWED_PDF_TYPES: list = ["application/pdf"]  # İzin verilen PDF tipleri
+
 
 @lru_cache()
 def get_settings() -> Settings:
