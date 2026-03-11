@@ -4,7 +4,8 @@ from alembic import context
 from app.core.config import get_settings
 from app.infrastructure.db.base import Base
 from app.infrastructure.db.models import user_model       # noqa
-from app.infrastructure.db.models import measurement_model # noqa — bunu ekle
+from app.infrastructure.db.models import measurement_model # noqa
+from app.infrastructure.db.models import note_model        # noqa
 
 # Alembic config objesi — alembic.ini dosyasını okur
 config = context.config
