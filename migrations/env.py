@@ -3,6 +3,8 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 from app.core.config import get_settings
 from app.infrastructure.db.base import Base
+from app.infrastructure.db.models import user_model       # noqa
+from app.infrastructure.db.models import measurement_model # noqa — bunu ekle
 
 # Alembic config objesi — alembic.ini dosyasını okur
 config = context.config
@@ -65,4 +67,10 @@ Sonrasında alembic upgrade head diyerek oluşturduğumuz table ı PostgreSQL de
 pgAdmin de bunu doğrulayabiliriz:
 Tarayıcıda http://localhost:5050 aç → TrackForge → Databases → trackforge_db → Schemas → public → Tables → users 
 burada ki local bağlantı ve mail şifresini ise docker-compose.yml dosyasında tanımlamıştık zaten PostgreSQL i Dockerdan alıyoruz 
+
+# noqa → "no quality assurance" demek. Linter'a "bu satırı kontrol etme, uyarı verme" diyoruz.
+env.py'deki import'larda şunu görürsün:
+pythonfrom app.infrastructure.db.models import user_model  # noqa
+Bu import'u sadece Alembic'in modeli "görmesi" için yapıyoruz, user_model'i kodda hiç kullanmıyoruz. Normalde linter "import ettin ama kullanmıyorsun" diye uyarı verir. # noqa ile o uyarıyı susturuyoruz.
+Kısacası — kullanılmayan import uyarısını bastırmak için. 
 """
