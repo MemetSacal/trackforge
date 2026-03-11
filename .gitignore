@@ -24,3 +24,11 @@ logs/*.log
 
 # Test cache
 .pytest_cache/
+
+# uploads klasörünün içeriği git'e gitmemeli, sadece klasör yapısı kalsın:
+uploads/photos/*
+uploads/diet_plans/*
+
+# klasörlerin git'te görünmesi için içine birer .gitkeep dosyası
+New-Item uploads\photos\.gitkeep -ItemType File
+New-Item uploads\diet_plans\.gitkeep -ItemType File
