@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.infrastructure.db.models.file_upload_model import FileUploadModel
     from app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
     from app.infrastructure.db.models.water_log_model import WaterLogModel
+    from app.infrastructure.db.models.sleep_log_model import SleepLogModel  # TYPE_CHECKING bloğuna
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -51,6 +52,9 @@ class UserModel(Base):
     )
     water_logs: Mapped[List["WaterLogModel"]] = relationship(
         "WaterLogModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    sleep_logs: Mapped[List["SleepLogModel"]] = relationship(
+        "SleepLogModel", back_populates="user", cascade="all, delete-orphan"
     )
 
 
