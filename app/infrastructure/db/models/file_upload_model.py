@@ -1,8 +1,12 @@
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from sqlalchemy import String, Text, Integer, DateTime, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.infrastructure.db.base import Base
+
+if TYPE_CHECKING:
+    from app.infrastructure.db.models.user_model import UserModel
 
 
 class FileUploadModel(Base):
@@ -51,6 +55,10 @@ class FileUploadModel(Base):
         default=lambda: datetime.now(timezone.utc)
         # Yükleme zamanı — otomatik set edilir
     )
+
+    # user_model.py'deki file_uploads ile eşleşir
+    user: Mapped["UserModel"] = relationship("UserModel", back_populates="file_uploads")
+
 
 """
 Diğer modellerden farkı:

@@ -10,6 +10,7 @@ from app.infrastructure.db.models import meal_compliance_model  # noqa
 from app.infrastructure.db.models import file_upload_model # noqa
 from app.infrastructure.db.models import exercise_session_model # noqa
 from app.infrastructure.db.models import session_exercise_model # noqa
+from app.infrastructure.db.models import water_log_model # noqa
 
 # Alembic config objesi — alembic.ini dosyasını okur
 config = context.config

@@ -1,8 +1,12 @@
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from sqlalchemy import String, Float, Date, DateTime, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.infrastructure.db.base import Base
+
+if TYPE_CHECKING:
+    from app.infrastructure.db.models.user_model import UserModel
 
 
 class MeasurementModel(Base):
@@ -35,3 +39,6 @@ class MeasurementModel(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)
     )
+
+    # user_model.py'deki measurements ile eşleşir
+    user: Mapped["UserModel"] = relationship("UserModel", back_populates="measurements")

@@ -1,8 +1,13 @@
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from sqlalchemy import String, Text, Integer, Float, Date, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.infrastructure.db.base import Base
+
+if TYPE_CHECKING:
+    from app.infrastructure.db.models.user_model import UserModel
+    from app.infrastructure.db.models.session_exercise_model import SessionExerciseModel
 
 
 class ExerciseSessionModel(Base):
@@ -43,6 +48,10 @@ class ExerciseSessionModel(Base):
         cascade="all, delete-orphan",       # EN KRİTİK KISIM — cascade deletion
         lazy="selectin"                     # Seans getirilince egzersizler de otomatik getirilir
     )
+
+    # user_model.py'deki exercise_sessions ile eşleşir
+    user: Mapped["UserModel"] = relationship("UserModel", back_populates="exercise_sessions")
+
 
 """
 cascade="all, delete-orphan" ne demek?
