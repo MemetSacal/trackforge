@@ -1,39 +1,65 @@
 import uuid
 from datetime import datetime, timezone
+from typing import List, TYPE_CHECKING
 from sqlalchemy import String, DateTime
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.infrastructure.db.base import Base
 
-# lambda olmadan Python bu kodu dosya yüklenirken bir kere çalıştırır ve o anki tarihi default olarak sabitler. Yani tüm kayıtlar aynı tarihi alır.
-# Mapped aslında SQLAlchemy'nin type hint sistemi — mapping'i biz yazmıyoruz, Base sınıfı hallediyor.
+# TYPE_CHECKING: döngüsel import'u önler — sadece tip kontrolü sırasında import edilir
+if TYPE_CHECKING:
+    from app.infrastructure.db.models.measurement_model import MeasurementModel
+    from app.infrastructure.db.models.note_model import NoteModel
+    from app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
+    from app.infrastructure.db.models.file_upload_model import FileUploadModel
+    from app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
+    from app.infrastructure.db.models.water_log_model import WaterLogModel
 
 class UserModel(Base):
-    # Spring'deki @Entity @Table(name="users") ile aynı mantık
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(
         String, primary_key=True, default=lambda: str(uuid.uuid4())
-        # UUID primary key — her kullanıcı için benzersiz
     )
-    email: Mapped[str] = mapped_column(
-        String, unique=True, nullable=False
-        # Unique — aynı email ile iki kayıt olamaz
-    )
-    password_hash: Mapped[str] = mapped_column(
-        String, nullable=False
-        # DB'ye hiçbir zaman düz şifre gitmez, sadece hash
-    )
-    full_name: Mapped[str] = mapped_column(
-        String, nullable=False
-    )
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    full_name: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)
-        # Kayıt oluşturulunca otomatik set edilir
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc)
-        # Kayıt güncellenince otomatik güncellenir
     )
+
+    # ── İlişkiler — cascade: kullanıcı silinince bağlı kayıtlar da silinir ──
+    measurements: Mapped[List["MeasurementModel"]] = relationship(
+        "MeasurementModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    notes: Mapped[List["NoteModel"]] = relationship(
+        "NoteModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    meal_compliances: Mapped[List["MealComplianceModel"]] = relationship(
+        "MealComplianceModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    file_uploads: Mapped[List["FileUploadModel"]] = relationship(
+        "FileUploadModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    exercise_sessions: Mapped[List["ExerciseSessionModel"]] = relationship(
+        "ExerciseSessionModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    water_logs: Mapped[List["WaterLogModel"]] = relationship(
+        "WaterLogModel", back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+"""
+DOSYA AKIŞI:
+UserModel tüm diğer modellerin ana referansıdır.
+TYPE_CHECKING bloğu döngüsel import hatasını önler —
+Python çalışırken bu import'ları görmez, sadece IDE ve tip kontrolcüsü görür.
+cascade="all, delete-orphan": kullanıcı silinince ona ait tüm veriler de silinir.
+
+Spring Boot karşılığı: @OneToMany(mappedBy="user", cascade=CascadeType.ALL, orphanRemoval=true)
+"""

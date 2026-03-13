@@ -17,3 +17,8 @@ class BadRequestException(HTTPException):
 class ForbiddenException(HTTPException):
     def __init__(self, detail: str = "Forbidden"):
         super().__init__(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+class ConflictException(HTTPException):
+    # 409 Conflict — aynı güne çift kayıt gibi durumlarda
+    def __init__(self, detail: str = "Conflict"):
+        super().__init__(status_code=409, detail=detail)
