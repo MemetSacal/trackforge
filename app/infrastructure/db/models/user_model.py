@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from typing import List, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 from sqlalchemy import String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.infrastructure.db.base import Base
@@ -13,7 +13,8 @@ if TYPE_CHECKING:
     from app.infrastructure.db.models.file_upload_model import FileUploadModel
     from app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
     from app.infrastructure.db.models.water_log_model import WaterLogModel
-    from app.infrastructure.db.models.sleep_log_model import SleepLogModel  # TYPE_CHECKING bloğuna
+    from app.infrastructure.db.models.sleep_log_model import SleepLogModel
+    from app.infrastructure.db.models.user_preference_model import UserPreferenceModel
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -56,6 +57,10 @@ class UserModel(Base):
     sleep_logs: Mapped[List["SleepLogModel"]] = relationship(
         "SleepLogModel", back_populates="user", cascade="all, delete-orphan"
     )
+    preference: Mapped[Optional["UserPreferenceModel"]] = relationship(
+        "UserPreferenceModel", back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
+    # uselist=False → one-to-one için — liste değil tek obje döner
 
 
 """
