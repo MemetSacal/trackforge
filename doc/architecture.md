@@ -656,7 +656,7 @@ Commit formatı (Conventional Commits):
 ✅ İki entity arası OneToMany ilişkisi
 ```
 
-### ⏳ Faz 5 — Yeni Backend Özellikleri
+### ✅ Faz 5 — Yeni Backend Özellikleri
 ```
 □ Su takibi CRUD (water_logs)
 □ Uyku takibi CRUD (sleep_logs)
