@@ -29,6 +29,3 @@ logs/*.log
 uploads/photos/*
 uploads/diet_plans/*
 
-# klasörlerin git'te görünmesi için içine birer .gitkeep dosyası
-New-Item uploads\photos\.gitkeep -ItemType File
-New-Item uploads\diet_plans\.gitkeep -ItemType File
