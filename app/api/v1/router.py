@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, measurements, notes, meal_compliance, files, exercises, water, sleep, preferences
+from app.api.v1.endpoints import (auth, measurements, notes, meal_compliance, files, exercises, water, sleep,
+                                  preferences, shopping)
 
 # Tüm v1 endpoint'lerini bir araya toplayan merkezi router
 router = APIRouter(prefix="/api/v1")
@@ -21,3 +22,5 @@ router.include_router(water.router, prefix="/water", tags=["water"])
 router.include_router(sleep.router, prefix="/sleep", tags=["sleep"])
 
 router.include_router(preferences.router, prefix="/preferences", tags=["preferences"])
+
+router.include_router(shopping.router, prefix="/shopping", tags=["shopping"])
