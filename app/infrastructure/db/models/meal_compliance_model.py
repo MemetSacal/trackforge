@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, Float, Boolean, Date, DateTime, ForeignKey
+from sqlalchemy import String, Text, Float, Boolean, Date, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.infrastructure.db.base import Base
 
@@ -33,6 +33,27 @@ class MealComplianceModel(Base):
         Float, nullable=True
         # Opsiyonel — 0.0 ile 100.0 arası uyum yüzdesi
     )
+
+    # ── Kalori takibi — kalori bankası sistemi için ──
+    calories_consumed: Mapped[float] = mapped_column(
+        Float, nullable=True
+        # O gün alınan toplam kalori
+    )
+    calories_target: Mapped[float] = mapped_column(
+        Float, nullable=True
+        # O günün hedef kalorisi — TDEE bazlı hesaplanır
+    )
+    calorie_balance: Mapped[float] = mapped_column(
+        Float, nullable=True
+        # Günlük fark — pozitif: fazla aldı, negatif: eksik aldı
+        # calorie_balance = calories_consumed - calories_target
+    )
+    weekly_bank_balance: Mapped[float] = mapped_column(
+        Float, nullable=True
+        # Haftalık birikimli kalori bankası — + kredi, - borç
+        # Her kayıt girildiğinde son 7 günün toplamından hesaplanır
+    )
+
     notes: Mapped[str] = mapped_column(
         Text, nullable=True
         # Opsiyonel — neden uymadı, ne yedi vs. uzun metin olabilir
@@ -48,8 +69,20 @@ class MealComplianceModel(Base):
 
 
 """
+DOSYA AKIŞI:
+Kalori bankası sistemi için 4 yeni alan eklendi:
+  calories_consumed   → kullanıcının o gün girdiği kalori
+  calories_target     → TDEE - açık (kilo verme: -700, kas: +200)
+  calorie_balance     → consumed - target (+ fazla, - eksik)
+  weekly_bank_balance → son 7 günün birikimli dengesi
+
+Örnek:
+  Hedef: 1600 kcal/gün
+  Pazartesi: 1200 aldı → balance: -400 (eksik), bank: +400 kredi
+  Salı: 2000 aldı → balance: +400 (fazla), bank: 0
+  Çarşamba: 1400 aldı → balance: -200, bank: +200 kredi
+
 NoteModel'den farkı:
 Boolean tip eklendi — complied alanı için
-Float tip eklendi — compliance_rate alanı için (0.0-100.0)
-content yerine notes — opsiyonel, zorunlu değil
+Float tip eklendi — compliance_rate ve kalori alanları için
 """
