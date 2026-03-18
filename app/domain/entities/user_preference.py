@@ -6,21 +6,27 @@ from typing import Optional, List
 @dataclass
 class UserPreference:
     id: str
-    user_id: str                                # One-to-one — her kullanıcı için tek kayıt
+    user_id: str
+
+    # Fiziksel profil — BMR/TDEE hesabı için
+    height_cm: Optional[float] = None           # Boy (cm)
+    age: Optional[int] = None                   # Yaş
+    gender: Optional[str] = None                # "male" / "female"
+    activity_level: Optional[str] = None        # "sedentary" / "light" / "moderate" / "active" / "very_active"
 
     # Yemek tercihleri
-    liked_foods: List[str] = field(default_factory=list)      # Sevilen yiyecekler
-    disliked_foods: List[str] = field(default_factory=list)   # Sevilmeyen yiyecekler
-    allergies: List[str] = field(default_factory=list)         # Alerjiler
+    liked_foods: List[str] = field(default_factory=list)
+    disliked_foods: List[str] = field(default_factory=list)
+    allergies: List[str] = field(default_factory=list)
 
     # Sağlık bilgileri
-    diseases: List[str] = field(default_factory=list)          # Hastalıklar
-    blood_type: Optional[str] = None                           # Kan grubu — "A+", "0-" vs
-    blood_values: Optional[dict] = None                        # Kan değerleri — JSON
+    diseases: List[str] = field(default_factory=list)
+    blood_type: Optional[str] = None
+    blood_values: Optional[dict] = None
 
     # Hedef ve antrenman
-    workout_location: Optional[str] = None                     # "gym", "home", "outdoor"
-    fitness_goal: Optional[str] = None                         # "weight_loss", "muscle_gain" vs
+    workout_location: Optional[str] = None
+    fitness_goal: Optional[str] = None
 
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -28,11 +34,9 @@ class UserPreference:
 
 """
 DOSYA AKIŞI:
-UserPreference entity'si diğerlerinden farklı:
-- One-to-one ilişki — user_id üzerinde UNIQUE constraint var bir dip not constraint = verinin uymak zorunda olduğu kural.
-- Yani constraint’ler aslında veri bütünlüğünün bodyguard’larıdır. 🛡️
-- List alanlar DB'de JSON olarak saklanır
-- blood_values dict tipi — {"hemoglobin": 14.5, "glucose": 95} gibi
+height_cm + age + gender + activity_level eklendi.
+Bu 4 alan + body_measurements'taki kilo → BMR/TDEE hesabı yapılabilir.
+AI'a kalori hedefi otomatik hesaplanıp gönderilebilir.
 
-Spring Boot karşılığı: @Entity + @OneToOne ilişkisi.
+Spring Boot karşılığı: @Entity sınıfı ama JPA anotasyonu olmadan.
 """

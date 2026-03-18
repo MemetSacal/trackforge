@@ -1,6 +1,7 @@
 # AI endpoint'leri — Claude API entegrasyonu
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.schemas.ai import (
@@ -11,6 +12,7 @@ from app.application.schemas.ai import (
 )
 from app.application.services.report_service import ReportService
 from app.infrastructure.db.session import get_db
+from app.infrastructure.db.models.measurement_model import MeasurementModel
 from app.infrastructure.repositories.user_preference_repository import UserPreferenceRepository
 from app.infrastructure.repositories.user_repository import UserRepository
 from app.core.dependencies import get_current_user
@@ -93,7 +95,17 @@ async def get_meal_advice(
                 detail="Diyet tavsiyesi için önce kullanıcı tercihlerini (/preferences) doldurun."
             )
 
-        # Claude'a gönder
+        # Son ölçümden kiloyu çek — BMR hesabı için
+        result = await db.execute(
+            select(MeasurementModel)
+            .where(MeasurementModel.user_id == current_user)
+            .order_by(MeasurementModel.date.desc())
+            .limit(1)
+        )
+        last_measurement = result.scalar_one_or_none()
+        weight_kg = last_measurement.weight_kg if last_measurement else None
+
+        # Claude'a gönder — fiziksel profil de dahil
         advice = await generate_meal_advice(
             liked_foods=prefs.liked_foods or [],
             disliked_foods=prefs.disliked_foods or [],
@@ -102,6 +114,11 @@ async def get_meal_advice(
             blood_values=prefs.blood_values or {},
             fitness_goal=prefs.fitness_goal or "maintenance",
             calorie_target=data.calorie_target,
+            height_cm=prefs.height_cm,
+            age=prefs.age,
+            gender=prefs.gender,
+            activity_level=prefs.activity_level,
+            weight_kg=weight_kg,
         )
         return MealAdviceResponse(**advice)
     except HTTPException:
@@ -139,11 +156,13 @@ async def get_recipe_suggestion(
 DOSYA AKIŞI:
 POST /ai/weekly-summary  → haftalık rapor + Claude → Türkçe özet
 POST /ai/workout-plan    → lokasyon + hedef → antrenman planı
-POST /ai/meal-advice     → user_preferences → diyet tavsiyesi
+POST /ai/meal-advice     → user_preferences + son ölçüm kilosu → BMR/TDEE hesaplamalı diyet tavsiyesi
 POST /ai/recipe          → malzeme listesi + tercihler → tarif
 
-Her endpoint try/except ile sarılı — Claude API hatası 500 olarak döner.
-meal-advice ve recipe: user_preferences tablosundan tercihler otomatik çekilir.
+meal-advice yenilikleri:
+  - Son ölçümden kilo otomatik çekilir
+  - BMR (Mifflin-St Jeor) + TDEE hesaplanır
+  - Fiziksel profil Claude'a gönderilir → daha doğru kalori önerisi
 
 Spring Boot karşılığı: @RestController + @PostMapping.
 """

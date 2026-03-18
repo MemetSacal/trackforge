@@ -19,6 +19,12 @@ class PreferenceService:
         return UserPreferenceResponse(
             id=entity.id,
             user_id=entity.user_id,
+            # Fiziksel profil
+            height_cm=entity.height_cm,
+            age=entity.age,
+            gender=entity.gender,
+            activity_level=entity.activity_level,
+            # Yemek tercihleri
             liked_foods=entity.liked_foods,
             disliked_foods=entity.disliked_foods,
             allergies=entity.allergies,
@@ -40,6 +46,12 @@ class PreferenceService:
         entity = UserPreference(
             id="",
             user_id=user_id,
+            # Fiziksel profil
+            height_cm=data.height_cm,
+            age=data.age,
+            gender=data.gender,
+            activity_level=data.activity_level,
+            # Yemek tercihleri
             liked_foods=data.liked_foods,
             disliked_foods=data.disliked_foods,
             allergies=data.allergies,
@@ -65,6 +77,12 @@ class PreferenceService:
             raise NotFoundException("Kullanıcı tercihleri bulunamadı.")
 
         # Partial update — None ise eskiyi koru
+        # Fiziksel profil
+        entity.height_cm = data.height_cm if data.height_cm is not None else entity.height_cm
+        entity.age = data.age if data.age is not None else entity.age
+        entity.gender = data.gender if data.gender is not None else entity.gender
+        entity.activity_level = data.activity_level if data.activity_level is not None else entity.activity_level
+        # Yemek tercihleri
         entity.liked_foods = data.liked_foods if data.liked_foods is not None else entity.liked_foods
         entity.disliked_foods = data.disliked_foods if data.disliked_foods is not None else entity.disliked_foods
         entity.allergies = data.allergies if data.allergies is not None else entity.allergies
@@ -91,6 +109,7 @@ PreferenceService diğerlerinden farklı:
 - date parametresi yok — one-to-one olduğu için tarih bazlı değil
 - get() → sadece user_id ile tek kayıt getirir
 - create() → zaten varsa 409 ConflictException fırlatır
+- height_cm, age, gender, activity_level eklendi — BMR/TDEE hesabı için
 
 Spring Boot karşılığı: @Service anotasyonlu class.
 """
