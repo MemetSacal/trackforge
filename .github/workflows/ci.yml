@@ -1,0 +1,45 @@
+name: TrackForge CI
+
+on: # bu blokta ne zaman çalış sorusuna cevap
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs: # burada nerede çalış sorusunun cevabı
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Kodu çek
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Python kur
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Bağımlılıkları yükle
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8 pytest pytest-asyncio
+
+      # Lint — kod kalitesi kontrolü
+      - name: Lint with flake8
+        run: |
+          flake8 app/ --max-line-length=120 --exclude=__pycache__ --ignore=E501,W503
+
+      # Import kontrolü — uygulama ayağa kalkıyor mu?
+      - name: Check app imports
+        run: |
+          python -c "from app.main import app; print('App imports OK')"
+        env:
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+          SECRET_KEY: test-secret-key-for-ci
+          ALGORITHM: HS256
+          ACCESS_TOKEN_EXPIRE_MINUTES: 15
+          REFRESH_TOKEN_EXPIRE_DAYS: 7
