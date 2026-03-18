@@ -1,5 +1,5 @@
 # TrackForge — Mimari Tasarım Dokümanı
-**Versiyon:** v2.0 — Güncel & Genişletilmiş  
+**Versiyon:** v3.0 — Güncel & Genişletilmiş  
 **Tarih:** Mart 2026  
 **Mimari:** Clean Architecture + Repository Pattern  
 **Yaklaşım:** Backend-First, AI-Ready, Mobile-First
@@ -16,7 +16,7 @@ Amaç       : Diyet, ölçüm, fotoğraf, egzersiz, uyku, su takibi ve notları
              sağlık, beslenme ve antrenman tavsiyesi sunan platform.
 Mimari     : Clean Architecture + Repository Pattern
 Zaman Ref. : DATE_BASED (hafta hesaplanan, saklanmayan)
-AI Hazır   : Evet (pluggable AI layer)
+AI Hazır   : Evet (pluggable AI layer — Claude API entegre)
 GitHub     : https://github.com/MemetSacal/trackforge
 ```
 
@@ -36,14 +36,14 @@ GitHub     : https://github.com/MemetSacal/trackforge
 | **Loglama** | structlog | latest | Structured JSON logging |
 | **Test** | pytest + httpx | latest | Async test desteği |
 | **Container** | Docker + Compose | latest | Reproducible environment |
-| **CI/CD** | GitHub Actions | — | Otomatik test + lint |
+| **CI/CD** | GitHub Actions | — | Otomatik lint pipeline |
 | **Mobil** | Flutter | 3.x | iOS + Android tek codebase |
 | **HTTP Client** | Dio | latest | Interceptor, retry, token refresh |
 | **State Mgmt** | Riverpod | 2.x | Test edilebilir, compile-safe |
 | **Grafik** | fl_chart | latest | Native Flutter charts |
 | **AI — Analiz** | Claude API (Anthropic) | — | Haftalık özet, trend analizi, tavsiye |
-| **AI — Görsel** | DALL-E 3 / Stable Diffusion | — | Hedef vücut görselleştirme |
-| **AI — Vision** | Claude Vision / GPT-4o | — | Fotoğraftan kalori hesaplama |
+| **AI — Vision** | Claude Vision | — | Fotoğraftan kalori hesaplama |
+| **AI — Görsel** | DALL-E 3 / Stable Diffusion | — | Hedef vücut görselleştirme (beklemede) |
 
 ---
 
@@ -139,12 +139,12 @@ trackforge/
 │   │           ├── meal_compliance.py
 │   │           ├── files.py
 │   │           ├── exercises.py
-│   │           ├── water_tracking.py       ← Faz 5
-│   │           ├── sleep_tracking.py       ← Faz 5
-│   │           ├── user_preferences.py     ← Faz 5
-│   │           ├── shopping_list.py        ← Faz 5
-│   │           ├── reports.py              ← Faz 6
-│   │           └── ai.py                  ← Faz 8
+│   │           ├── water.py              ← Faz 5
+│   │           ├── sleep.py              ← Faz 5
+│   │           ├── preferences.py        ← Faz 5
+│   │           ├── shopping.py           ← Faz 5
+│   │           ├── reports.py            ← Faz 6
+│   │           └── ai.py                ← Faz 8
 │   │
 │   ├── domain/
 │   │   ├── entities/
@@ -155,9 +155,9 @@ trackforge/
 │   │   │   ├── file_upload.py
 │   │   │   ├── exercise_session.py
 │   │   │   ├── session_exercise.py
-│   │   │   ├── water_log.py               ← Faz 5
-│   │   │   ├── sleep_log.py               ← Faz 5
-│   │   │   └── user_preference.py         ← Faz 5
+│   │   │   ├── water_log.py             ← Faz 5
+│   │   │   ├── sleep_log.py             ← Faz 5
+│   │   │   └── user_preference.py       ← Faz 5
 │   │   │
 │   │   └── interfaces/
 │   │       ├── i_user_repository.py
@@ -167,9 +167,9 @@ trackforge/
 │   │       ├── i_file_upload_repository.py
 │   │       ├── i_exercise_session_repository.py
 │   │       ├── i_session_exercise_repository.py
-│   │       ├── i_water_log_repository.py  ← Faz 5
-│   │       ├── i_sleep_log_repository.py  ← Faz 5
-│   │       └── i_user_preference_repository.py ← Faz 5
+│   │       ├── i_water_log_repository.py        ← Faz 5
+│   │       ├── i_sleep_log_repository.py        ← Faz 5
+│   │       └── i_user_preference_repository.py  ← Faz 5
 │   │
 │   ├── application/
 │   │   ├── services/
@@ -179,11 +179,11 @@ trackforge/
 │   │   │   ├── meal_compliance_service.py
 │   │   │   ├── file_upload_service.py
 │   │   │   ├── exercise_service.py
-│   │   │   ├── water_service.py           ← Faz 5
-│   │   │   ├── sleep_service.py           ← Faz 5
-│   │   │   ├── user_preference_service.py ← Faz 5
-│   │   │   ├── shopping_list_service.py   ← Faz 5
-│   │   │   └── report_service.py          ← Faz 6
+│   │   │   ├── water_service.py         ← Faz 5
+│   │   │   ├── sleep_service.py         ← Faz 5
+│   │   │   ├── preference_service.py    ← Faz 5
+│   │   │   ├── shopping_service.py      ← Faz 5
+│   │   │   └── report_service.py        ← Faz 6
 │   │   │
 │   │   └── schemas/
 │   │       ├── auth.py
@@ -192,11 +192,12 @@ trackforge/
 │   │       ├── meal_compliance.py
 │   │       ├── file_upload.py
 │   │       ├── exercise.py
-│   │       ├── water.py                   ← Faz 5
-│   │       ├── sleep.py                   ← Faz 5
-│   │       ├── user_preference.py         ← Faz 5
-│   │       ├── shopping_list.py           ← Faz 5
-│   │       └── report.py                  ← Faz 6
+│   │       ├── water.py                 ← Faz 5
+│   │       ├── sleep.py                 ← Faz 5
+│   │       ├── preference.py            ← Faz 5
+│   │       ├── shopping.py              ← Faz 5
+│   │       ├── report.py               ← Faz 6
+│   │       └── ai.py                   ← Faz 8
 │   │
 │   ├── infrastructure/
 │   │   ├── db/
@@ -210,8 +211,8 @@ trackforge/
 │   │   │       ├── file_upload_model.py
 │   │   │       ├── exercise_session_model.py
 │   │   │       ├── session_exercise_model.py
-│   │   │       ├── water_log_model.py     ← Faz 5
-│   │   │       ├── sleep_log_model.py     ← Faz 5
+│   │   │       ├── water_log_model.py   ← Faz 5
+│   │   │       ├── sleep_log_model.py   ← Faz 5
 │   │   │       └── user_preference_model.py ← Faz 5
 │   │   │
 │   │   ├── repositories/
@@ -222,8 +223,8 @@ trackforge/
 │   │   │   ├── file_upload_repository.py
 │   │   │   ├── exercise_session_repository.py
 │   │   │   ├── session_exercise_repository.py
-│   │   │   ├── water_log_repository.py    ← Faz 5
-│   │   │   ├── sleep_log_repository.py    ← Faz 5
+│   │   │   ├── water_log_repository.py  ← Faz 5
+│   │   │   ├── sleep_log_repository.py  ← Faz 5
 │   │   │   └── user_preference_repository.py ← Faz 5
 │   │   │
 │   │   ├── storage/
@@ -232,23 +233,14 @@ trackforge/
 │   │   └── logging/
 │   │       └── logger.py
 │   │
-│   ├── ai/                               ← Faz 8
+│   ├── ai/                              ← Faz 8
+│   │   ├── client.py                   ← Claude API bağlantısı
 │   │   ├── analyzers/
-│   │   │   ├── body_trend_analyzer.py
-│   │   │   ├── compliance_analyzer.py
-│   │   │   ├── calorie_vision_analyzer.py ← Fotoğraftan kalori
-│   │   │   └── health_advisor.py          ← Kan değeri/hastalık bazlı tavsiye
-│   │   ├── generators/
-│   │   │   ├── report_generator.py
-│   │   │   ├── workout_plan_generator.py  ← Kişisel PT
-│   │   │   ├── meal_plan_generator.py     ← Diyet planı
-│   │   │   ├── recipe_generator.py        ← Malzeme bazlı tarif
-│   │   │   └── body_visualizer.py         ← Hedef vücut görseli
-│   │   └── prompts/
-│   │       ├── weekly_summary.py
-│   │       ├── workout_plan.py
-│   │       ├── meal_plan.py
-│   │       └── recipe.py
+│   │   │   └── weekly_analyzer.py      ← Haftalık özet analizi
+│   │   └── generators/
+│   │       ├── workout_generator.py    ← Lokasyon bazlı antrenman planı
+│   │       ├── meal_advisor.py         ← Kan değeri bazlı diyet tavsiyesi
+│   │       └── recipe_generator.py     ← Malzeme bazlı tarif önerisi
 │   │
 │   └── core/
 │       ├── config.py
@@ -270,8 +262,13 @@ trackforge/
 │   └── diet_plans/
 │
 ├── doc/
-│   ├── architecture.md                   ← bu doküman
-│   └── cheatsheet.md
+│   ├── architecture.md                 ← bu doküman
+│   ├── cheatsheet.md
+│   └── images/                         ← UI mockup görselleri
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml                      ← GitHub Actions lint pipeline
 │
 ├── .env
 ├── .env.example
@@ -284,7 +281,7 @@ trackforge/
 
 ## 6. Veritabanı Şeması
 
-### Mevcut Tablolar (Faz 1-4)
+### Mevcut Tablolar (Faz 1-5) — 11 tablo
 
 ```sql
 -- USERS
@@ -365,43 +362,54 @@ session_exercises
 ├── weight_kg       FLOAT
 ├── notes           TEXT
 └── created_at      TIMESTAMPTZ
-```
 
-### Faz 5 — Yeni Tablolar
-
-```sql
--- WATER LOGS (Günlük su takibi)
+-- WATER LOGS
 water_logs
 ├── id              VARCHAR     PK
 ├── user_id         VARCHAR     FK → users
 ├── date            DATE        NOT NULL
-├── amount_ml       INT         NOT NULL    ← içilen miktar ml
-├── target_ml       INT                     ← günlük hedef
+├── amount_ml       INT         NOT NULL
+├── target_ml       INT
 └── created_at      TIMESTAMPTZ
 
--- SLEEP LOGS (Uyku takibi)
+-- SLEEP LOGS
 sleep_logs
 ├── id              VARCHAR     PK
 ├── user_id         VARCHAR     FK → users
 ├── date            DATE        NOT NULL
-├── sleep_time      TIME                    ← yatış saati
-├── wake_time       TIME                    ← kalkış saati
-├── duration_hours  FLOAT                   ← toplam süre
-├── quality_score   INT         (1-10)      ← uyku kalitesi
+├── sleep_time      TIME
+├── wake_time       TIME
+├── duration_hours  FLOAT
+├── quality_score   INT         (1-10)
 ├── notes           TEXT
 └── created_at      TIMESTAMPTZ
 
--- USER PREFERENCES (Kişisel tercihler)
+-- USER PREFERENCES
 user_preferences
 ├── id              VARCHAR     PK
 ├── user_id         VARCHAR     FK → users  UNIQUE
-├── liked_foods     TEXT                    ← JSON array
-├── disliked_foods  TEXT                    ← JSON array
-├── allergies       TEXT                    ← JSON array
-├── diseases        TEXT                    ← JSON array (hastalıklar)
-├── blood_values    TEXT                    ← JSON (kan değerleri)
-├── workout_location VARCHAR               ← home/gym/park
-├── fitness_goal    VARCHAR                ← lose_weight/build_muscle/maintain
+├── liked_foods     JSON
+├── disliked_foods  JSON
+├── allergies       JSON
+├── diseases        JSON
+├── blood_values    JSON
+├── workout_location VARCHAR
+├── fitness_goal    VARCHAR
+└── created_at      TIMESTAMPTZ
+
+-- SHOPPING ITEMS
+shopping_items
+├── id              VARCHAR     PK
+├── user_id         VARCHAR     FK → users
+├── name            VARCHAR     NOT NULL
+├── quantity        VARCHAR
+├── category        VARCHAR
+├── is_completed    BOOLEAN     default False
+├── price           FLOAT
+├── currency        VARCHAR     default "TRY"
+├── source          VARCHAR
+├── is_recurring    BOOLEAN     default False
+├── notes           TEXT
 └── created_at      TIMESTAMPTZ
 ```
 
@@ -458,40 +466,46 @@ GET    /exercises/sessions/{id}/exercises
 PUT    /exercises/exercises/{id}
 DELETE /exercises/exercises/{id}
 
-── WATER TRACKING (Faz 5) ────────────────────────
+── WATER TRACKING ────────────────────────────────
 POST   /water
-GET    /water?from=&to=
+GET    /water?start_date=&end_date=
 GET    /water/date/{date}
 PUT    /water/{id}
 DELETE /water/{id}
 
-── SLEEP TRACKING (Faz 5) ────────────────────────
+── SLEEP TRACKING ────────────────────────────────
 POST   /sleep
-GET    /sleep?from=&to=
+GET    /sleep?start_date=&end_date=
 GET    /sleep/date/{date}
 PUT    /sleep/{id}
 DELETE /sleep/{id}
 
-── USER PREFERENCES (Faz 5) ──────────────────────
+── USER PREFERENCES ──────────────────────────────
 POST   /preferences
 GET    /preferences
 PUT    /preferences
+DELETE /preferences
 
-── SHOPPING LIST (Faz 5) ─────────────────────────
-GET    /shopping-list?from=&to=          ← haftalık diyet planına göre otomatik
+── SHOPPING LIST ─────────────────────────────────
+POST   /shopping
+GET    /shopping
+GET    /shopping/recurring
+PUT    /shopping/{id}
+PATCH  /shopping/{id}/toggle
+DELETE /shopping/{id}
+DELETE /shopping/completed/clear
 
-── REPORTS (Faz 6) ───────────────────────────────
-GET    /reports/weekly?date=
-GET    /reports/monthly?month=
+── REPORTS ───────────────────────────────────────
+GET    /reports/weekly?reference_date=
+GET    /reports/monthly?year=&month=
 
-── AI (Faz 8) ────────────────────────────────────
-POST   /ai/calorie-from-photo            ← fotoğraftan kalori hesapla
-POST   /ai/workout-plan                  ← kişisel PT planı
-POST   /ai/meal-plan                     ← diyet planı önerisi
-POST   /ai/recipe                        ← malzeme bazlı tarif
-POST   /ai/body-visualization            ← hedef vücut görseli
-POST   /ai/weekly-summary                ← haftalık AI özet raporu
-GET    /ai/health-advice                 ← kan değeri/hastalık bazlı tavsiye
+── AI ────────────────────────────────────────────
+POST   /ai/weekly-summary          ← haftalık AI özet raporu ✅
+POST   /ai/workout-plan            ← lokasyon bazlı antrenman planı ✅
+POST   /ai/meal-advice             ← kan değeri bazlı diyet tavsiyesi ✅
+POST   /ai/recipe                  ← malzeme bazlı tarif önerisi ✅
+POST   /ai/calorie-from-photo      ← fotoğraftan kalori (Vision) ✅
+POST   /ai/body-visualization      ← hedef vücut görseli (DALL-E) ⏳ beklemede
 ```
 
 ---
@@ -500,52 +514,32 @@ GET    /ai/health-advice                 ← kan değeri/hastalık bazlı tavsiy
 
 ```python
 ai/
+├── client.py
+│   # Claude API bağlantısı — tüm modüller bunu kullanır
+│   # Model: claude-sonnet-4-5
+│
 ├── analyzers/
-│   ├── body_trend_analyzer.py
-│   │   # Input:  son N haftanın ölçümleri
-│   │   # Output: trend raporu, yorum
-│   │
-│   ├── compliance_analyzer.py
-│   │   # Input:  meal_compliance kayıtları
-│   │   # Output: uyum skoru, zayıf günler, öneri
-│   │
-│   ├── calorie_vision_analyzer.py
-│   │   # Input:  yemek/içecek fotoğrafı
-│   │   # Output: tahmini kalori, makro değerler
-│   │   # API:    Claude Vision veya GPT-4o
-│   │
-│   └── health_advisor.py
-│       # Input:  kan değerleri, hastalıklar, ölçümler
-│       # Output: kişiselleştirilmiş sağlık tavsiyesi
+│   └── weekly_analyzer.py
+│       # Input:  WeeklyReportResponse (Faz 6 raporu)
+│       # Output: Türkçe kişiselleştirilmiş özet metin
+│       # API:    Claude API
 │
-├── generators/
-│   ├── report_generator.py
-│   │   # Input:  haftalık tüm veri
-│   │   # Output: okunabilir haftalık özet metni
-│   │   # API:    Claude API
-│   │
-│   ├── workout_plan_generator.py
-│   │   # Input:  lokasyon (home/gym/park), hedef, seviye
-│   │   # Output: set/rep/egzersiz listesi
-│   │
-│   ├── meal_plan_generator.py
-│   │   # Input:  tercihler, hastalıklar, kan değerleri, kalori hedefi
-│   │   # Output: haftalık diyet planı
-│   │
-│   ├── recipe_generator.py
-│   │   # Input:  evdeki malzemeler, sevilen/sevilmeyen yiyecekler
-│   │   # Output: sağlıklı tarif + kalori bilgisi
-│   │
-│   └── body_visualizer.py
-│       # Input:  mevcut fotoğraf, hedef yağ oranı, kilo, kas kütlesi
-│       # Output: hedef vücudu gösteren yapay görsel
-│       # API:    DALL-E 3 veya Stable Diffusion
-│
-└── prompts/
-    ├── weekly_summary.py
-    ├── workout_plan.py
-    ├── meal_plan.py
-    └── recipe.py
+└── generators/
+    ├── workout_generator.py
+    │   # Input:  lokasyon (home/gym/outdoor), hedef, seviye, gün sayısı
+    │   # Output: JSON haftalık antrenman planı (set/rep/kalori)
+    │
+    ├── meal_advisor.py
+    │   # Input:  liked_foods, allergies, diseases, blood_values, fitness_goal
+    │   # Output: JSON diyet tavsiyesi (kalori, makro, öneriler, uyarılar)
+    │
+    └── recipe_generator.py
+        # Input:  mevcut malzemeler, tercihler, alerjiler, öğün tipi
+        # Output: JSON tarif (malzemeler, adımlar, besin değerleri)
+
+Not: report_service.py haftalık/aylık veri özetini yönetir.
+body_trend_analyzer.py ve compliance_analyzer.py bu servis tarafından
+karşılandığı için ayrıca implement edilmedi.
 ```
 
 ---
@@ -572,9 +566,9 @@ Env Değişkenleri (.env):
   ACCESS_TOKEN_EXPIRE_MINUTES=15
   REFRESH_TOKEN_EXPIRE_DAYS=7
   STORAGE_TYPE=local
-  CLAUDE_API_KEY=...       (Faz 8)
-  OPENAI_API_KEY=...       (Faz 8 — Vision için)
-  STABILITY_API_KEY=...    (Faz 8 — Görselleştirme için)
+  CLAUDE_API_KEY=...         (Faz 8 — aktif)
+  OPENAI_API_KEY=...         (Faz 8 — Vision için, opsiyonel)
+  STABILITY_API_KEY=...      (DALL-E alternatifi, beklemede)
 ```
 
 ---
@@ -658,52 +652,54 @@ Commit formatı (Conventional Commits):
 
 ### ✅ Faz 5 — Yeni Backend Özellikleri
 ```
-□ Su takibi CRUD (water_logs)
-□ Uyku takibi CRUD (sleep_logs)
-□ Kullanıcı tercihleri (yemek tercihleri, hastalıklar, kan değerleri, hedef)
-□ Alışveriş listesi (haftalık diyet planına göre otomatik)
+✅ Su takibi CRUD (water_logs)
+✅ Uyku takibi CRUD (sleep_logs)
+✅ Kullanıcı tercihleri (yemek tercihleri, hastalıklar, kan değerleri, hedef)
+✅ Alışveriş listesi (fiyat, kaynak, tekrar eden ürünler, sepet özeti)
 ```
 
-### ⏳ Faz 6 — Raporlar
+### ✅ Faz 6 — Raporlar
 ```
-□ /reports/weekly endpoint
-□ /reports/monthly endpoint
-□ Kalori günlük toplam hesaplama
-□ Kalori açığı/fazlası analizi
-```
-
-### ⏳ Faz 7 — Polish & Deployment
-```
-□ GitHub Actions (lint + test pipeline)
-□ Docker production config
-□ Swagger dokümantasyon gözden geçirme
-□ README.md tamamlama
-□ pytest unit + integration testler
+✅ /reports/weekly endpoint
+✅ /reports/monthly endpoint
+✅ Su, uyku, egzersiz, diyet uyum özetleri
+✅ Kilo değişim hesaplama
 ```
 
-### ⏳ Faz 8 — AI Entegrasyonu
+### ✅ Faz 7 — Polish & Deployment
 ```
-□ Claude API entegrasyonu
-□ Fotoğraftan kalori hesaplama (Vision API)
-□ Kişisel PT — lokasyon bazlı antrenman planı (home/gym/park)
-□ Kan değeri + hastalık bazlı diyet tavsiyesi
-□ Hedef vücut görselleştirme (DALL-E 3 / Stable Diffusion)
-□ Malzeme bazlı sağlıklı tarif önerisi
-□ Haftalık AI özet raporu
-□ body_trend_analyzer.py
-□ compliance_analyzer.py
-□ report_generator.py
+✅ GitHub Actions (lint pipeline)
+✅ README.md (profesyonel, İngilizce, badge'li, UI görselleri)
+✅ requirements.txt
+✅ .env.example
+⏳ Docker production config (ileriye bırakıldı)
+⏳ pytest unit + integration testler (ileriye bırakıldı)
+```
+
+### ✅ Faz 8 — AI Entegrasyonu
+```
+✅ Claude API entegrasyonu (client.py)
+✅ Haftalık AI özet raporu (weekly_analyzer.py)
+✅ Lokasyon bazlı antrenman planı (workout_generator.py)
+✅ Kan değeri + hastalık bazlı diyet tavsiyesi (meal_advisor.py)
+✅ Malzeme bazlı sağlıklı tarif önerisi (recipe_generator.py)
+✅ Fotoğraftan kalori hesaplama — Claude Vision (calorie_vision_analyzer.py)
+⏳ Hedef vücut görselleştirme — DALL-E 3 (beklemede, OpenAI key gerekli)
+
+Not: body_trend_analyzer.py, compliance_analyzer.py ve report_generator.py
+mimaride planlanmıştı ancak bu işlevler report_service.py ve
+weekly_analyzer.py tarafından karşılandığı için ayrıca implement edilmedi.
 ```
 
 ### ⏳ Faz 9 — Flutter
 ```
-□ Flutter proje kurulumu (Dio + Riverpod + GoRouter)
-□ flutter_secure_storage + token refresh
-□ Auth ekranları (login, register)
-□ Dashboard (haftalık özet)
-□ Tüm backend özelliklerinin ekranları
-□ fl_chart ile grafikler
-□ AI özellik ekranları
+⏳ Flutter proje kurulumu (Dio + Riverpod + GoRouter)
+⏳ flutter_secure_storage + token refresh
+⏳ Auth ekranları (login, register)
+⏳ Dashboard (haftalık özet)
+⏳ Tüm backend özelliklerinin ekranları
+⏳ fl_chart ile grafikler
+⏳ AI özellik ekranları
 ```
 
 ---
@@ -714,116 +710,38 @@ Commit formatı (Conventional Commits):
 trackforge-flutter/
 ├── lib/
 │   ├── main.dart
-│   ├── app.dart                              # GoRouter + tema setup
-│   │
+│   ├── app.dart
 │   ├── core/
 │   │   ├── api/
-│   │   │   ├── api_client.dart               # Dio instance, interceptors
-│   │   │   ├── endpoints.dart                # URL sabitleri
-│   │   │   └── api_exceptions.dart           # Hata yönetimi
+│   │   │   ├── api_client.dart
+│   │   │   ├── endpoints.dart
+│   │   │   └── api_exceptions.dart
 │   │   ├── auth/
-│   │   │   ├── token_manager.dart            # flutter_secure_storage
-│   │   │   └── auth_interceptor.dart         # Token refresh logic
+│   │   │   ├── token_manager.dart
+│   │   │   └── auth_interceptor.dart
 │   │   ├── theme/
 │   │   │   ├── app_theme.dart
 │   │   │   └── app_colors.dart
 │   │   └── utils/
-│   │       ├── date_utils.dart               # Tarih → hafta hesaplama
+│   │       ├── date_utils.dart
 │   │       └── file_picker_helper.dart
-│   │
 │   ├── data/
-│   │   ├── models/                           # JSON ↔ Dart modeller
-│   │   │   ├── user_model.dart
-│   │   │   ├── measurement_model.dart
-│   │   │   ├── note_model.dart
-│   │   │   ├── meal_compliance_model.dart
-│   │   │   ├── file_upload_model.dart
-│   │   │   ├── exercise_model.dart
-│   │   │   ├── water_log_model.dart
-│   │   │   ├── sleep_log_model.dart
-│   │   │   └── user_preference_model.dart
-│   │   │
-│   │   └── repositories/                    # API çağrıları burada
-│   │       ├── auth_repository.dart
-│   │       ├── measurement_repository.dart
-│   │       ├── note_repository.dart
-│   │       ├── meal_compliance_repository.dart
-│   │       ├── file_repository.dart
-│   │       ├── exercise_repository.dart
-│   │       ├── water_repository.dart
-│   │       ├── sleep_repository.dart
-│   │       ├── preference_repository.dart
-│   │       └── ai_repository.dart
-│   │
-│   ├── providers/                           # Riverpod state yönetimi
-│   │   ├── auth_provider.dart
-│   │   ├── measurement_provider.dart
-│   │   ├── note_provider.dart
-│   │   ├── meal_compliance_provider.dart
-│   │   ├── file_provider.dart
-│   │   ├── exercise_provider.dart
-│   │   ├── water_provider.dart
-│   │   ├── sleep_provider.dart
-│   │   ├── preference_provider.dart
-│   │   └── ai_provider.dart
-│   │
+│   │   ├── models/
+│   │   └── repositories/
+│   ├── providers/
 │   ├── screens/
 │   │   ├── auth/
-│   │   │   ├── login_screen.dart
-│   │   │   └── register_screen.dart
-│   │   │
 │   │   ├── home/
-│   │   │   └── dashboard_screen.dart        # Haftalık özet — ana ekran
-│   │   │
 │   │   ├── measurements/
-│   │   │   ├── measurement_screen.dart      # Ölçüm girişi
-│   │   │   └── measurement_chart_screen.dart # fl_chart grafik
-│   │   │
 │   │   ├── notes/
-│   │   │   └── notes_screen.dart
-│   │   │
 │   │   ├── diet/
-│   │   │   ├── meal_compliance_screen.dart
-│   │   │   └── diet_plan_upload_screen.dart
-│   │   │
-│   │   ├── files/
-│   │   │   └── photo_gallery_screen.dart
-│   │   │
 │   │   ├── exercises/
-│   │   │   ├── exercise_session_screen.dart
-│   │   │   └── exercise_history_screen.dart
-│   │   │
 │   │   ├── water/
-│   │   │   └── water_tracking_screen.dart
-│   │   │
 │   │   ├── sleep/
-│   │   │   └── sleep_tracking_screen.dart
-│   │   │
 │   │   ├── preferences/
-│   │   │   └── user_preference_screen.dart  # Tercihler, kan değerleri, hedefler
-│   │   │
 │   │   ├── reports/
-│   │   │   ├── weekly_report_screen.dart
-│   │   │   └── monthly_report_screen.dart
-│   │   │
 │   │   └── ai/
-│   │       ├── calorie_scan_screen.dart     # Fotoğraftan kalori
-│   │       ├── workout_plan_screen.dart     # Kişisel PT
-│   │       ├── meal_plan_screen.dart        # AI diyet planı
-│   │       ├── recipe_screen.dart           # Malzeme bazlı tarif
-│   │       ├── body_visualization_screen.dart # Hedef vücut görseli
-│   │       └── ai_summary_screen.dart       # Haftalık AI özet
-│   │
 │   └── widgets/
-│       ├── week_navigator.dart              # Hafta ileri/geri
-│       ├── file_upload_card.dart
-│       ├── measurement_chart.dart           # fl_chart wrapper
-│       ├── water_progress_bar.dart          # Günlük su hedefi
-│       ├── sleep_quality_card.dart
-│       ├── mood_energy_slider.dart
-│       ├── ai_advice_card.dart              # AI tavsiye kartı
-│       └── body_goal_card.dart              # Hedef vücut görseli kartı
-│
 └── pubspec.yaml
 ```
 
@@ -843,9 +761,8 @@ trackforge-flutter/
 | DATE_BASED > week_id FK | weeks tablosu | Esneklik, sorgu kolaylığı |
 | Repository pattern | Direkt ORM | Test edilebilirlik, soyutlama |
 | Claude API > OpenAI | OpenAI | Daha uzun context, daha iyi analiz |
-| DALL-E 3 / SD | Midjourney | API erişimi var, programatik kullanım |
 
 ---
 
 *Bu doküman projenin yaşayan anayasası — her fazda ilgili bölümler güncellenecek.*  
-*Son güncelleme: Mart 2026 — v2.0*
+*Son güncelleme: Mart 2026 — v3.0*
