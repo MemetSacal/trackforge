@@ -2,7 +2,7 @@ name: TrackForge CI
 
 on: # bu blokta ne zaman çalış sorusuna cevap
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, feature/polish ]
   pull_request:
     branches: [ main, develop ]
 
