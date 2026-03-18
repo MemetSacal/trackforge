@@ -25,12 +25,12 @@ TrackForge is designed for people who want to manage their diet and fitness jour
 
 And this is just the beginning.
 
-In upcoming phases, **Claude API** integration will transform TrackForge from a tracking tool into a personal health coach:
+**Claude API** integration transforms TrackForge from a tracking tool into a personal health coach:
 
 - 🩸 Personalized diet advice based on blood values
-- 📸 Calorie estimation from food photos
+- 📸 Calorie estimation from food photos (Claude Vision)
 - 🏋️ Location-based workout plans (home / gym / outdoors)
-- 🎯 Goal body visualization
+- 🎯 Goal body visualization (planned)
 - 📊 Weekly AI summary report — *"How was your week?"*
 
 ---
@@ -47,14 +47,12 @@ In upcoming phases, **Claude API** integration will transform TrackForge from a 
 | **Validation** | Pydantic v2 | Native integration with FastAPI |
 | **File I/O** | aiofiles | Non-blocking chunked file writes |
 | **Container** | Docker + Compose | Reproducible dev environment |
-| **AI (Phase 8)** | Claude API (Anthropic) | Long context window, powerful analysis |
-| **Vision (Phase 8)** | Claude Vision / GPT-4o | Calorie estimation from food images |
-| **Image AI (Phase 8)** | DALL-E 3 / Stable Diffusion | Goal body visualization |
+| **AI** | Claude API (Anthropic) | Long context window, powerful analysis + Vision |
 | **Mobile (Phase 9)** | Flutter | Single codebase for iOS + Android |
 
-> **Why async?** All DB queries, file operations, and future AI API calls run non-blocking — built for high concurrency from day one.
+> **Why async?** All DB queries, file operations, and AI API calls run non-blocking — built for high concurrency from day one.
 >
-> **Why Clean Architecture?** Dependencies are minimized, testability is maximized. The domain layer depends on nothing — adding Flutter, a new AI service, or a different database won't break the architecture.
+> **Why Clean Architecture?** Dependencies are minimized, testability is maximized. The domain layer depends on nothing — adding Flutter, a new AI service, or a different database won't break the architecture. For example, when adding a new AI service, only the infrastructure layer is affected. The domain and application layers remain completely untouched.
 
 ---
 
@@ -73,13 +71,14 @@ In upcoming phases, **Claude API** integration will transform TrackForge from a 
 ├─────────────────────────────────────────────┤
 │         INFRASTRUCTURE LAYER                │  ← DB, files, external services
 │  repositories/ + db/models/ + storage/      │
+├─────────────────────────────────────────────┤
+│              AI LAYER                       │  ← Pluggable Claude API module
+│         ai/analyzers/ + ai/generators/      │
 └─────────────────────────────────────────────┘
 
 Dependency rule: arrows point inward only.
 The domain layer depends on nothing.
 ```
-
-> **Example:** When adding a new AI service, only the infrastructure layer is affected. The domain and application layers remain completely untouched.
 
 For detailed architecture documentation: [`doc/architecture.md`](doc/architecture.md)
 
@@ -114,10 +113,10 @@ ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=15
 REFRESH_TOKEN_EXPIRE_DAYS=7
 
-# Phase 8 — AI Integration (can be left empty for now)
-CLAUDE_API_KEY=
-OPENAI_API_KEY=
-STABILITY_API_KEY=
+# Phase 8 — AI Integration
+CLAUDE_API_KEY=your-claude-api-key
+OPENAI_API_KEY=          # optional
+STABILITY_API_KEY=       # optional
 ```
 
 ### 3. Start PostgreSQL with Docker
@@ -196,21 +195,20 @@ curl -X POST http://localhost:8000/api/v1/water \
   -d '{"date": "2026-03-17", "amount_ml": 2100, "target_ml": 2800}'
 ```
 
-### 4. Get weekly report
+### 4. Get weekly AI summary
 
 ```bash
-curl -X GET "http://localhost:8000/api/v1/reports/weekly?reference_date=2026-03-17" \
-  -H "Authorization: Bearer <access_token>"
+curl -X POST http://localhost:8000/api/v1/ai/weekly-summary \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"reference_date": "2026-03-17"}'
 ```
 
 ```json
 {
   "week_start": "2026-03-16",
   "week_end": "2026-03-22",
-  "water": { "avg_daily_ml": 2100, "target_hit_days": 3, "total_days": 5 },
-  "sleep": { "avg_hours": 7.75, "avg_quality": 8.2, "total_days": 5 },
-  "meal_compliance": { "complied_days": 6, "total_days": 7, "compliance_rate": 85.7 },
-  "exercise": { "total_sessions": 4, "total_calories": 1240, "total_duration_minutes": 180 }
+  "summary": "This week your sleep quality improved and diet compliance reached 86%..."
 }
 ```
 
@@ -228,6 +226,7 @@ curl -X GET "http://localhost:8000/api/v1/reports/weekly?reference_date=2026-03-
 | POST | `/api/v1/auth/register` | Register |
 | POST | `/api/v1/auth/login` | Login → JWT token |
 | POST | `/api/v1/auth/refresh` | Refresh token |
+| GET | `/api/v1/auth/me` | Current user info |
 
 ### Body Measurements
 | Method | Endpoint | Description |
@@ -261,7 +260,7 @@ curl -X GET "http://localhost:8000/api/v1/reports/weekly?reference_date=2026-03-
 | POST | `/api/v1/exercises/sessions` | Create session |
 | GET | `/api/v1/exercises/sessions?from=&to=` | Date range |
 | PUT | `/api/v1/exercises/sessions/{id}` | Update |
-| DELETE | `/api/v1/exercises/sessions/{id}` | Delete (cascade deletes exercises) |
+| DELETE | `/api/v1/exercises/sessions/{id}` | Delete (cascade) |
 
 ### Meal Compliance
 | Method | Endpoint | Description |
@@ -303,6 +302,15 @@ curl -X GET "http://localhost:8000/api/v1/reports/weekly?reference_date=2026-03-
 | GET | `/api/v1/reports/weekly?reference_date=` | Weekly summary report |
 | GET | `/api/v1/reports/monthly?year=&month=` | Monthly summary report |
 
+### AI (Claude API)
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/api/v1/ai/weekly-summary` | Weekly AI summary report |
+| POST | `/api/v1/ai/workout-plan` | Location-based workout plan |
+| POST | `/api/v1/ai/meal-advice` | Blood value based diet advice |
+| POST | `/api/v1/ai/recipe` | Ingredient-based recipe suggestion |
+| POST | `/api/v1/ai/calorie-from-photo` | Calorie estimation from food photo |
+
 ---
 
 ## 🗄️ Database Tables
@@ -337,38 +345,27 @@ JWT-based authentication:
 
 ---
 
-## 🤖 AI Vision (Phase 8)
+## 🤖 AI Features (Phase 8 — Active)
 
-TrackForge's ultimate goal is to evolve from a tracking tool into a **personal health coach**.
+TrackForge integrates **Claude API** to act as a personal health coach.
 
-These features are planned and will be developed iteratively.
+**📊 Weekly AI Summary**
+All weekly data is sent to Claude. Returns a personalized Turkish summary with achievements and suggestions.
 
-### Planned AI Features
+**🏋️ Location-Based Workout Plan**
+Input: location (home/gym/outdoor) + goal + level. Output: full weekly plan with sets, reps, calories.
 
-**📊 Weekly AI Summary Report**
-All weekly data (sleep, water, exercise, diet) is sent to Claude API.
-The user receives a readable, personalized summary:
-*"Your sleep quality improved this week, but water intake was at 68% of your target..."*
+**🩸 Diet Advice**
+Reads from `user_preferences` (blood values, diseases, allergies). Returns calorie targets, macros, food recommendations.
 
-**🩸 Blood Value & Disease-Based Diet Advice**
-The user's blood values and medical history are analyzed.
-Personalized nutrition advice is generated without conflicting with the dietitian's plan.
+**🥗 Recipe Suggestion**
+Input: available ingredients + preferences. Output: healthy recipe with step-by-step instructions and nutrition info.
 
-**📸 Calorie Estimation from Food Photos**
-A meal photo is analyzed via Claude Vision or GPT-4o.
-Estimated calories, protein, carbs, and fat values are returned.
+**📸 Calorie from Photo (Claude Vision)**
+Upload a food photo. Claude Vision analyzes and returns estimated calories and macros.
 
-**🏋️ Personal PT — Location-Based Workout Plan**
-Based on the user's workout_location (home / gym / outdoors) and fitness goal,
-a weekly workout plan with sets, reps, and exercises is generated.
-
-**🥗 Ingredient-Based Healthy Recipe Suggestions**
-Shopping list items + food preferences + allergies are combined
-to suggest healthy, personalized recipes.
-
-**🎯 Goal Body Visualization**
-Using the user's current photo + target weight/body fat ratio,
-a goal body image is generated via DALL-E 3 or Stable Diffusion.
+**🎯 Goal Body Visualization** *(planned — DALL-E 3)*
+Generates a target body image based on current photo and fitness goals.
 
 ---
 
@@ -377,21 +374,26 @@ a goal body image is generated via DALL-E 3 or Stable Diffusion.
 ```
 trackforge/
 ├── app/
+│   ├── ai/                   # Claude API integration
+│   │   ├── client.py
+│   │   ├── analyzers/
+│   │   └── generators/
 │   ├── api/v1/endpoints/     # HTTP layer — route definitions
 │   ├── application/
-│   │   ├── schemas/          # Pydantic request/response models
-│   │   └── services/         # Business logic (use cases)
+│   │   ├── schemas/          # Pydantic models
+│   │   └── services/         # Business logic
 │   ├── domain/
-│   │   ├── entities/         # Pure Python dataclasses — no ORM dependency
+│   │   ├── entities/         # Pure Python dataclasses
 │   │   └── interfaces/       # Repository abstractions
 │   ├── infrastructure/
 │   │   ├── db/models/        # SQLAlchemy ORM models
 │   │   ├── repositories/     # Interface implementations
-│   │   └── storage/          # Async file storage service
-│   └── core/                 # Config, security, exceptions, dependencies
-├── migrations/               # Alembic migration files
-├── uploads/                  # Local file storage
-├── doc/                      # Architecture documentation
+│   │   └── storage/          # Async file storage
+│   └── core/
+├── migrations/
+├── uploads/
+├── doc/
+├── .github/workflows/        # GitHub Actions CI
 ├── .env.example
 ├── docker-compose.yml
 └── requirements.txt
@@ -409,8 +411,8 @@ trackforge/
 | **Phase 4** | Exercise tracking (sessions + cascade delete) | ✅ Done |
 | **Phase 5** | Water, sleep, preferences, shopping list | ✅ Done |
 | **Phase 6** | Weekly & monthly reports | ✅ Done |
-| **Phase 7** | Polish & deployment (CI/CD, tests) | 🔄 In Progress |
-| **Phase 8** | AI integration (Claude API + Vision) | ⏳ Planned |
+| **Phase 7** | Polish & deployment (CI/CD, README) | ✅ Done |
+| **Phase 8** | AI integration (Claude API + Vision) | ✅ Done |
 | **Phase 9** | Flutter mobile application | ⏳ Planned |
 
 ---
@@ -429,6 +431,7 @@ trackforge/
 
 ![Web Dashboard](doc/images/web_dashboard.png)
 
+---
 
 ## 👤 Developer
 
