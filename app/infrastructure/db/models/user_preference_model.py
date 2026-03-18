@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import String, DateTime, JSON, ForeignKey, UniqueConstraint, func
+from sqlalchemy import String, DateTime, JSON, ForeignKey, UniqueConstraint, func, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.db.base import Base
@@ -25,6 +25,12 @@ class UserPreferenceModel(Base):
         String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
+    # Fiziksel profil — BMR/TDEE kalori hesabı için zorunlu
+    height_cm: Mapped[float] = mapped_column(Float, nullable=True)          # Boy (cm)
+    age: Mapped[int] = mapped_column(Integer, nullable=True)                # Yaş
+    gender: Mapped[str] = mapped_column(String, nullable=True)              # "male" / "female"
+    activity_level: Mapped[str] = mapped_column(String, nullable=True)      # "sedentary" / "light" / "moderate" / "active" / "very_active"
+
     # Yemek tercihleri — PostgreSQL'de JSON olarak saklanır
     liked_foods: Mapped[list] = mapped_column(JSON, nullable=True, default=list)
     disliked_foods: Mapped[list] = mapped_column(JSON, nullable=True, default=list)
@@ -33,7 +39,7 @@ class UserPreferenceModel(Base):
     # Sağlık bilgileri
     diseases: Mapped[list] = mapped_column(JSON, nullable=True, default=list)
     blood_type: Mapped[str] = mapped_column(String, nullable=True)
-    blood_values: Mapped[dict] = mapped_column(JSON, nullable=True)      # {"hemoglobin": 14.5}
+    blood_values: Mapped[dict] = mapped_column(JSON, nullable=True)         # {"hemoglobin": 14.5}
 
     # Hedef ve antrenman
     workout_location: Mapped[str] = mapped_column(String, nullable=True)
@@ -55,8 +61,13 @@ class UserPreferenceModel(Base):
 DOSYA AKIŞI:
 UniqueConstraint → DB seviyesinde one-to-one garantisi.
 JSON tip → PostgreSQL'de native JSON kolonu — liste ve dict saklanabilir.
-liked_foods örnek: ["tavuk", "yulaf", "yumurta"]
-blood_values örnek: {"hemoglobin": 14.5, "glucose": 95, "vitamin_d": 32}
+height_cm + age + gender + activity_level → BMR/TDEE hesabı için eklendi.
+
+BMR (Mifflin-St Jeor):
+  Erkek: 10 × kilo + 6.25 × boy - 5 × yaş + 5
+  Kadın: 10 × kilo + 6.25 × boy - 5 × yaş - 161
+
+TDEE = BMR × aktivite katsayısı
 
 Spring Boot karşılığı: @Entity + @OneToOne + @Column(columnDefinition="json")
 """

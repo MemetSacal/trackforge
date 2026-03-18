@@ -29,6 +29,10 @@ class UserPreferenceRepository(IUserPreferenceRepository):
             workout_location=entity.workout_location,
             fitness_goal=entity.fitness_goal,
             created_at=entity.created_at,
+            height_cm=entity.height_cm,
+            age=entity.age,
+            gender=entity.gender,
+            activity_level=entity.activity_level,
         )
 
     # ── Model → Entity ──
@@ -46,6 +50,10 @@ class UserPreferenceRepository(IUserPreferenceRepository):
             fitness_goal=model.fitness_goal,
             created_at=model.created_at,
             updated_at=model.updated_at,
+            height_cm=model.height_cm,
+            age=model.age,
+            gender=model.gender,
+            activity_level=model.activity_level,
         )
 
     async def create(self, preference: UserPreference) -> UserPreference:
