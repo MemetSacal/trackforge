@@ -18,8 +18,9 @@ router = APIRouter()
 # ── DEPENDENCY ───────────────────────────────────────────────────
 def get_meal_compliance_service(session: AsyncSession = Depends(get_db)) -> MealComplianceService:
     # session → MealComplianceRepository → MealComplianceService
+    # db de inject edildi — kalori bankası hesapları için preferences ve measurements lazım
     repo = MealComplianceRepository(session)
-    return MealComplianceService(repo)
+    return MealComplianceService(repo, session)
 
 
 # ── CREATE ───────────────────────────────────────────────────────
@@ -27,10 +28,13 @@ def get_meal_compliance_service(session: AsyncSession = Depends(get_db)) -> Meal
 async def create_compliance(
     request: MealComplianceCreateRequest,
     user_id: str = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
     service: MealComplianceService = Depends(get_meal_compliance_service),
 ):
     # POST /api/v1/meal-compliance
-    return await service.create(user_id, request)
+    result = await service.create(user_id, request, session)
+    await session.commit()
+    return result
 
 
 # ── GET BY DATE ──────────────────────────────────────────────────
@@ -47,8 +51,8 @@ async def get_by_date(
 # ── GET BY DATE RANGE ────────────────────────────────────────────
 @router.get("", response_model=list[MealComplianceResponse])
 async def get_by_date_range(
-    from_date: date = Query(..., alias="from"),  # ?from=2026-03-01
-    to_date: date = Query(..., alias="to"),      # &to=2026-03-31
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
     user_id: str = Depends(get_current_user),
     service: MealComplianceService = Depends(get_meal_compliance_service),
 ):
@@ -62,10 +66,13 @@ async def update_compliance(
     compliance_id: str,
     request: MealComplianceUpdateRequest,
     user_id: str = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
     service: MealComplianceService = Depends(get_meal_compliance_service),
 ):
     # PUT /api/v1/meal-compliance/{id}
-    return await service.update(user_id, compliance_id, request)
+    result = await service.update(user_id, compliance_id, request, session)
+    await session.commit()
+    return result
 
 
 # ── DELETE ───────────────────────────────────────────────────────
@@ -79,12 +86,20 @@ async def delete_compliance(
     await service.delete(user_id, compliance_id)
     return {"message": "Diyet kaydı silindi"}
 
+
 """
-Genel akış:
-HTTP Request → Endpoint → Depends(get_current_user) → JWT doğrula → user_id al
-→ Depends(get_meal_compliance_service) → session → repo → service
-→ service iş mantığını çalıştır → Response döner
+DOSYA AKIŞI:
+HTTP Request → Endpoint → JWT doğrula → user_id al
+→ MealComplianceService (kalori bankası logic dahil)
+→ Response döner
+
+create ve update'e session inject edildi — kalori bankası hesapları için:
+  - user_preferences → TDEE hesabı
+  - body_measurements → son kilo
+  - meal_compliance → son 7 günün banka bakiyesi
 
 notes endpoint'inden farkı:
-complied ve compliance_rate alanları var
+  - complied ve compliance_rate alanları
+  - calories_consumed girişi
+  - bank_message ve today_max_calories response'da döner
 """

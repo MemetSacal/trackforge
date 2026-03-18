@@ -22,6 +22,10 @@ class MealComplianceRepository(IMealComplianceRepository):
             complied=compliance.complied,
             compliance_rate=compliance.compliance_rate,
             notes=compliance.notes,
+            calories_consumed=compliance.calories_consumed,
+            calories_target=compliance.calories_target,
+            calorie_balance=compliance.calorie_balance,
+            weekly_bank_balance=compliance.weekly_bank_balance,
             created_at=compliance.created_at,
         )
         self.session.add(db_obj)
@@ -66,10 +70,14 @@ class MealComplianceRepository(IMealComplianceRepository):
         db_obj = result.scalar_one_or_none()
         if not db_obj:
             return None
-        # id, user_id, date değişmez — sadece içerik alanları güncellenir
         db_obj.complied = compliance.complied
         db_obj.compliance_rate = compliance.compliance_rate
         db_obj.notes = compliance.notes
+        # Kalori bankası alanları
+        db_obj.calories_consumed = compliance.calories_consumed
+        db_obj.calories_target = compliance.calories_target
+        db_obj.calorie_balance = compliance.calorie_balance
+        db_obj.weekly_bank_balance = compliance.weekly_bank_balance
         await self.session.flush()
         return self._to_entity(db_obj)
 
@@ -85,8 +93,6 @@ class MealComplianceRepository(IMealComplianceRepository):
         return True
 
     def _to_entity(self, db_obj: MealComplianceModel) -> MealCompliance:
-        # MealComplianceModel (SQLAlchemy) → MealCompliance (domain entity) dönüşümü
-        # Servis katmanı MealComplianceModel'i hiç görmez, sadece MealCompliance görür
         return MealCompliance(
             id=db_obj.id,
             user_id=db_obj.user_id,
@@ -94,6 +100,11 @@ class MealComplianceRepository(IMealComplianceRepository):
             complied=db_obj.complied,
             compliance_rate=db_obj.compliance_rate,
             notes=db_obj.notes,
+            # Kalori bankası alanları
+            calories_consumed=db_obj.calories_consumed,
+            calories_target=db_obj.calories_target,
+            calorie_balance=db_obj.calorie_balance,
+            weekly_bank_balance=db_obj.weekly_bank_balance,
             created_at=db_obj.created_at,
         )
 
