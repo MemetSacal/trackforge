@@ -1,5 +1,5 @@
 # TrackForge — Mimari Tasarım Dokümanı
-**Versiyon:** v3.0 — Güncel & Genişletilmiş  
+**Versiyon:** v3.1 — Güncel & Genişletilmiş  
 **Tarih:** Mart 2026  
 **Mimari:** Clean Architecture + Repository Pattern  
 **Yaklaşım:** Backend-First, AI-Ready, Mobile-First
@@ -236,11 +236,13 @@ trackforge/
 │   ├── ai/                              ← Faz 8
 │   │   ├── client.py                   ← Claude API bağlantısı
 │   │   ├── analyzers/
-│   │   │   └── weekly_analyzer.py      ← Haftalık özet analizi
+│   │   │   ├── weekly_analyzer.py      ← Haftalık özet analizi
+│   │   │   └── calorie_vision_analyzer.py  ← Fotoğraftan kalori (Vision)
 │   │   └── generators/
 │   │       ├── workout_generator.py    ← Lokasyon bazlı antrenman planı
-│   │       ├── meal_advisor.py         ← Kan değeri bazlı diyet tavsiyesi
-│   │       └── recipe_generator.py     ← Malzeme bazlı tarif önerisi
+│   │       ├── meal_advisor.py         ← BMR/TDEE bazlı diyet tavsiyesi
+│   │       ├── recipe_generator.py     ← Malzeme bazlı tarif önerisi
+│   │       └── calorie_bank_advisor.py ← Kalori bankası AI danışmanı (ileride)
 │   │
 │   └── core/
 │       ├── config.py
@@ -262,13 +264,13 @@ trackforge/
 │   └── diet_plans/
 │
 ├── doc/
-│   ├── architecture.md                 ← bu doküman
+│   ├── architecture.md
 │   ├── cheatsheet.md
-│   └── images/                         ← UI mockup görselleri
+│   └── images/
 │
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                      ← GitHub Actions lint pipeline
+│       └── ci.yml
 │
 ├── .env
 ├── .env.example
@@ -281,7 +283,7 @@ trackforge/
 
 ## 6. Veritabanı Şeması
 
-### Mevcut Tablolar (Faz 1-5) — 11 tablo
+### Mevcut Tablolar — 11 tablo
 
 ```sql
 -- USERS
@@ -319,15 +321,19 @@ weekly_notes
 ├── mood_score      INT         (1-10)
 └── created_at      TIMESTAMPTZ
 
--- MEAL COMPLIANCE
+-- MEAL COMPLIANCE (Günlük diyet uyum + kalori bankası)
 meal_compliance
-├── id              VARCHAR     PK
-├── user_id         VARCHAR     FK → users
-├── date            DATE        NOT NULL
-├── complied        BOOLEAN     NOT NULL
-├── compliance_rate FLOAT       (0-100)
-├── notes           TEXT
-└── created_at      TIMESTAMPTZ
+├── id                  VARCHAR     PK
+├── user_id             VARCHAR     FK → users
+├── date                DATE        NOT NULL
+├── complied            BOOLEAN     NOT NULL
+├── compliance_rate     FLOAT       (0-100)
+├── calories_consumed   FLOAT       ← o gün alınan kalori
+├── calories_target     FLOAT       ← günlük hedef (TDEE bazlı)
+├── calorie_balance     FLOAT       ← consumed - target (+ fazla, - eksik)
+├── weekly_bank_balance FLOAT       ← son 7 günün birikimli dengesi
+├── notes               TEXT
+└── created_at          TIMESTAMPTZ
 
 -- FILE UPLOADS
 file_uploads
@@ -388,13 +394,18 @@ sleep_logs
 user_preferences
 ├── id              VARCHAR     PK
 ├── user_id         VARCHAR     FK → users  UNIQUE
+├── height_cm       FLOAT                   ← boy (BMR için)
+├── age             INT                     ← yaş (BMR için)
+├── gender          VARCHAR                 ← male/female (BMR için)
+├── activity_level  VARCHAR                 ← sedentary/light/moderate/active/very_active
 ├── liked_foods     JSON
 ├── disliked_foods  JSON
 ├── allergies       JSON
 ├── diseases        JSON
+├── blood_type      VARCHAR
 ├── blood_values    JSON
 ├── workout_location VARCHAR
-├── fitness_goal    VARCHAR
+├── fitness_goal    VARCHAR                 ← weight_loss/muscle_gain/maintenance
 └── created_at      TIMESTAMPTZ
 
 -- SHOPPING ITEMS
@@ -441,7 +452,7 @@ PUT    /notes/{id}
 DELETE /notes/{id}
 
 ── MEAL COMPLIANCE ───────────────────────────────
-POST   /meal-compliance
+POST   /meal-compliance               ← calories_consumed + kalori bankası hesabı
 GET    /meal-compliance?from=&to=
 GET    /meal-compliance/date/{date}
 PUT    /meal-compliance/{id}
@@ -481,7 +492,7 @@ PUT    /sleep/{id}
 DELETE /sleep/{id}
 
 ── USER PREFERENCES ──────────────────────────────
-POST   /preferences
+POST   /preferences          ← height_cm, age, gender, activity_level dahil
 GET    /preferences
 PUT    /preferences
 DELETE /preferences
@@ -502,7 +513,7 @@ GET    /reports/monthly?year=&month=
 ── AI ────────────────────────────────────────────
 POST   /ai/weekly-summary          ← haftalık AI özet raporu ✅
 POST   /ai/workout-plan            ← lokasyon bazlı antrenman planı ✅
-POST   /ai/meal-advice             ← kan değeri bazlı diyet tavsiyesi ✅
+POST   /ai/meal-advice             ← BMR/TDEE bazlı diyet tavsiyesi ✅
 POST   /ai/recipe                  ← malzeme bazlı tarif önerisi ✅
 POST   /ai/calorie-from-photo      ← fotoğraftan kalori (Vision) ✅
 POST   /ai/body-visualization      ← hedef vücut görseli (DALL-E) ⏳ beklemede
@@ -510,7 +521,35 @@ POST   /ai/body-visualization      ← hedef vücut görseli (DALL-E) ⏳ beklem
 
 ---
 
-## 8. AI Layer Detayı
+## 8. Kalori Bankası Sistemi
+
+```
+Temel Mantık:
+  TDEE = BMR × aktivite_katsayısı
+  BMR  = Mifflin-St Jeor formülü
+
+  Kilo verme hedefi : günlük_hedef = TDEE - 700
+  Kas yapma hedefi  : günlük_hedef = TDEE + 250
+  Koruma hedefi     : günlük_hedef = TDEE
+
+  calorie_balance      = calories_consumed - calories_target
+  weekly_bank_balance  = son 7 günün (target - consumed) toplamı
+
+Güvenli Sınırlar:
+  Minimum kalori: 1500 kcal (kas kaybını önler)
+  Maksimum kaçamak: TDEE + weekly_bank_balance
+
+Örnek Senaryo (kilo verme, hedef 1600 kcal/gün):
+  Pazartesi: 1200 aldı → balance: -400, bank: +400 kredi
+  Salı:      1400 aldı → balance: -200, bank: +600 kredi
+  Çarşamba:  2200 aldı → balance: +600, bank:   0 kredi
+  Perşembe:  1200 aldı → balance: -400, bank: +400 kredi
+  Cuma:      ?    → "400 kalori krediniz var, bugün 2000'e kadar yiyebilirsiniz 🎉"
+```
+
+---
+
+## 9. AI Layer Detayı
 
 ```python
 ai/
@@ -519,23 +558,31 @@ ai/
 │   # Model: claude-sonnet-4-5
 │
 ├── analyzers/
-│   └── weekly_analyzer.py
-│       # Input:  WeeklyReportResponse (Faz 6 raporu)
-│       # Output: Türkçe kişiselleştirilmiş özet metin
-│       # API:    Claude API
+│   ├── weekly_analyzer.py
+│   │   # Input:  WeeklyReportResponse (Faz 6 raporu)
+│   │   # Output: Türkçe kişiselleştirilmiş özet metin
+│   │
+│   └── calorie_vision_analyzer.py
+│       # Input:  yemek fotoğrafı (base64)
+│       # Output: tahmini kalori, makro değerler
+│       # API:    Claude Vision
 │
 └── generators/
     ├── workout_generator.py
-    │   # Input:  lokasyon (home/gym/outdoor), hedef, seviye, gün sayısı
-    │   # Output: JSON haftalık antrenman planı (set/rep/kalori)
+    │   # Input:  lokasyon, hedef, seviye, gün sayısı
+    │   # Output: JSON haftalık antrenman planı
     │
     ├── meal_advisor.py
-    │   # Input:  liked_foods, allergies, diseases, blood_values, fitness_goal
-    │   # Output: JSON diyet tavsiyesi (kalori, makro, öneriler, uyarılar)
+    │   # Input:  tercihler + kan değerleri + BMR/TDEE hesabı
+    │   # Output: JSON diyet tavsiyesi (kalori, makro, öneriler)
     │
-    └── recipe_generator.py
-        # Input:  mevcut malzemeler, tercihler, alerjiler, öğün tipi
-        # Output: JSON tarif (malzemeler, adımlar, besin değerleri)
+    ├── recipe_generator.py
+    │   # Input:  malzemeler + tercihler + alerjiler
+    │   # Output: JSON tarif (adımlar, besin değerleri)
+    │
+    └── calorie_bank_advisor.py
+        # Input:  haftalık kalori banka durumu
+        # Output: kişiselleştirilmiş kaçamak önerisi (ileride)
 
 Not: report_service.py haftalık/aylık veri özetini yönetir.
 body_trend_analyzer.py ve compliance_analyzer.py bu servis tarafından
@@ -544,7 +591,7 @@ karşılandığı için ayrıca implement edilmedi.
 
 ---
 
-## 9. Güvenlik Mimarisi
+## 10. Güvenlik Mimarisi
 
 ```
 JWT Flow:
@@ -567,13 +614,13 @@ Env Değişkenleri (.env):
   REFRESH_TOKEN_EXPIRE_DAYS=7
   STORAGE_TYPE=local
   CLAUDE_API_KEY=...         (Faz 8 — aktif)
-  OPENAI_API_KEY=...         (Faz 8 — Vision için, opsiyonel)
+  OPENAI_API_KEY=...         (opsiyonel)
   STABILITY_API_KEY=...      (DALL-E alternatifi, beklemede)
 ```
 
 ---
 
-## 10. Loglama Stratejisi
+## 11. Loglama Stratejisi
 
 ```python
 # structlog ile structured JSON logging
@@ -590,7 +637,7 @@ Env Değişkenleri (.env):
 
 ---
 
-## 11. Git Stratejisi
+## 12. Git Stratejisi
 
 ```
 Branch yapısı:
@@ -611,7 +658,7 @@ Commit formatı (Conventional Commits):
 
 ---
 
-## 12. Geliştirme Fazları (Roadmap)
+## 13. Geliştirme Fazları (Roadmap)
 
 ### ✅ Faz 1 — Auth Sistemi
 ```
@@ -655,6 +702,7 @@ Commit formatı (Conventional Commits):
 ✅ Su takibi CRUD (water_logs)
 ✅ Uyku takibi CRUD (sleep_logs)
 ✅ Kullanıcı tercihleri (yemek tercihleri, hastalıklar, kan değerleri, hedef)
+✅ Fiziksel profil (height_cm, age, gender, activity_level) — BMR/TDEE için
 ✅ Alışveriş listesi (fiyat, kaynak, tekrar eden ürünler, sepet özeti)
 ```
 
@@ -681,9 +729,10 @@ Commit formatı (Conventional Commits):
 ✅ Claude API entegrasyonu (client.py)
 ✅ Haftalık AI özet raporu (weekly_analyzer.py)
 ✅ Lokasyon bazlı antrenman planı (workout_generator.py)
-✅ Kan değeri + hastalık bazlı diyet tavsiyesi (meal_advisor.py)
+✅ BMR/TDEE bazlı diyet tavsiyesi (meal_advisor.py)
 ✅ Malzeme bazlı sağlıklı tarif önerisi (recipe_generator.py)
 ✅ Fotoğraftan kalori hesaplama — Claude Vision (calorie_vision_analyzer.py)
+✅ Kalori bankası sistemi (meal_compliance_service.py)
 ⏳ Hedef vücut görselleştirme — DALL-E 3 (beklemede, OpenAI key gerekli)
 
 Not: body_trend_analyzer.py, compliance_analyzer.py ve report_generator.py
@@ -700,11 +749,12 @@ weekly_analyzer.py tarafından karşılandığı için ayrıca implement edilmed
 ⏳ Tüm backend özelliklerinin ekranları
 ⏳ fl_chart ile grafikler
 ⏳ AI özellik ekranları
+⏳ Kalori bankası ekranı
 ```
 
 ---
 
-## 13. Flutter Uygulama Mimarisi
+## 14. Flutter Uygulama Mimarisi
 
 ```
 trackforge-flutter/
@@ -713,18 +763,9 @@ trackforge-flutter/
 │   ├── app.dart
 │   ├── core/
 │   │   ├── api/
-│   │   │   ├── api_client.dart
-│   │   │   ├── endpoints.dart
-│   │   │   └── api_exceptions.dart
 │   │   ├── auth/
-│   │   │   ├── token_manager.dart
-│   │   │   └── auth_interceptor.dart
 │   │   ├── theme/
-│   │   │   ├── app_theme.dart
-│   │   │   └── app_colors.dart
 │   │   └── utils/
-│   │       ├── date_utils.dart
-│   │       └── file_picker_helper.dart
 │   ├── data/
 │   │   ├── models/
 │   │   └── repositories/
@@ -747,7 +788,7 @@ trackforge-flutter/
 
 ---
 
-## 14. Teknoloji Kararları — Gerekçeler
+## 15. Teknoloji Kararları — Gerekçeler
 
 | Karar | Alternatif | Neden bu? |
 |---|---|---|
@@ -761,8 +802,9 @@ trackforge-flutter/
 | DATE_BASED > week_id FK | weeks tablosu | Esneklik, sorgu kolaylığı |
 | Repository pattern | Direkt ORM | Test edilebilirlik, soyutlama |
 | Claude API > OpenAI | OpenAI | Daha uzun context, daha iyi analiz |
+| Kalori bankası sistemi | Günlük sabit hedef | Motivasyon + bilimsel esneklik |
 
 ---
 
 *Bu doküman projenin yaşayan anayasası — her fazda ilgili bölümler güncellenecek.*  
-*Son güncelleme: Mart 2026 — v3.0*
+*Son güncelleme: Mart 2026 — v3.1*

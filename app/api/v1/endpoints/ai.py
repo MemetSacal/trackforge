@@ -1,6 +1,6 @@
 # AI endpoint'leri — Claude API entegrasyonu
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +9,7 @@ from app.application.schemas.ai import (
     WorkoutPlanRequest, WorkoutPlanResponse,
     MealAdviceRequest, MealAdviceResponse,
     RecipeRequest, RecipeResponse,
+    CalorieVisionResponse,
 )
 from app.application.services.report_service import ReportService
 from app.infrastructure.db.session import get_db
@@ -17,6 +18,7 @@ from app.infrastructure.repositories.user_preference_repository import UserPrefe
 from app.infrastructure.repositories.user_repository import UserRepository
 from app.core.dependencies import get_current_user
 from app.ai.analyzers.weekly_analyzer import generate_weekly_summary
+from app.ai.analyzers.calorie_vision_analyzer import analyze_food_calories
 from app.ai.generators.workout_generator import generate_workout_plan
 from app.ai.generators.meal_advisor import generate_meal_advice
 from app.ai.generators.recipe_generator import generate_recipe
@@ -152,17 +154,53 @@ async def get_recipe_suggestion(
         raise HTTPException(status_code=500, detail=f"Tarif oluşturulamadı: {str(e)}")
 
 
+@router.post("/calorie-from-photo", response_model=CalorieVisionResponse)
+async def get_calories_from_photo(
+    file: UploadFile = File(..., description="Yemek fotoğrafı (JPEG, PNG, WebP)"),
+    current_user: str = Depends(get_current_user),
+):
+    """Yemek fotoğrafından kalori ve makro değerlerini hesapla — Claude Vision."""
+    try:
+        # Dosya tipini kontrol et
+        allowed_types = ["image/jpeg", "image/png", "image/webp"]
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Desteklenmeyen dosya tipi. İzin verilenler: {', '.join(allowed_types)}"
+            )
+
+        # Dosyayı oku
+        image_data = await file.read()
+
+        # Boyut kontrolü — max 5MB
+        if len(image_data) > 5 * 1024 * 1024:
+            raise HTTPException(
+                status_code=400,
+                detail="Fotoğraf boyutu 5MB'dan büyük olamaz."
+            )
+
+        # Claude Vision'a gönder
+        result = await analyze_food_calories(image_data, file.content_type)
+        return CalorieVisionResponse(**result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kalori analizi yapılamadı: {str(e)}")
+
+
 """
 DOSYA AKIŞI:
-POST /ai/weekly-summary  → haftalık rapor + Claude → Türkçe özet
-POST /ai/workout-plan    → lokasyon + hedef → antrenman planı
-POST /ai/meal-advice     → user_preferences + son ölçüm kilosu → BMR/TDEE hesaplamalı diyet tavsiyesi
-POST /ai/recipe          → malzeme listesi + tercihler → tarif
+POST /ai/weekly-summary      → haftalık rapor + Claude → Türkçe özet
+POST /ai/workout-plan        → lokasyon + hedef → antrenman planı
+POST /ai/meal-advice         → user_preferences + son ölçüm → BMR/TDEE hesaplamalı diyet tavsiyesi
+POST /ai/recipe              → malzeme listesi + tercihler → tarif
+POST /ai/calorie-from-photo  → yemek fotoğrafı → Claude Vision → kalori + makro
 
-meal-advice yenilikleri:
-  - Son ölçümden kilo otomatik çekilir
-  - BMR (Mifflin-St Jeor) + TDEE hesaplanır
-  - Fiziksel profil Claude'a gönderilir → daha doğru kalori önerisi
+calorie-from-photo diğerlerinden farklı:
+  - JSON body değil, multipart/form-data ile dosya alır
+  - UploadFile → bytes → base64 → Claude Vision
+  - Swagger'da "Try it out" ile fotoğraf yüklenebilir
 
-Spring Boot karşılığı: @RestController + @PostMapping.
+Spring Boot karşılığı: @RestController + @PostMapping + @RequestPart.
 """
