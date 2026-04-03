@@ -66,6 +66,14 @@ class RecipeResponse(BaseModel):
     servings: int
     tips: Optional[str] = None
 
+# ── Kalori Vision request ──
+class CalorieVisionResponse(BaseModel):
+    food_items: List[Dict[str, Any]]
+    total_calories: int
+    macros: Dict[str, Any]
+    confidence: str
+    notes: Optional[str] = None
+
 
 """
 DOSYA AKIŞI:
