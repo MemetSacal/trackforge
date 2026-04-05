@@ -15,6 +15,9 @@ from app.infrastructure.db.models import sleep_log_model  # noqa
 from app.infrastructure.db.models import user_preference_model  # noqa
 from app.infrastructure.db.models import shopping_item_model  # noqa
 from app.infrastructure.db.models import onboarding_profile_model  # noqa
+from app.infrastructure.db.models import streak_model  # noqa
+from app.infrastructure.db.models import badge_model  # noqa
+from app.infrastructure.db.models import user_level_model  # noqa
 
 # Alembic config objesi — alembic.ini dosyasını okur
 config = context.config
