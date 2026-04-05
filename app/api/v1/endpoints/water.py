@@ -7,15 +7,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.schemas.water import WaterLogCreate, WaterLogUpdate, WaterLogResponse
 from app.application.services.water_service import WaterService
+from app.application.services.gamification_service import GamificationService
 from app.infrastructure.db.session import get_db
 from app.core.dependencies import get_current_user
 
 router = APIRouter()
 
 
-# ── Dependency: her request'te WaterService oluştur ──
 def get_water_service(db: AsyncSession = Depends(get_db)) -> WaterService:
     return WaterService(db)
+
+
+def get_gamification_service(db: AsyncSession = Depends(get_db)) -> GamificationService:
+    return GamificationService(db)
 
 
 @router.post("", response_model=WaterLogResponse, status_code=status.HTTP_201_CREATED)
@@ -23,9 +27,16 @@ async def create_water_log(
     data: WaterLogCreate,
     current_user: str = Depends(get_current_user),
     service: WaterService = Depends(get_water_service),
+    gamification: GamificationService = Depends(get_gamification_service),
 ):
     """Yeni su kaydı oluştur."""
-    return await service.create(current_user, data)
+    result = await service.create(current_user, data)
+
+    # Günlük hedef tutuldu mu kontrol et — gamification tetikle
+    if data.target_ml and data.amount_ml and data.amount_ml >= data.target_ml:
+        await gamification.on_water_goal_reached(current_user, data.date)
+
+    return result
 
 
 @router.get("", response_model=List[WaterLogResponse])
@@ -72,14 +83,16 @@ async def delete_water_log(
 
 """
 DOSYA AKIŞI:
-POST   /water              → yeni kayıt oluştur
-GET    /water?start_date=&end_date=  → tarih aralığı listesi
-GET    /water/date/{date}  → belirli gün
-PUT    /water/{id}         → güncelle
-DELETE /water/{id}         → sil (204 No Content döner)
+POST /water → su kaydı oluştur + gamification kontrol:
+  - amount_ml >= target_ml → hedef tutuldu → on_water_goal_reached()
+  - Su streak +1, +20 XP
+  - streak = 7  → "7_day_water" rozeti + 100 XP
+  - streak = 30 → "30_day_water" rozeti + 100 XP
 
-get_current_user → User objesi değil, direkt user_id string döndürür.
-Bu yüzden current_user: str — diğer endpoint'lerle aynı pattern.
+GET    /water?start_date=&end_date= → tarih aralığı
+GET    /water/date/{date}           → belirli gün
+PUT    /water/{id}                  → güncelle
+DELETE /water/{id}                  → sil (204 No Content)
 
 Spring Boot karşılığı: @RestController + @RequestMapping.
 """
