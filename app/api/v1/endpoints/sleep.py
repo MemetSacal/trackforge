@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.schemas.sleep import SleepLogCreate, SleepLogUpdate, SleepLogResponse
 from app.application.services.sleep_service import SleepService
+from app.application.services.gamification_service import GamificationService
 from app.infrastructure.db.session import get_db
 from app.core.dependencies import get_current_user
 
@@ -16,14 +17,26 @@ def get_sleep_service(db: AsyncSession = Depends(get_db)) -> SleepService:
     return SleepService(db)
 
 
+def get_gamification_service(db: AsyncSession = Depends(get_db)) -> GamificationService:
+    return GamificationService(db)
+
+
 @router.post("", response_model=SleepLogResponse, status_code=status.HTTP_201_CREATED)
 async def create_sleep_log(
     data: SleepLogCreate,
     current_user: str = Depends(get_current_user),
     service: SleepService = Depends(get_sleep_service),
+    gamification: GamificationService = Depends(get_gamification_service),
 ):
     """Yeni uyku kaydı oluştur."""
-    return await service.create(current_user, data)
+    result = await service.create(current_user, data)
+
+    # Gamification tetikle — streak + XP
+    # quality_score yoksa 0 gönder → streak artmaz ama XP kazanılır
+    quality_score = data.quality_score if data.quality_score else 0
+    await gamification.on_sleep_logged(current_user, data.date, quality_score)
+
+    return result
 
 
 @router.get("", response_model=List[SleepLogResponse])
@@ -70,11 +83,14 @@ async def delete_sleep_log(
 
 """
 DOSYA AKIŞI:
-POST   /sleep              → yeni kayıt
-GET    /sleep?start_date=&end_date=  → tarih aralığı
-GET    /sleep/date/{date}  → belirli gece
-PUT    /sleep/{id}         → güncelle
-DELETE /sleep/{id}         → sil
+POST   /sleep → uyku kaydı + gamification tetikler:
+  - quality_score >= 6 → sleep streak +1
+  - Her log → +15 XP
+
+GET    /sleep?start_date=&end_date= → tarih aralığı
+GET    /sleep/date/{date}           → belirli gece
+PUT    /sleep/{id}                  → güncelle
+DELETE /sleep/{id}                  → sil
 
 Spring Boot karşılığı: @RestController + @RequestMapping.
 """
