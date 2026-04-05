@@ -16,6 +16,10 @@ if TYPE_CHECKING:
     from app.infrastructure.db.models.sleep_log_model import SleepLogModel
     from app.infrastructure.db.models.user_preference_model import UserPreferenceModel
     from app.infrastructure.db.models.shopping_item_model import ShoppingItemModel
+    from app.infrastructure.db.models.onboarding_profile_model import OnboardingProfileModel
+    from app.infrastructure.db.models.streak_model import StreakModel
+    from app.infrastructure.db.models.badge_model import BadgeModel
+    from app.infrastructure.db.models.user_level_model import UserLevelModel
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -64,7 +68,19 @@ class UserModel(Base):
     shopping_items: Mapped[List["ShoppingItemModel"]] = relationship(
         "ShoppingItemModel", back_populates="user", cascade="all, delete-orphan"
     )
-
+    onboarding_profile: Mapped[Optional["OnboardingProfileModel"]] = relationship(
+        "OnboardingProfileModel", back_populates="user", cascade="all, delete-orphan", uselist=False
+        # uselist=False → one-to-one
+    )
+    streaks: Mapped[List["StreakModel"]] = relationship(
+        "StreakModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    badges: Mapped[List["BadgeModel"]] = relationship(
+        "BadgeModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    user_level: Mapped[Optional["UserLevelModel"]] = relationship(
+        "UserLevelModel", back_populates="user", cascade="all, delete-orphan", uselist=False
+    )
 """
 DOSYA AKIŞI:
 UserModel tüm diğer modellerin ana referansıdır.
