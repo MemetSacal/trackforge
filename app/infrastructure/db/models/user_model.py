@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from app.infrastructure.db.models.sleep_log_model import SleepLogModel
     from app.infrastructure.db.models.user_preference_model import UserPreferenceModel
     from app.infrastructure.db.models.shopping_item_model import ShoppingItemModel
+    from app.infrastructure.db.models.onboarding_profile_model import OnboardingProfileModel
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -63,6 +64,10 @@ class UserModel(Base):
     )
     shopping_items: Mapped[List["ShoppingItemModel"]] = relationship(
         "ShoppingItemModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    onboarding_profile: Mapped[Optional["OnboardingProfileModel"]] = relationship(
+        "OnboardingProfileModel", back_populates="user", cascade="all, delete-orphan", uselist=False
+        # uselist=False → one-to-one
     )
 
 """
