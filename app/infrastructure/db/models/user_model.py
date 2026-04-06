@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.infrastructure.db.models.badge_model import BadgeModel
     from app.infrastructure.db.models.user_level_model import UserLevelModel
     from app.infrastructure.db.models.friendship_model import FriendshipModel
+    from app.infrastructure.db.models.step_log_model import StepLogModel
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -93,6 +94,9 @@ class UserModel(Base):
         foreign_keys="FriendshipModel.addressee_id",
         back_populates="addressee",
         cascade="all, delete-orphan",
+    )
+    step_logs: Mapped[List["StepLogModel"]] = relationship(
+        "StepLogModel", back_populates="user", cascade="all, delete-orphan"
     )
 """
 DOSYA AKIŞI:
