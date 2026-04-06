@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey, JSON
 from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.infrastructure.db.base import Base
@@ -28,6 +29,9 @@ class SessionExerciseModel(Base):
     )
     weight_kg: Mapped[float] = mapped_column(
         Float, nullable=True                # Kullanılan ağırlık — opsiyonel
+    )
+    muscle_groups: Mapped[dict] = mapped_column(
+        JSON, nullable=True                 # Çalışan kas grupları — ["göğüs", "omuz", "triceps"]
     )
     notes: Mapped[str] = mapped_column(
         Text, nullable=True                 # Egzersiz notu — opsiyonel
