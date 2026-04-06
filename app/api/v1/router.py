@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (auth, measurements, notes, meal_compliance, files, exercises, water, sleep,
                                   preferences, shopping, reports, ai, onboarding, barcode, gamification, social, steps,
-                                  )
+                                  cycle, )
 
 # Tüm v1 endpoint'lerini bir araya toplayan merkezi router
 router = APIRouter(prefix="/api/v1")
@@ -39,3 +39,5 @@ router.include_router(gamification.router, prefix="/gamification", tags=["gamifi
 router.include_router(social.router, prefix="/social", tags=["social"])
 
 router.include_router(steps.router, prefix="/steps", tags=["steps"])
+
+router.include_router(cycle.router, prefix="/cycle", tags=["cycle"])

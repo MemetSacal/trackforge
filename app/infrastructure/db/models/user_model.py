@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from app.infrastructure.db.models.user_level_model import UserLevelModel
     from app.infrastructure.db.models.friendship_model import FriendshipModel
     from app.infrastructure.db.models.step_log_model import StepLogModel
+    from app.infrastructure.db.models.menstrual_cycle_model import MenstrualCycleModel
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -97,6 +98,9 @@ class UserModel(Base):
     )
     step_logs: Mapped[List["StepLogModel"]] = relationship(
         "StepLogModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    menstrual_cycles: Mapped[List["MenstrualCycleModel"]] = relationship(
+        "MenstrualCycleModel", back_populates="user", cascade="all, delete-orphan"
     )
 """
 DOSYA AKIŞI:
