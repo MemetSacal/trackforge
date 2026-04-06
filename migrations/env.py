@@ -19,6 +19,7 @@ from app.infrastructure.db.models import streak_model  # noqa
 from app.infrastructure.db.models import badge_model  # noqa
 from app.infrastructure.db.models import user_level_model  # noqa
 from app.infrastructure.db.models import friendship_model  # noqa
+from app.infrastructure.db.models import step_log_model  # noqa
 
 # Alembic config objesi — alembic.ini dosyasını okur
 config = context.config
