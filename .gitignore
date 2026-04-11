@@ -29,3 +29,14 @@ logs/*.log
 uploads/photos/*
 uploads/diet_plans/*
 
+# Flutter
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/.metadata
+
+# IDE
+mobile/.idea/
+*.iml
