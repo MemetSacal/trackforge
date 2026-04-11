@@ -1,0 +1,55 @@
+name: trackforge
+description: "TrackForge — AI-Powered Personal Health & Fitness Tracker"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  shared_preferences: ^2.3.3
+
+  # HTTP Client
+  dio: ^5.7.0
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Navigation
+  go_router: ^14.6.0
+
+  # Secure Storage (JWT)
+  flutter_secure_storage: ^9.2.2
+
+  # Charts
+  fl_chart: ^0.69.0
+
+  # JSON Serialization
+  json_annotation: ^4.9.0
+  freezed_annotation: ^2.4.4
+
+  # Image Picker (calorie vision)
+  image_picker: ^1.1.2
+
+  # Barcode Scanner
+  mobile_scanner: ^5.2.3
+
+  # Icons
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.13
+  json_serializable: ^6.8.0
+  freezed: ^2.5.7
+  riverpod_generator: ^2.6.1
+
+flutter:
+  uses-material-design: true
+
