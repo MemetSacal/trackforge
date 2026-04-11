@@ -36,7 +36,7 @@ jobs: # burada nerede çalış sorusunun cevabı
       # Import kontrolü — uygulama ayağa kalkıyor mu?
       - name: Check app imports
         run: |
-          python -c "from app.main import app; print('App imports OK')"
+          python -c "from backend.app.main import app; print('App imports OK')"
         env:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
           SECRET_KEY: test-secret-key-for-ci
