@@ -3,6 +3,7 @@ from fastapi.openapi.utils import get_openapi
 from app.core.config import get_settings
 from app.infrastructure.logging.logger import setup_logging
 from app.api.v1.router import router
+from fastapi.middleware.cors import CORSMiddleware
 
 settings = get_settings()
 
@@ -17,6 +18,13 @@ app = FastAPI(
     version="0.1.0",
     docs_url="/docs",    # Swagger UI — endpoint'leri test etmek için
     redoc_url="/redoc",  # ReDoc — sadece okuma amaçlı dokümantasyon
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # v1 router'ını uygulamaya bağla
