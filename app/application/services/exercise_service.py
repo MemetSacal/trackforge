@@ -126,3 +126,15 @@ class ExerciseService:
 
         # Sadece gönderilen alanları güncelle
         existing.exercise_name = data.exercise_name if data.exercise_name is not None else existing.exercise_name
+        return await self.exercise_repository.update(existing)
+
+    async def delete_exercise(self, user_id: str, exercise_id: str) -> bool:
+        existing = await self.exercise_repository.get_by_id(exercise_id)
+        if not existing:
+            raise NotFoundException("Egzersiz bulunamadı")
+
+        session = await self.session_repository.get_by_id(existing.session_id)
+        if not session or session.user_id != user_id:
+            raise NotFoundException("Egzersiz bulunamadı")
+
+        return await self.exercise_repository.delete(exercise_id)
