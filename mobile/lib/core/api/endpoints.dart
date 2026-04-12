@@ -1,4 +1,4 @@
-// ── endpoints.dart ──────────────────────────────────────
+static const String baseUrl = 'https://trackforge-production.up.railway.app/api/v1';// ── endpoints.dart ──────────────────────────────────────
 // Backend API'nin tüm URL sabitlerini tutan dosya.
 // Endpoint değişirse sadece burası güncellenir, başka hiçbir yere dokunmak gerekmez.
 
@@ -12,7 +12,7 @@ class Endpoints {
   // Android emülatörde localhost yerine 10.0.2.2 kullanılır —
   // çünkü emülatör kendi sanal makinesinde çalışır,
   // bilgisayarın localhost'una 10.0.2.2 üzerinden erişir.
-  static const String baseUrl = 'http://localhost:8000/api/v1';
+  static const String baseUrl = 'https://trackforge-production.up.railway.app/api/v1';
   
   // ── Auth ─────────────────────────────────────────────
   static const String register = '/auth/register';
