@@ -8,4 +8,4 @@ nixPkgs = ["python311", "python311Packages.pip"]
 cmds = ["pip install -r backend/requirements.txt --break-system-packages"]
 
 [deploy]
-startCommand = "cd backend && python -m alembic upgrade head && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "python -m alembic -c backend/alembic.ini upgrade head && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT"
