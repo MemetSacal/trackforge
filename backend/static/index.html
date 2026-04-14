@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TrackForge — AI-Powered Health & Fitness</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0C0D10; color: #F0F2F6; min-height: 100vh; }
+
+  nav { display: flex; justify-content: space-between; align-items: center; padding: 1.25rem 1.5rem; border-bottom: 0.5px solid rgba(255,255,255,0.08); }
+  .logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; color: #FFB020; }
+  .logo span { color: #F0F2F6; }
+  .nav-links { display: flex; gap: 1.5rem; }
+  .nav-links a { color: rgba(255,255,255,0.5); text-decoration: none; font-size: 14px; }
+
+  .hero { text-align: center; padding: 5rem 1.5rem 3rem; max-width: 700px; margin: 0 auto; }
+  .badge { display: inline-block; background: rgba(255,176,32,0.12); color: #FFB020; font-size: 12px; font-weight: 500; padding: 4px 14px; border-radius: 100px; border: 0.5px solid rgba(255,176,32,0.25); margin-bottom: 1.5rem; }
+  .hero h1 { font-size: clamp(32px, 7vw, 60px); font-weight: 700; line-height: 1.1; letter-spacing: -1.5px; margin-bottom: 1.25rem; }
+  .hero h1 em { font-style: normal; color: #FFB020; }
+  .hero p { font-size: 16px; color: rgba(255,255,255,0.5); line-height: 1.7; max-width: 500px; margin: 0 auto 2.5rem; }
+
+  .cta-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn-primary { background: #FFB020; color: #0C0D10; padding: 14px 24px; border-radius: 12px; font-size: 15px; font-weight: 600; text-decoration: none; }
+  .btn-secondary { background: rgba(255,255,255,0.06); color: #fff; padding: 14px 24px; border-radius: 12px; font-size: 15px; font-weight: 500; text-decoration: none; border: 0.5px solid rgba(255,255,255,0.1); }
+
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; max-width: 500px; margin: 3.5rem auto; padding: 0 1.5rem; text-align: center; }
+  .stat-item { background: #141620; border-radius: 14px; padding: 1.25rem; border: 0.5px solid rgba(255,255,255,0.07); }
+  .stat-item h2 { font-size: 32px; font-weight: 700; color: #FFB020; letter-spacing: -1px; }
+  .stat-item p { font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+
+  .features { max-width: 900px; margin: 1rem auto 4rem; padding: 0 1.5rem; }
+  .section-label { text-align: center; font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.25); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 0.75rem; }
+  .section-title { text-align: center; font-size: clamp(22px, 4vw, 32px); font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0.4rem; }
+  .section-sub { text-align: center; font-size: 14px; color: rgba(255,255,255,0.4); margin-bottom: 2rem; }
+  .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .feature-card { background: #141620; border: 0.5px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 1.25rem; }
+  .feature-icon { font-size: 22px; margin-bottom: 0.75rem; display: block; }
+  .feature-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 0.4rem; }
+  .feature-card p { font-size: 13px; color: rgba(255,255,255,0.45); line-height: 1.6; }
+
+  .ai-section { max-width: 900px; margin: 0 auto 4rem; padding: 0 1.5rem; }
+  .ai-card { background: #141620; border: 0.5px solid rgba(255,176,32,0.2); border-radius: 16px; padding: 2rem; }
+  .ai-card h2 { font-size: clamp(20px, 4vw, 26px); font-weight: 700; letter-spacing: -0.5px; margin-bottom: 0.75rem; }
+  .ai-card > p { font-size: 14px; color: rgba(255,255,255,0.5); line-height: 1.7; margin-bottom: 1rem; }
+  .ai-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1.5rem; }
+  .chip { background: rgba(255,176,32,0.1); color: #FFB020; font-size: 12px; padding: 4px 10px; border-radius: 100px; border: 0.5px solid rgba(255,176,32,0.2); }
+  .ai-quote { background: rgba(255,255,255,0.04); border: 0.5px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1.25rem; }
+  .ai-quote-label { font-size: 11px; color: rgba(255,255,255,0.3); margin-bottom: 0.5rem; }
+  .ai-quote-text { font-size: 13px; color: rgba(255,255,255,0.65); line-height: 1.65; margin-bottom: 0.75rem; }
+  .ai-quote-model { font-size: 11px; color: #FFB020; }
+
+  .footer { text-align: center; padding: 2.5rem 1.5rem; border-top: 0.5px solid rgba(255,255,255,0.06); color: rgba(255,255,255,0.25); font-size: 12px; line-height: 1.8; }
+  .footer a { color: rgba(255,255,255,0.35); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Track<span>Forge</span></div>
+  <div class="nav-links">
+    <a href="#features">Özellikler</a>
+    <a href="#ai">AI</a>
+    <a href="https://github.com/MemetSacal/trackforge" target="_blank">GitHub</a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="badge">AI-Powered Health Platform</div>
+  <h1>Sadece takip etme.<br><em>Anla. Geliş.</em></h1>
+  <p>TrackForge verilerini analiz eder, davranışlarını öğrenir ve sana gerçek bir AI koç gibi kişiselleştirilmiş tavsiyeler verir.</p>
+  <div class="cta-group">
+    <a href="#" class="btn-primary">Google Play'den İndir</a>
+    <a href="/docs" class="btn-secondary">API Docs</a>
+  </div>
+</section>
+
+<div class="stats">
+  <div class="stat-item"><h2>17</h2><p>Veri tablosu</p></div>
+  <div class="stat-item"><h2>5</h2><p>AI özelliği</p></div>
+  <div class="stat-item"><h2>50+</h2><p>API endpoint</p></div>
+  <div class="stat-item"><h2>%100</h2><p>Kişiselleştirilmiş</p></div>
+</div>
+
+<section class="features" id="features">
+  <p class="section-label">Özellikler</p>
+  <h2 class="section-title">Her şey bir arada</h2>
+  <p class="section-sub">Sağlık takibinden AI analizine kadar ihtiyacın olan her şey.</p>
+  <div class="features-grid">
+    <div class="feature-card"><span class="feature-icon">🏋️</span><h3>Egzersiz Takibi</h3><p>Seans, set, tekrar ve kas grubu bazında antrenman kaydı. AI destekli program önerileri.</p></div>
+    <div class="feature-card"><span class="feature-icon">🥗</span><h3>Kalori Bankası</h3><p>TDEE bazlı haftalık kalori sistemi. Barkod tarayıcı ile besin değeri okuma.</p></div>
+    <div class="feature-card"><span class="feature-icon">📸</span><h3>Vision Kalori</h3><p>Yemek fotoğrafından Claude Vision ile otomatik kalori hesaplama.</p></div>
+    <div class="feature-card"><span class="feature-icon">😴</span><h3>Uyku & Su Takibi</h3><p>Günlük uyku kalitesi, su tüketimi ve hedef takibi. Streak sistemi ile motivasyon.</p></div>
+    <div class="feature-card"><span class="feature-icon">🏆</span><h3>Gamification</h3><p>XP sistemi, seviye atlama, rozetler ve arkadaşlarla XP liderlik tablosu.</p></div>
+    <div class="feature-card"><span class="feature-icon">📊</span><h3>Haftalık Raporlar</h3><p>Trend analizi, grafik görselleştirme ve AI destekli haftalık özet yorumu.</p></div>
+  </div>
+</section>
+
+<section class="ai-section" id="ai">
+  <div class="ai-card">
+    <h2>Claude API ile güçlü AI koç</h2>
+    <p>TrackForge sadece veri toplamaz. Haftalık verilerini analiz eder, trendleri fark eder ve sana özel tavsiyeler üretir. Statik planlar değil, seni tanıyan bir sistem.</p>
+    <div class="ai-chips">
+      <span class="chip">Haftalık analiz</span>
+      <span class="chip">Antrenman planı</span>
+      <span class="chip">Diyet tavsiyesi</span>
+      <span class="chip">Tarif önerisi</span>
+      <span class="chip">Vision kalori</span>
+    </div>
+    <div class="ai-quote">
+      <p class="ai-quote-label">AI Haftalık Özet</p>
+      <p class="ai-quote-text">"Bu hafta su hedefini 5 gün tutturdun. Uyku ortalaması 6.8 saat — hedefin biraz altında. Antrenman yoğunluğunu artırmak için önce uyku kaliteni iyileştirmeni öneririm."</p>
+      <p class="ai-quote-model">Claude Sonnet 4.5</p>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <p>Built by <a href="https://github.com/MemetSacal">Memet Saçal</a> · Computer Engineering, OMÜ</p>
+  <p>FastAPI · Flutter · PostgreSQL · Claude API · Railway</p>
+</footer>
+
+</body>
+</html>
