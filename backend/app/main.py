@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from backend.app.core.config import get_settings
 from backend.app.infrastructure.logging.logger import setup_logging
@@ -10,6 +9,8 @@ import os
 
 settings = get_settings()
 setup_logging()
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = FastAPI(
     title="TrackForge API",
@@ -29,10 +30,11 @@ app.add_middleware(
 
 app.include_router(router)
 
-# Landing page
+
 @app.get("/", include_in_schema=False)
 async def landing():
-    return FileResponse("backend/static/index.html")
+    return FileResponse(os.path.join(BASE_DIR, "..", "static", "index.html"))
+
 
 def custom_openapi():
     if app.openapi_schema:
@@ -56,7 +58,9 @@ def custom_openapi():
     app.openapi_schema = schema
     return schema
 
+
 app.openapi = custom_openapi
+
 
 @app.get("/health")
 async def health_check():
