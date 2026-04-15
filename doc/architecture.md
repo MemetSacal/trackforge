@@ -1,6 +1,6 @@
 # TrackForge — Mimari Tasarım Dokümanı
 
-**Versiyon:** v5.0 — Tam Güncel  
+**Versiyon:** v5.1 — Tam Güncel  
 **Tarih:** Nisan 2026  
 **Mimari:** Clean Architecture + Repository Pattern  
 **Yaklaşım:** Backend-First, AI-Ready, Mobile-First
@@ -39,6 +39,7 @@
 | HTTP Client | Dio | latest | Interceptor, retry, token refresh |
 | State Mgmt | Riverpod | 2.x | Test edilebilir, compile-safe |
 | Grafik | fl_chart | latest | Native Flutter charts |
+| Lokalizasyon | flutter_localizations + intl | latest | TR + EN çoklu dil desteği |
 | AI — Analiz | Claude API (Anthropic) | claude-sonnet-4-5 | Haftalık özet, trend analizi, tavsiye |
 | AI — Vision | Claude Vision | — | Fotoğraftan kalori hesaplama |
 | Barkod | Open Food Facts API | — | Ücretsiz, geniş besin veritabanı |
@@ -381,7 +382,63 @@ menstrual_cycles: id, user_id, cycle_start_date, cycle_length_days(28),
 
 ---
 
-## 7. API Endpoint Yapısı — Tümü ✅
+## 7. Input Validasyon Kuralları
+
+Backend (Pydantic Field validators) ve Flutter (form validation) her iki tarafta da uygulanır.
+
+```
+── ONBOARDING / USER PREFERENCES ────────────────
+  height_cm      : 100 – 250 cm   (zorunlu)
+  weight_kg      : 30  – 300 kg   (zorunlu)
+  age            : 10  – 100      (zorunlu)
+  gender         : male / female  (zorunlu, seçim)
+  activity_level : enum seçimi    (zorunlu)
+
+── VÜCUT ÖLÇÜMLERİ ──────────────────────────────
+  weight_kg      : 30  – 300 kg
+  body_fat_pct   : 1   – 60  %
+  muscle_mass_kg : 10  – 150 kg
+  waist_cm       : 30  – 200 cm
+  chest_cm       : 30  – 200 cm
+  hip_cm         : 30  – 200 cm
+  arm_cm         : 10  – 100 cm
+  leg_cm         : 10  – 120 cm
+
+── SU TAKİBİ ────────────────────────────────────
+  amount_ml      : 50  – 10000 ml (günlük max 10 litre)
+  target_ml      : 500 – 10000 ml
+
+── UYKU TAKİBİ ──────────────────────────────────
+  duration_hours : 1   – 16  saat
+  quality_score  : 1   – 10
+
+── EGZERSİZ ─────────────────────────────────────
+  duration_minutes : 1   – 600 dk
+  calories_burned  : 0   – 5000 kcal
+  sets             : 1   – 20
+  reps             : 1   – 200
+  weight_kg        : 0   – 500 kg
+
+── DİYET / KALORİ ───────────────────────────────
+  calories_consumed : 0  – 10000 kcal
+  calories_target   : 0  – 10000 kcal
+
+── HAFTALIK NOTLAR ──────────────────────────────
+  energy_level   : 1   – 10
+  mood_score     : 1   – 10
+
+── ADIM SAYAR ───────────────────────────────────
+  step_count     : 0   – 100000 adım/gün
+  target_steps   : 1000 – 50000
+
+── REGL TAKVİMİ ─────────────────────────────────
+  cycle_length_days  : 20 – 45 gün
+  period_length_days : 2  – 10 gün
+```
+
+---
+
+## 8. API Endpoint Yapısı — Tümü ✅
 
 ```
 BASE: /api/v1
@@ -477,16 +534,9 @@ GET    /reports/monthly?year=&month=     # nested: {water, sleep, exercise, meas
 ── AI ────────────────────────────────────────────
 POST   /ai/weekly-summary           # {reference_date} → {summary}
 POST   /ai/workout-plan             # {workout_location, fitness_goal, fitness_level, available_days}
-                                    # → {plan_title, weekly_schedule, weekly_notes}
 POST   /ai/meal-advice              # {calorie_target}
-                                    # → {summary, daily_calorie_target, macros, recommended_foods,
-                                    #    foods_to_avoid, meal_suggestions, warnings}
 POST   /ai/recipe                   # {available_ingredients, meal_type, calorie_limit}
-                                    # → {recipe_name, description, ingredients, steps,
-                                    #    nutrition, prep_time_minutes, cook_time_minutes,
-                                    #    servings, tips}
 POST   /ai/calorie-from-photo       # multipart/form-data, field: "file"
-                                    # → {food_items, total_calories, macros, confidence, notes}
 
 ── SOCIAL ────────────────────────────────────────
 POST   /social/friends/request
@@ -516,7 +566,7 @@ PUT    /cycle/{id}
 
 ---
 
-## 8. Flutter Uygulama Mimarisi — Faz 10 ✅ TAMAMLANDI
+## 9. Flutter Uygulama Mimarisi — Faz 10 ✅ TAMAMLANDI
 
 ```
 trackforge-flutter/
@@ -526,31 +576,34 @@ trackforge-flutter/
 │   │
 │   ├── core/
 │   │   ├── api/
-│   │   │   ├── api_client.dart     # Dio singleton + AuthInterceptor (token refresh)
+│   │   │   ├── api_client.dart     # Dio singleton + AuthInterceptor
 │   │   │   ├── endpoints.dart      # Tüm URL sabitleri
 │   │   │   └── api_exceptions.dart
 │   │   ├── auth/
-│   │   │   └── token_manager.dart  # SharedPreferences ile token yönetimi
+│   │   │   └── token_manager.dart
 │   │   ├── theme/
 │   │   │   ├── app_theme.dart
 │   │   │   └── app_colors.dart
+│   │   ├── l10n/                   ← YENİ (Lokalizasyon)
+│   │   │   ├── app_en.arb          # İngilizce string'ler
+│   │   │   └── app_tr.arb          # Türkçe string'ler
 │   │   └── utils/
-│   │       └── date_utils.dart     # TFDateUtils
+│   │       └── date_utils.dart
 │   │
 │   ├── screens/
 │   │   ├── auth/
 │   │   │   ├── login_screen.dart           ✅
 │   │   │   └── register_screen.dart        ✅
 │   │   ├── onboarding/
-│   │   │   └── onboarding_screen.dart      ✅ (4 adım)
+│   │   │   └── onboarding_screen.dart      ✅ (4 adım + validasyon)
 │   │   ├── home/
-│   │   │   ├── home_screen.dart            ✅ (BottomNav + bottomNavIndexProvider)
+│   │   │   ├── home_screen.dart            ✅
 │   │   │   ├── dashboard_screen.dart       ✅
 │   │   │   └── more_screen.dart            ✅
 │   │   ├── takip/
-│   │   │   ├── takip_screen.dart           ✅ (takipTabIndexProvider)
+│   │   │   ├── takip_screen.dart           ✅
 │   │   │   ├── olcum_tab.dart              ✅
-│   │   │   ├── diyet_tab.dart              ✅ (AI planı shared_prefs'ten gösterir)
+│   │   │   ├── diyet_tab.dart              ✅
 │   │   │   ├── su_tab.dart                 ✅
 │   │   │   └── uyku_tab.dart               ✅
 │   │   ├── egzersiz/
@@ -559,16 +612,16 @@ trackforge-flutter/
 │   │   ├── ai/
 │   │   │   ├── ai_screen.dart              ✅
 │   │   │   ├── weekly_summary_screen.dart  ✅
-│   │   │   ├── workout_plan_screen.dart    ✅ (AI→seans otomatik oluşturma)
-│   │   │   ├── meal_advice_screen.dart     ✅ (shared_prefs'e kaydeder)
+│   │   │   ├── workout_plan_screen.dart    ✅
+│   │   │   ├── meal_advice_screen.dart     ✅
 │   │   │   ├── recipe_screen.dart          ✅
-│   │   │   └── calorie_vision_screen.dart  ✅ (multipart, manuel token header)
+│   │   │   └── calorie_vision_screen.dart  ✅
 │   │   ├── raporlar/
-│   │   │   └── raporlar_screen.dart        ✅ (haftalık+aylık, fl_chart)
+│   │   │   └── raporlar_screen.dart        ✅
 │   │   ├── sosyal/
 │   │   │   └── sosyal_screen.dart          ✅
 │   │   ├── alisveris/
-│   │   │   └── alisveris_screen.dart       ✅ (barkod tarayıcı dahil)
+│   │   │   └── alisveris_screen.dart       ✅
 │   │   ├── profil/
 │   │   │   └── profil_screen.dart          ✅
 │   │   ├── gamification/
@@ -577,7 +630,7 @@ trackforge-flutter/
 │   │       └── steps_screen.dart           ✅
 │   │
 │   └── widgets/
-│       └── body_map/               # SVG kas grubu anatomisi (ileride)
+│       └── body_map/               # SVG kas grubu anatomisi (polish)
 │
 └── pubspec.yaml
 ```
@@ -588,28 +641,28 @@ trackforge-flutter/
 |-------|-------|--------|
 | Login / Register | ✅ | JWT flow |
 | Onboarding | ✅ | 4 adım, backend entegre |
-| Dashboard | ✅ | Gamification + haftalık özet + hızlı erişim tab yönlendirme |
+| Dashboard | ✅ | Gamification + haftalık özet |
 | Takip — Ölçüm | ✅ | CRUD |
 | Takip — Diyet | ✅ | AI planı shared_prefs'ten gösterilir |
 | Takip — Su | ✅ | Dairesel progress, hızlı ekle |
 | Takip — Uyku | ✅ | TimePicker, slider |
 | Egzersiz | ✅ | Seans + detay + CRUD |
-| AI — Haftalık Özet | ✅ | POST /ai/weekly-summary |
-| AI — Antrenman Planı | ✅ | AI→otomatik seans+egzersiz oluşturma |
+| AI — Haftalık Özet | ✅ | |
+| AI — Antrenman Planı | ✅ | AI→otomatik seans oluşturma |
 | AI — Diyet Tavsiyesi | ✅ | shared_prefs'e kaydeder |
-| AI — Tarif Önerisi | ✅ | Chip listesi, malzeme bazlı |
-| AI — Vision Kalori | ✅ | multipart/form-data, manuel token |
-| Raporlar | ✅ | fl_chart, nested response parse |
+| AI — Tarif Önerisi | ✅ | Chip listesi |
+| AI — Vision Kalori | ✅ | multipart, manuel token |
+| Raporlar | ✅ | fl_chart, haftalık+aylık |
 | Gamification | ✅ | XP, seviye, streak, rozetler |
 | Sosyal | ✅ | Arkadaşlar + liderlik tablosu |
 | Alışveriş | ✅ | Liste + barkod tarayıcı |
-| Adım Sayar | ✅ | Manuel giriş (telefon sensörü polish'te) |
+| Adım Sayar | ✅ | Manuel giriş |
 | Profil | ✅ | Görüntüleme + düzenleme + çıkış |
 | More | ✅ | Menü kartları |
 
 ---
 
-## 9. Kritik Teknik Kararlar & Bilinen Davranışlar
+## 10. Kritik Teknik Kararlar & Bilinen Davranışlar
 
 ```
 # Flutter / Dio
@@ -623,8 +676,7 @@ trackforge-flutter/
   Manuel Authorization header gerekli (interceptor multipart'ta kaçırıyor)
 - GET /shopping → {items: [...], summary: {...}} döner (direkt liste değil)
 - POST /shopping → quantity: STRING bekleniyor (int değil)
-- GET /reports/weekly + /reports/monthly → nested objeler:
-  {water: {...}, sleep: {...}, exercise: {...}, measurements: {...}}
+- GET /reports/weekly + /reports/monthly → nested objeler
   (summary field'ı yok, direkt field'lar)
 - POST /ai/workout-plan → field'lar: workout_location, fitness_goal,
   fitness_level, available_days (days_per_week değil)
@@ -635,9 +687,8 @@ trackforge-flutter/
 # State Management
 - bottomNavIndexProvider → BottomNav tab kontrolü
 - takipTabIndexProvider → Takip ekranı iç tab kontrolü
-  (Dashboard hızlı erişim butonları bu ikisini birlikte set eder)
 - AI diyet tavsiyesi → last_meal_advice + last_meal_advice_date
-  shared_prefs key'leriyle saklanır, diyet_tab.dart'ta gösterilir
+  shared_prefs key'leriyle saklanır
 
 # Onboarding
 - register sonrası onboarding kaydı otomatik oluşmayabilir
@@ -650,7 +701,7 @@ trackforge-flutter/
 
 ---
 
-## 10. Tema Sistemi
+## 11. Tema Sistemi
 
 ```dart
 // Dark Mode
@@ -663,7 +714,7 @@ danger: '#FF5555'
 // Light Mode
 bg: '#F0F2F6'
 bgCard: '#FFFFFF'
-accent: '#FF6B2B'     // turuncu (primary color)
+accent: '#FF6B2B'     // turuncu
 positive: '#059669'
 danger: '#DC2626'
 ```
@@ -681,29 +732,81 @@ Index:  0       1         2     3        4
 
 ---
 
-## 11. Kalori Bankası Sistemi
+## 12. Kalori Bankası Sistemi
 
 ```
-Temel Mantık:
-  TDEE = BMR × aktivite_katsayısı
-  BMR  = Mifflin-St Jeor formülü
+TDEE = BMR × aktivite_katsayısı
+BMR  = Mifflin-St Jeor formülü
 
-  Kilo verme : günlük_hedef = TDEE - 700
-  Kas yapma  : günlük_hedef = TDEE + 250
-  Koruma     : günlük_hedef = TDEE
+Kilo verme : günlük_hedef = TDEE - 700
+Kas yapma  : günlük_hedef = TDEE + 250
+Koruma     : günlük_hedef = TDEE
 
-  calorie_balance     = calories_consumed - calories_target
-  weekly_bank_balance = son 7 günün (target - consumed) toplamı
+calorie_balance     = calories_consumed - calories_target
+weekly_bank_balance = son 7 günün (target - consumed) toplamı
+
+Minimum kalori: 1500 kcal (güvenli sınır)
 ```
 
 ---
 
-## 12. Gamification Sistemi
+## 13. Regl Takvimi Sistemi
+
+Kadın kullanıcılara özel, döngü bazlı kişiselleştirme katmanı.
+
+```
+Faz 1 — Menstrüasyon (Gün 1–5)
+  → Hafif antrenman (yürüyüş, yoga, esneme)
+  → Demir açısından zengin tarifler
+
+Faz 2 — Foliküler (Gün 6–13)
+  → Enerji artıyor, orta-yoğun antrenman ideal
+  → Protein ağırlıklı beslenme
+
+Faz 3 — Ovülasyon (Gün 14–16)
+  → Zirve performans, yoğun antrenman ideal
+  → Kalori hedefi biraz artırılabilir
+
+Faz 4 — Luteal (Gün 17–28)
+  → PMS başlangıcı, tatlı isteği
+  → Antrenman yoğunluğunu azalt
+  → Magnezyum açısından zengin yiyecekler
+
+Entegrasyon:
+  - AI antrenman planı → faz bilgisini input olarak alır
+  - AI tarif önerici → faz bazlı besin önerileri
+  - Haftalık AI raporu → döngü fazını yoruma katar
+  - Hatırlatıcı → regl yaklaşıyor bildirimi (3 gün önce)
+```
+
+---
+
+## 14. Adım Sayar Sistemi
+
+```
+Flutter: pedometer paketi (polish aşamasında aktif edilecek)
+Şu an: Manuel giriş ile çalışıyor
+
+Hesaplama:
+  distance_km     = step_count × 0.000762
+  calories_burned = step_count × 0.04
+
+Gamification:
+  - "10.000 adım" günlük rozet
+  - Adım streak'i
+  - Her 1000 adım → +5 XP
+
+Varsayılan hedef: 10.000 adım/gün
+```
+
+---
+
+## 15. Gamification Sistemi
 
 ### Seviye Sistemi
 
 | Seviye | Başlık | XP |
-|---|---|---|
+|--------|--------|----|
 | 1 | Beginner | 0 |
 | 2 | Active | 500 |
 | 3 | Fit | 1500 |
@@ -715,7 +818,7 @@ Temel Mantık:
 ### Rozet Sistemi
 
 | Badge Key | Açıklama | Tetikleyici |
-|---|---|---|
+|-----------|----------|-------------|
 | `first_workout` | İlk Antrenman 💪 | İlk seans |
 | `7_day_water` | 7 Gün Su 💧 | Water streak = 7 |
 | `30_day_water` | 30 Gün Su 🏆 | Water streak = 30 |
@@ -726,13 +829,40 @@ Temel Mantık:
 
 ---
 
-## 13. AI Layer Detayı
+## 16. Çoklu Dil Desteği
+
+```
+Desteklenen diller: Türkçe (TR) · İngilizce (EN)
+Paket: flutter_localizations + intl
+
+Dosya yapısı:
+  core/l10n/
+  ├── app_tr.arb    ← Türkçe string'ler (varsayılan)
+  └── app_en.arb    ← İngilizce string'ler
+
+Kapsam:
+  - Tüm ekran başlıkları
+  - Form label ve hata mesajları
+  - Buton metinleri
+  - AI yanıt dışı tüm statik metinler
+  - Input validasyon mesajları
+
+Dil seçimi: Profil ekranından değiştirilebilir,
+            shared_prefs'e kaydedilir.
+
+Gelecek: Kullanıcı talebi olursa yeni dil eklenebilir
+         (ARB dosyası eklemek yeterli)
+```
+
+---
+
+## 17. AI Layer Detayı
 
 ```python
 ai/
 ├── client.py               # Claude API — claude-sonnet-4-5
 ├── analyzers/
-│   ├── weekly_analyzer.py  # Haftalık özet — kullanıcı adı + tüm haftalık veri
+│   ├── weekly_analyzer.py  # Haftalık özet
 │   └── calorie_vision_analyzer.py  # multipart → base64 → Claude Vision
 └── generators/
     ├── workout_generator.py  # workout_location, fitness_goal, fitness_level, available_days
@@ -743,7 +873,7 @@ ai/
 
 ---
 
-## 14. Güvenlik Mimarisi
+## 18. Güvenlik Mimarisi
 
 ```
 JWT Flow:
@@ -762,7 +892,7 @@ Env:
 
 ---
 
-## 15. Geliştirme Fazları
+## 19. Geliştirme Fazları
 
 ### ✅ Faz 1 — Auth Sistemi
 ### ✅ Faz 2 — Core CRUD
@@ -777,22 +907,25 @@ Env:
 
 ---
 
-## 16. Sonraki Aşama: Test · Polish · Deploy · Product
+## 20. Sonraki Aşama: Polish · Test · Deploy · Product
 
 ### Polish Listesi
-- `flutter_markdown` paketi — AI yanıtlarında ## ve ** render
-- Antrenman planı egzersiz kartları — {name: ...} ham JSON görünümü
-- YouTube link entegrasyonu — `url_launcher` ile egzersiz form videoları
-- Dark mode toggle
-- Gerçek adım sayarı — `pedometer` paketi (telefon sensörü)
-- Regl takvimi ekranı (`menstrual_cycles`)
-- Push notification / hatırlatıcılar
-- Kas grubu SVG anatomisi
+1. `flutter_markdown` — AI yanıtlarında ## ve ** render
+2. Antrenman planı egzersiz kartları — ham JSON görünümü düzelt
+3. YouTube link entegrasyonu — egzersiz form videoları
+4. Dark mode toggle
+5. Gerçek adım sayarı — `pedometer` paketi aktif edilecek
+6. Regl takvimi ekranı — `menstrual_cycles` entegrasyonu
+7. Push notification / hatırlatıcılar
+8. Kas grubu SVG anatomisi
+9. Tüm form alanlarına input validasyonu (Flutter + Pydantic)
+10. Çoklu dil desteği — TR + EN (flutter_localizations + intl)
 
 ### Deploy
-- Backend: Railway / Render / VPS
+- Backend: Railway (aktif) — domain bağlı, Swagger erişilebilir
+- Landing page: Railway domain'e index sayfası ekleniyor
 - Flutter: APK build → Google Play (Android önce)
-- Ortam değişkenleri: ANTHROPIC_API_KEY, DATABASE_URL, SECRET_KEY
+- iOS: Arkadaş Mac'i üzerinden Xcode build
 
 ### Product
 - Freemium model: Free / PRO (~149 TL) / PRO+
@@ -801,7 +934,7 @@ Env:
 
 ---
 
-## 17. Git Stratejisi
+## 21. Git Stratejisi
 
 ```
 main       ← production-ready
@@ -815,7 +948,7 @@ Commit: feat / fix / refactor / test / docs / chore
 
 ---
 
-*Bu doküman projenin yaşayan anayasası.*  
-*Son güncelleme: Nisan 2026 — v5.0*
+*Bu doküman projenin yaşayan anayasası.*
+*Son güncelleme: Nisan 2026 — v5.1*
 *Backend: Faz 1-9 tamamlandı · Flutter: Faz 10 tamamlandı*
-*Sonraki: Test · Polish · Deploy · Product*
+*Sonraki: Polish · Test · Deploy · Product*

@@ -30,6 +30,7 @@ class ApiClient {
           'Content-Type': 'application/json', // Her istekte JSON gönderiyoruz
           'Accept': 'application/json',
         },
+        extra: {'withCredentials': false},
       ),
     );
 
