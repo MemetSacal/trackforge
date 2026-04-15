@@ -9,6 +9,8 @@ from backend.app.application.schemas.social import (
 from backend.app.application.services.social_service import SocialService
 from backend.app.core.dependencies import get_current_user
 from backend.app.infrastructure.db.session import get_db
+from sqlalchemy import select
+from backend.app.infrastructure.db.models.user_model import UserModel
 
 router = APIRouter(tags=["Social"])
 
@@ -18,20 +20,24 @@ async def get_social_service(db: AsyncSession = Depends(get_db)) -> SocialServic
     return SocialService(db)
 
 
-# ── POST /social/friends/request ──
 @router.post("/friends/request", response_model=FriendshipResponse, status_code=201)
 async def send_friend_request(
     body: SendFriendRequestSchema,
     user_id: str = Depends(get_current_user),
     service: SocialService = Depends(get_social_service),
+    db: AsyncSession = Depends(get_db),
 ):
-    # Arkadaşlık isteği gönder
+    result = await db.execute(
+        select(UserModel).where(UserModel.email == body.addressee_email)
+    )
+    addressee = result.scalar_one_or_none()
+    if not addressee:
+        raise HTTPException(status_code=404, detail="Bu e-posta ile kayıtlı kullanıcı bulunamadı.")
+
     try:
-        return await service.send_friend_request(user_id, body.addressee_id)
+        return await service.send_friend_request(user_id, str(addressee.id))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
 # ── POST /social/friends/accept/{friendship_id} ──
 @router.post("/friends/accept/{friendship_id}", response_model=FriendshipResponse)
 async def accept_friend_request(
