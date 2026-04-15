@@ -8,7 +8,7 @@
 docker-compose up -d
 
 # Sonra uvicorn'u başlat
-uvicorn app.main:app --reload
+uvicorn backend.app.main:app --reload
 ```
 
 ---

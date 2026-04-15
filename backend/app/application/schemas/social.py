@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 # ── İstek Gönderme ──
 class SendFriendRequestSchema(BaseModel):
-    addressee_id: str
+    addressee_email: str
 
 
 # ── Response: Arkadaşlık kaydı ──
