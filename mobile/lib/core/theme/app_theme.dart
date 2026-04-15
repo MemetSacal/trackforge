@@ -34,7 +34,7 @@ class AppTheme {
     ),
 
     // Card
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: AppColors.darkBgCard,
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -120,7 +120,7 @@ class AppTheme {
     ),
 
     // Card
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: AppColors.lightBgCard,
       elevation: 0,
       shape: RoundedRectangleBorder(
