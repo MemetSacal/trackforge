@@ -1,6 +1,6 @@
 # TrackForge — Mimari Tasarım Dokümanı
 
-**Versiyon:** v5.1 — Tam Güncel  
+**Versiyon:** v5.2 — Tam Güncel  
 **Tarih:** Nisan 2026  
 **Mimari:** Clean Architecture + Repository Pattern  
 **Yaklaşım:** Backend-First, AI-Ready, Mobile-First
@@ -347,7 +347,7 @@ sleep_logs: id, user_id, date, sleep_time, wake_time, duration_hours,
 user_preferences: id, user_id(UNIQUE), height_cm, age, gender,
   activity_level, liked_foods(JSON), disliked_foods(JSON), allergies(JSON),
   diseases(JSON), blood_type, blood_values(JSON), workout_location,
-  fitness_goal, created_at
+  fitness_goal, ai_name(VARCHAR default TrackForge AI), created_at
 
 -- SHOPPING ITEMS
 shopping_items: id, user_id, name, quantity(VARCHAR), category,
@@ -910,16 +910,17 @@ Env:
 ## 20. Sonraki Aşama: Polish · Test · Deploy · Product
 
 ### Polish Listesi
-1. `flutter_markdown` — AI yanıtlarında ## ve ** render
-2. Antrenman planı egzersiz kartları — ham JSON görünümü düzelt
-3. YouTube link entegrasyonu — egzersiz form videoları
-4. Dark mode toggle
-5. Gerçek adım sayarı — `pedometer` paketi aktif edilecek
-6. Regl takvimi ekranı — `menstrual_cycles` entegrasyonu
-7. Push notification / hatırlatıcılar
-8. Kas grubu SVG anatomisi
-9. Tüm form alanlarına input validasyonu (Flutter + Pydantic)
-10. Çoklu dil desteği — TR + EN (flutter_localizations + intl)
+1. ✅ `flutter_markdown` — AI yanıtlarında ## ve ** render
+2. ✅ Antrenman planı egzersiz kartları — ham JSON görünümü düzelt
+3. ✅ YouTube link entegrasyonu — egzersiz form videoları
+4. ✅ Dark mode toggle
+5. ✅ Gerçek adım sayarı — `pedometer` paketi aktif edilecek
+6. ✅ Regl takvimi ekranı — `menstrual_cycles` entegrasyonu
+7. ⌛ Push notification / hatırlatıcılar
+8. ✅ Kas grubu SVG anatomisi
+9. ✅ Tüm form alanlarına input validasyonu (Flutter + Pydantic)
+10. ⌛ Çoklu dil desteği — TR + EN (flutter_localizations + intl)
+11. ✅ AI koç ismi — onboarding veya ilk AI girişinde kullanıcıya sorulur, atlarsa default `TrackForge AI`, user_preferences.ai_name alanına kaydedilir
 
 ### Deploy
 - Backend: Railway (aktif) — domain bağlı, Swagger erişilebilir
@@ -949,6 +950,6 @@ Commit: feat / fix / refactor / test / docs / chore
 ---
 
 *Bu doküman projenin yaşayan anayasası.*
-*Son güncelleme: Nisan 2026 — v5.1*
+*Son güncelleme: Nisan 2026 — v5.2*
 *Backend: Faz 1-9 tamamlandı · Flutter: Faz 10 tamamlandı*
 *Sonraki: Polish · Test · Deploy · Product*

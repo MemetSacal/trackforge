@@ -91,10 +91,21 @@ class _AlisverisScreenState extends ConsumerState<AlisverisScreen> {
       MaterialPageRoute(builder: (_) => const _BarcodeScanner()),
     );
     if (result != null && mounted) {
-      _itemController.text = result;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Barkod okundu: $result')),
-      );
+      // Open Food Facts API'den ürün adını çek
+      try {
+        final response = await ApiClient.instance.get('${Endpoints.barcode}/$result');
+        final productName = response.data['product_name'] as String? ?? result;
+        _itemController.text = productName;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ürün bulundu: $productName')),
+        );
+      } catch (_) {
+        // API'den bulunamazsa barkod numarasını yaz
+        _itemController.text = result;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ürün bulunamadı, barkod: $result')),
+        );
+      }
     }
   }
 

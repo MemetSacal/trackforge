@@ -1,5 +1,3 @@
-<div align="center">
-
 # ⚡ TrackForge
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
@@ -11,8 +9,8 @@
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com)
 [![GitHub Actions](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/features/actions)
 
-[![Status](https://img.shields.io/badge/Status-Active_Development-brightgreen?style=flat-square)]()
-[![Phase](https://img.shields.io/badge/Phase-9%2F10-orange?style=flat-square)]()
+[![Status](https://img.shields.io/badge/Status-Production_Ready-brightgreen?style=flat-square)]()
+[![Phase](https://img.shields.io/badge/Phase-10%2F10-brightgreen?style=flat-square)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
 > *You don't need another tracker.*
@@ -118,6 +116,7 @@ Unlike static plans, TrackForge AI:
 - Adjusts diet advice based on your blood values and health history
 - Understands your cycle phase and adapts workout + nutrition recommendations
 - Estimates calories from a food photo using Claude Vision
+- Generates personalized recipes based on available ingredients
 
 | Feature | Description |
 |---|---|
@@ -126,7 +125,6 @@ Unlike static plans, TrackForge AI:
 | 🍽️ Diet Advisor | BMR/TDEE-based plan with allergy & preference support |
 | 👨‍🍳 Recipe Generator | Ingredient-based healthy recipe suggestions |
 | 💪 Workout Planner | Location-aware program (home / gym / outdoor) |
-| 🎯 Body Visualization | *(coming soon)* DALL-E 3 goal body visualization |
 
 ---
 
@@ -147,6 +145,8 @@ Unlike static plans, TrackForge AI:
 | **Mobile** | Flutter 3.x | iOS + Android single codebase |
 | **State Mgmt** | Riverpod 2.x | Compile-safe, testable |
 | **HTTP Client** | Dio | Interceptors, token refresh |
+| **Charts** | fl_chart | Native Flutter charts |
+| **Routing** | GoRouter | Declarative, deep-link ready |
 | **CI/CD** | GitHub Actions | Automated lint pipeline |
 
 > **Why async?** All DB queries, file operations, and AI API calls run non-blocking — built for concurrency from day one.
@@ -196,16 +196,15 @@ Unlike static plans, TrackForge AI:
 | Infrastructure | `infrastructure/repositories/` | DB queries, external APIs |
 | AI | `ai/analyzers/` + `ai/generators/` | Claude API integration |
 
-For detailed architecture docs: [`doc/architecture.md`](doc/architecture.md)
-
 ---
 
 ## ✨ Key Features
 
 ### 🏋️ Fitness & Activity
 - Exercise sessions with per-exercise logging (sets, reps, weight, muscle groups)
-- Interactive SVG muscle group anatomy map (Flutter)
-- Step counter via phone pedometer sensor
+- Interactive muscle group anatomy map with front/back toggle (Flutter)
+- YouTube integration — form video for every exercise
+- Step counter with manual entry and daily goals
 - Streak system for water, exercise, and sleep consistency
 
 ### 🥗 Nutrition & Diet
@@ -216,9 +215,10 @@ For detailed architecture docs: [`doc/architecture.md`](doc/architecture.md)
 - Meal compliance tracking with macro breakdown
 - Barcode scanner → Open Food Facts API (3M+ products)
 - BMR/TDEE via Mifflin-St Jeor formula
+- AI-powered calorie estimation from food photos (Claude Vision)
 
 ### 😴 Health Monitoring
-- Water intake with daily goals and history
+- Water intake with daily goals, quick-add buttons, and history
 - Sleep logging: quality score, duration, sleep/wake times
 - Body measurements: weight, body fat %, muscle mass, waist, chest, hips, arms, legs
 - Blood values & health history in user profile
@@ -235,8 +235,17 @@ For detailed architecture docs: [`doc/architecture.md`](doc/architecture.md)
 - Barcode scan to add items directly from product database
 
 ### 📊 Reports
-- Weekly + monthly reports with trend data
-- AI commentary integrated into every report
+- Weekly + monthly reports with fl_chart trend graphs
+- Weight, water, and sleep charts
+- AI commentary integrated into weekly reports
+
+### 🤖 AI Coach
+- Customizable AI coach name (saved to user preferences)
+- Weekly health summary with actionable insights
+- Personalized workout plans (gym / home / outdoor)
+- Diet advice based on BMR/TDEE and health profile
+- Recipe suggestions from available ingredients
+- Calorie estimation from food photos
 
 ---
 
@@ -283,7 +292,7 @@ safety_floor        = 1,500 kcal
 ── MEAL COMPLIANCE ───────  POST · GET · PUT · DELETE /meal-compliance
 ── WATER ─────────────────  POST · GET · PUT · DELETE /water
 ── SLEEP ─────────────────  POST · GET · PUT · DELETE /sleep
-── STEPS ─────────────────  POST · GET /steps
+── STEPS ─────────────────  POST · GET · PUT /steps
 ── EXERCISES ─────────────  Sessions + per-exercise CRUD
 ── FILES ─────────────────  Photos + PDF upload, download, delete
 ── PREFERENCES ───────────  POST · GET · PUT · DELETE /preferences
@@ -302,11 +311,73 @@ safety_floor        = 1,500 kcal
 ## 🔐 Authentication
 
 ```
-POST /auth/login  →  access_token (15 min) + refresh_token (7 days)
+POST /auth/login  →  access_token (30 min) + refresh_token (7 days)
 Every request     →  Authorization: Bearer <access_token>
-Token expired     →  POST /auth/refresh
-Flutter           →  flutter_secure_storage
+Token expired     →  POST /auth/refresh → auto-retry via Dio interceptor
+Flutter           →  shared_preferences (web-compatible)
 ```
+
+---
+
+## 📱 Flutter App Structure
+
+```
+lib/
+├── main.dart
+├── app.dart                    # GoRouter + MaterialApp + ThemeMode
+├── core/
+│   ├── api/
+│   │   ├── api_client.dart     # Dio singleton + AuthInterceptor
+│   │   └── endpoints.dart      # All URL constants
+│   ├── auth/
+│   │   └── token_manager.dart
+│   ├── theme/
+│   │   ├── app_theme.dart
+│   │   └── app_colors.dart
+│   └── utils/
+│       └── date_utils.dart
+├── screens/
+│   ├── auth/                   # Login, Register
+│   ├── onboarding/             # 4-step guided setup
+│   ├── home/                   # Dashboard, More
+│   ├── takip/                  # Ölçüm, Diyet, Su, Uyku tabs
+│   ├── egzersiz/               # Sessions + detail + muscle map
+│   ├── ai/                     # 5 AI features
+│   ├── raporlar/               # Weekly + monthly charts
+│   ├── sosyal/                 # Friends + leaderboard
+│   ├── alisveris/              # Shopping list + barcode
+│   ├── profil/                 # Profile + settings
+│   ├── gamification/           # XP, streaks, badges
+│   ├── steps/                  # Step counter
+│   └── cycle/                  # Menstrual cycle tracker
+└── widgets/
+    └── body_map/               # Muscle anatomy widget
+```
+
+### Screens
+
+| Screen | Status | Notes |
+|--------|--------|-------|
+| Login / Register | ✅ | JWT flow |
+| Onboarding | ✅ | 4-step, backend integrated |
+| Dashboard | ✅ | Gamification + weekly summary |
+| Tracking — Measurements | ✅ | Full CRUD |
+| Tracking — Diet | ✅ | AI plan via shared_prefs |
+| Tracking — Water | ✅ | Circular progress, quick-add |
+| Tracking — Sleep | ✅ | TimePicker, quality slider |
+| Exercise | ✅ | Sessions + detail + CRUD |
+| AI — Weekly Summary | ✅ | Markdown rendering |
+| AI — Workout Plan | ✅ | Auto session creation |
+| AI — Diet Advice | ✅ | Saved to shared_prefs |
+| AI — Recipe | ✅ | Ingredient chip list |
+| AI — Calorie Vision | ✅ | Multipart upload |
+| Reports | ✅ | fl_chart, weekly + monthly |
+| Gamification | ✅ | XP, level, streaks, badges |
+| Social | ✅ | Friends + leaderboard |
+| Shopping | ✅ | List + barcode scanner |
+| Step Counter | ✅ | Manual entry |
+| Profile | ✅ | Edit + dark mode + logout |
+| More | ✅ | Navigation hub |
 
 ---
 
@@ -315,9 +386,10 @@ Flutter           →  flutter_secure_storage
 ### Prerequisites
 - Python 3.11+
 - Docker + Docker Compose
+- Flutter 3.x + Android Studio
 - Claude API key → [console.anthropic.com](https://console.anthropic.com)
 
-### Setup
+### Backend Setup
 
 ```bash
 # 1. Clone
@@ -326,7 +398,7 @@ cd trackforge
 
 # 2. Environment
 cp .env.example .env
-# Fill in DATABASE_URL, SECRET_KEY, CLAUDE_API_KEY
+# Fill in DATABASE_URL, SECRET_KEY, ANTHROPIC_API_KEY
 
 # 3. Start PostgreSQL
 docker-compose up -d
@@ -338,7 +410,7 @@ pip install -r requirements.txt
 alembic upgrade head
 
 # 6. Start server
-uvicorn app.main:app --reload
+uvicorn backend.app.main:app --reload --host 0.0.0.0
 ```
 
 | | |
@@ -347,49 +419,25 @@ uvicorn app.main:app --reload
 | **Swagger UI** | `http://localhost:8000/docs` |
 | **pgAdmin** | `http://localhost:5050` |
 
+### Flutter Setup
+
+```bash
+cd mobile
+flutter pub get
+flutter run
+```
+
 ### Environment Variables
 
 ```env
 DATABASE_URL=postgresql+asyncpg://trackforge:trackforge123@localhost:5432/trackforge_db
 SECRET_KEY=your-secret-key
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=15
+ACCESS_TOKEN_EXPIRE_MINUTES=30
 REFRESH_TOKEN_EXPIRE_DAYS=7
 
-CLAUDE_API_KEY=your-anthropic-api-key
+ANTHROPIC_API_KEY=your-anthropic-api-key
 OPEN_FOOD_FACTS_BASE_URL=https://world.openfoodfacts.org
-
-# Optional
-OPENAI_API_KEY=       # DALL-E body visualization (planned)
-STABILITY_API_KEY=    # Stable Diffusion (optional)
-```
-
----
-
-## 🚀 Quick Start
-
-```bash
-# Register
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "pass123", "full_name": "John Doe"}'
-
-# Login → get token
-curl -X POST http://localhost:8000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "pass123"}'
-
-# Log water intake
-curl -X POST http://localhost:8000/api/v1/water \
-  -H "Authorization: Bearer <access_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"date": "2026-04-06", "amount_ml": 2100, "target_ml": 2800}'
-
-# Get weekly AI summary
-curl -X POST http://localhost:8000/api/v1/ai/weekly-summary \
-  -H "Authorization: Bearer <access_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"reference_date": "2026-04-06"}'
 ```
 
 ---
@@ -406,19 +454,17 @@ curl -X POST http://localhost:8000/api/v1/ai/weekly-summary \
 | Phase 6 | Weekly + monthly reports | ✅ Done |
 | Phase 7 | Polish & CI/CD (GitHub Actions, README, Docker) | ✅ Done |
 | Phase 8 | AI integration (Claude API — 5 features + Vision) | ✅ Done |
-| Phase 9 | New backend features (onboarding, barcode, gamification, social, steps, cycle) | 🔄 In Progress |
-| Phase 10 | Flutter mobile app (iOS + Android) | ⏳ Planned |
+| Phase 9 | Onboarding, barcode, gamification, social, steps, cycle | ✅ Done |
+| Phase 10 | Flutter mobile app — all screens, polish, APK build | ✅ Done |
 
-### Phase 9 Detail
+### What's Next
 
 ```
-✅ Onboarding flow (4-step guided setup)
-✅ Barcode scanner proxy (Open Food Facts)
-✅ Gamification engine (XP, streaks, badges, levels)
-🔄 Social system (friendships + friends-only leaderboard)
-⏳ session_exercises.muscle_groups migration
-⏳ Step counter CRUD
-⏳ Menstrual cycle CRUD
+⏳ Production deploy (Railway / Render)
+⏳ Google Play Store submission
+⏳ Push notifications & reminders
+⏳ Multi-language support (TR + EN)
+⏳ iOS App Store (via Mac build)
 ```
 
 ---
@@ -431,6 +477,7 @@ TrackForge is not just about tracking fitness. It represents:
 - **Clean Architecture at scale** — domain layer with zero external dependencies
 - **AI integration in real-world systems** — Claude API as a thinking layer, not a gimmick
 - **Behavior-aware software design** — the system adapts to you, not the other way around
+- **Full-stack ownership** — backend, mobile, AI, DevOps — built solo from scratch
 
 > Built as a system, not just an app.
 
@@ -440,28 +487,23 @@ TrackForge is not just about tracking fitness. It represents:
 
 ```
 trackforge/
-├── app/
-│   ├── ai/                        # Claude API integration
-│   │   ├── client.py
-│   │   ├── analyzers/             # weekly_analyzer, calorie_vision_analyzer
-│   │   └── generators/            # workout, meal, recipe generators
-│   ├── api/v1/endpoints/          # HTTP layer — route definitions
-│   ├── application/
-│   │   ├── schemas/               # Pydantic request/response models
-│   │   └── services/              # Business logic
-│   ├── domain/
-│   │   ├── entities/              # Pure Python dataclasses
-│   │   └── interfaces/            # Repository abstractions
-│   ├── infrastructure/
-│   │   ├── db/models/             # SQLAlchemy ORM models
-│   │   ├── repositories/          # Interface implementations
-│   │   └── storage/               # Async file storage
-│   └── core/                      # Config, security, dependencies, exceptions
-├── migrations/                    # Alembic versions
+├── backend/
+│   ├── app/
+│   │   ├── ai/                    # Claude API integration
+│   │   ├── api/v1/endpoints/      # HTTP layer
+│   │   ├── application/           # Services + schemas
+│   │   ├── domain/                # Entities + interfaces
+│   │   ├── infrastructure/        # DB models + repositories
+│   │   └── core/                  # Config, security, dependencies
+│   └── migrations/                # Alembic versions
+├── mobile/
+│   ├── lib/                       # Flutter source
+│   ├── assets/                    # Images, fonts
+│   └── android/ ios/              # Platform configs
 ├── doc/
-│   ├── architecture.md            # v4.1 — detailed architecture document
+│   ├── architecture.md
 │   └── images/                    # UI screenshots
-├── .github/workflows/ci.yml       # GitHub Actions CI
+├── .github/workflows/ci.yml
 ├── docker-compose.yml
 ├── requirements.txt
 └── .env.example
@@ -474,7 +516,7 @@ trackforge/
 **Memet Saçal**
 Computer Engineering Student — Ondokuz Mayıs University
 
-Backend Developer · Clean Architecture · AI-integrated systems
+Full-Stack Developer · Clean Architecture · AI-integrated systems
 
 [![GitHub](https://img.shields.io/badge/GitHub-MemetSacal-181717?style=flat-square&logo=github)](https://github.com/MemetSacal)
 

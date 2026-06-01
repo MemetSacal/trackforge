@@ -92,7 +92,19 @@ class _WeeklyTab extends ConsumerWidget {
 
     return reportAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => const Center(child: Text('Veri yüklenemedi')),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('Veri yüklenemedi'),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => ref.refresh(weeklyReportDetailProvider),
+              child: const Text('Yenile'),
+            ),
+          ],
+        ),
+      ),
       data: (data) {
         // Backend nested objeler döndürüyor
         final water = data['water'] != null
@@ -230,7 +242,19 @@ class _MonthlyTab extends ConsumerWidget {
 
     return reportAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => const Center(child: Text('Veri yüklenemedi')),
+      error: (e, _) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text('Veri yüklenemedi'),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => ref.refresh(monthlyReportProvider),
+              child: const Text('Yenile'),
+            ),
+          ],
+        ),
+      ),
       data: (data) {
         // Backend nested objeler döndürüyor — summary değil ayrı field'lar
         final water = data['water'] != null

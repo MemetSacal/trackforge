@@ -1,7 +1,4 @@
 // ── more_screen.dart ────────────────────────────────────
-// "Daha Fazla" menü ekranı.
-// Raporlar, Sosyal, Alışveriş, Profil ekranlarına erişim.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../raporlar/raporlar_screen.dart';
@@ -10,12 +7,26 @@ import '../alisveris/alisveris_screen.dart';
 import '../profil/profil_screen.dart';
 import '../gamification/gamification_screen.dart';
 import '../steps/steps_screen.dart';
+import '../../core/api/api_client.dart';
+import '../../core/api/endpoints.dart';
+import '../cycle/cycle_screen.dart';
+
+final _genderProvider = FutureProvider<String>((ref) async {
+  try {
+    final response = await ApiClient.instance.get(Endpoints.preferences);
+    return response.data['gender'] as String? ?? 'male';
+  } catch (_) {
+    return 'male';
+  }
+});
 
 class MoreScreen extends ConsumerWidget {
   const MoreScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final gender = ref.watch(_genderProvider).value ?? 'male';
+
     return Scaffold(
       appBar: AppBar(title: const Text('Daha Fazla')),
       body: SingleChildScrollView(
@@ -23,7 +34,6 @@ class MoreScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── BÖLÜM: ANALİZ ─────────────────────────
             _SectionTitle(title: 'Analiz'),
             _MenuItem(
               emoji: '📊',
@@ -52,7 +62,6 @@ class MoreScreen extends ConsumerWidget {
 
             const SizedBox(height: 16),
 
-            // ── BÖLÜM: SOSYAL ─────────────────────────
             _SectionTitle(title: 'Sosyal'),
             _MenuItem(
               emoji: '👥',
@@ -65,7 +74,6 @@ class MoreScreen extends ConsumerWidget {
 
             const SizedBox(height: 16),
 
-            // ── BÖLÜM: ALIŞVERIŞ ──────────────────────
             _SectionTitle(title: 'Alışveriş'),
             _MenuItem(
               emoji: '🛒',
@@ -78,7 +86,19 @@ class MoreScreen extends ConsumerWidget {
 
             const SizedBox(height: 16),
 
-            // ── BÖLÜM: HESAP ──────────────────────────
+            if (gender == 'female') ...[
+              _SectionTitle(title: 'Sağlık'),
+              _MenuItem(
+                emoji: '🌸',
+                title: 'Regl Takvimi',
+                description: 'Döngü takibi ve faz analizi',
+                color: Colors.pink,
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const CycleScreen())),
+              ),
+              const SizedBox(height: 16),
+            ],
+
             _SectionTitle(title: 'Hesap'),
             _MenuItem(
               emoji: '👤',
@@ -97,7 +117,6 @@ class MoreScreen extends ConsumerWidget {
   }
 }
 
-// Bölüm başlığı
 class _SectionTitle extends StatelessWidget {
   final String title;
   const _SectionTitle({required this.title});
@@ -119,7 +138,6 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-// Menü item kartı
 class _MenuItem extends StatelessWidget {
   final String emoji;
   final String title;

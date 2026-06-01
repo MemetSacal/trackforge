@@ -6,6 +6,7 @@ import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import 'home_screen.dart';
 import '../takip/takip_screen.dart';
+import '../../app.dart';
 
 // ── PROVIDER'LAR ────────────────────────────────────────
 final userProvider = FutureProvider<Map<String, dynamic>>((ref) async {
@@ -45,6 +46,16 @@ class DashboardScreen extends ConsumerWidget {
           error: (_, __) => const Text('TrackForge'),
         ),
         actions: [
+          // Dark mode toggle
+          IconButton(
+            icon: Icon(
+              ref.watch(themeModeProvider) == ThemeMode.dark
+                  ? Icons.dark_mode
+                  : Icons.light_mode,
+              color: Theme.of(context).primaryColor,
+            ),
+            onPressed: () => ref.read(themeModeProvider.notifier).toggle(),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {

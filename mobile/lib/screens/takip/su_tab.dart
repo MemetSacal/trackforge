@@ -42,9 +42,22 @@ class _SuTabState extends ConsumerState<SuTab> {
   }
 
   Future<void> _addWater(int currentAmount) async {
-    final amount = int.tryParse(_amountController.text);
-    if (amount == null || amount <= 0) return;
+    final text = _amountController.text.trim();
 
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Miktar zorunludur')),
+      );
+      return;
+    }
+
+    final amount = int.tryParse(text);
+    if (amount == null || amount < 50 || amount > 10000) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Miktar 50–10000 ml arasında olmalı')),
+      );
+      return;
+    }
     setState(() => _isLoading = true);
 
     try {

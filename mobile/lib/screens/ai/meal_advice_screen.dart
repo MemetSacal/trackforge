@@ -9,6 +9,7 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/utils/date_utils.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 class MealAdviceScreen extends StatefulWidget {
   const MealAdviceScreen({super.key});
@@ -295,9 +296,24 @@ class _MealAdviceScreenState extends State<MealAdviceScreen> {
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: SelectableText(
-                    _advice!,
-                    style: const TextStyle(fontSize: 15, height: 1.6),
+                  child: MarkdownBody(
+                    data: _advice!,
+                    selectable: true,
+                    styleSheet: MarkdownStyleSheet(
+                      p: const TextStyle(fontSize: 15, height: 1.6),
+                      h2: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                      h3: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                      strong: const TextStyle(fontWeight: FontWeight.bold),
+                      listBullet: const TextStyle(fontSize: 15),
+                    ),
                   ),
                 ),
               ),

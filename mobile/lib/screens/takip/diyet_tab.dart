@@ -66,15 +66,32 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
   }
 
   Future<void> _saveMeal(Map<String, dynamic>? existingLog) async {
-    final calories = double.tryParse(_caloriesController.text);
-    final target = double.tryParse(_targetController.text);
+    final caloriesText = _caloriesController.text.trim();
+    final targetText = _targetController.text.trim();
 
-    if (calories == null) {
+    if (caloriesText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kalori miktarını girin')),
+        const SnackBar(content: Text('Tüketilen kalori zorunludur')),
       );
       return;
     }
+
+    final calories = double.tryParse(caloriesText);
+    if (calories == null || calories < 0 || calories > 10000) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kalori 0–10000 kcal arasında olmalı')),
+      );
+      return;
+    }
+
+    final target = double.tryParse(targetText);
+    if (targetText.isNotEmpty && (target == null || target < 0 || target > 10000)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hedef kalori 0–10000 kcal arasında olmalı')),
+      );
+      return;
+    }
+
 
     setState(() => _isLoading = true);
 

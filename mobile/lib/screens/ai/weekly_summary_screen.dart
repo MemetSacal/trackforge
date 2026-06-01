@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 class WeeklySummaryScreen extends StatefulWidget {
   const WeeklySummaryScreen({super.key});
@@ -161,12 +162,23 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: SelectableText(
-                  // SelectableText — kullanıcı metni seçip kopyalayabilir
-                  _summary!,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.6, // Satır yüksekliği — okunabilirlik için
+                child: MarkdownBody(
+                  data: _summary!,
+                  selectable: true,          // kullanıcı hâlâ kopyalayabilir
+                  styleSheet: MarkdownStyleSheet(
+                    p: const TextStyle(fontSize: 15, height: 1.6),
+                    h2: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).primaryColor,
+                    ),
+                    h3: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).primaryColor,
+                    ),
+                    strong: const TextStyle(fontWeight: FontWeight.bold),
+                    listBullet: const TextStyle(fontSize: 15),
                   ),
                 ),
               ),

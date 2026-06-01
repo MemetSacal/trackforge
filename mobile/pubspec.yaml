@@ -28,6 +28,9 @@ dependencies:
   # Charts
   fl_chart: ^0.69.0
 
+  # Markdown Renderer
+  flutter_markdown_plus: 1.0.7
+
   # JSON Serialization
   json_annotation: ^4.9.0
   freezed_annotation: ^2.4.4
@@ -40,6 +43,8 @@ dependencies:
 
   # Icons
   cupertino_icons: ^1.0.8
+  url_launcher: ^6.3.2
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -52,4 +57,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/body_front.jpg
+    - assets/images/body_back.jpg
 

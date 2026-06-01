@@ -1,18 +1,12 @@
 // ── profil_screen.dart ──────────────────────────────────
-// Kullanıcı profil ekranı.
-// GET /auth/me → kullanıcı adı, email
-// GET /preferences → sağlık bilgileri
-// PUT /preferences → güncelleme
-// Çıkış yap → token'ları sil, login'e yönlendir
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/auth/token_manager.dart';
+import '../../app.dart';
 
-// ── PROVIDER'LAR ────────────────────────────────────────
 final profileUserProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final response = await ApiClient.instance.get(Endpoints.me);
   return Map<String, dynamic>.from(response.data);
@@ -27,7 +21,6 @@ final profilePrefsProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   }
 });
 
-// ── PROFİL SCREEN ───────────────────────────────────────
 class ProfilScreen extends ConsumerStatefulWidget {
   const ProfilScreen({super.key});
 
@@ -38,12 +31,12 @@ class ProfilScreen extends ConsumerStatefulWidget {
 class _ProfilScreenState extends ConsumerState<ProfilScreen> {
   final _heightController = TextEditingController();
   final _ageController = TextEditingController();
+  final _aiNameController = TextEditingController();
   String _gender = 'male';
   String _activityLevel = 'sedentary';
   bool _isEditing = false;
   bool _isSaving = false;
 
-  // Backend'den gelebilecek tüm aktivite değerlerini kapsıyoruz
   final _activityLevels = [
     {'key': 'sedentary', 'label': 'Sedanter'},
     {'key': 'lightly_active', 'label': 'Hafif Aktif'},
@@ -54,8 +47,6 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
     {'key': 'very_active', 'label': 'Çok Aktif'},
   ];
 
-  // Backend'den gelen aktivite değeri listede var mı kontrol et
-  // Yoksa sedentary'e fall back et
   String _safeActivityLevel(String value) {
     final exists = _activityLevels.any((a) => a['key'] == value);
     return exists ? value : 'sedentary';
@@ -65,6 +56,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
   void dispose() {
     _heightController.dispose();
     _ageController.dispose();
+    _aiNameController.dispose();
     super.dispose();
   }
 
@@ -78,6 +70,8 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
           'age': int.tryParse(_ageController.text),
           'gender': _gender,
           'activity_level': _activityLevel,
+          if (_aiNameController.text.isNotEmpty)
+            'ai_name': _aiNameController.text,
         },
       );
       ref.invalidate(profilePrefsProvider);
@@ -164,9 +158,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                         width: 64,
                         height: 64,
                         decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .primaryColor
-                              .withOpacity(0.15),
+                          color: Theme.of(context).primaryColor.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(32),
                         ),
                         child: Center(
@@ -211,11 +203,9 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
 
             // ── SAĞLIK BİLGİLERİ ──────────────────────
             prefsAsync.when(
-              loading: () =>
-              const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (_, __) => const SizedBox(),
               data: (prefs) {
-                // Form'u doldur — backend'den gelen değeri safe parse et
                 if (prefs != null && !_isEditing) {
                   _heightController.text =
                       (prefs['height_cm'] as num?)?.toString() ?? '';
@@ -225,6 +215,8 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                   _activityLevel = _safeActivityLevel(
                     prefs['activity_level'] as String? ?? 'sedentary',
                   );
+                  _aiNameController.text =
+                      prefs['ai_name'] as String? ?? 'TrackForge AI';
                 }
 
                 return Card(
@@ -260,9 +252,13 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                           _InfoRow(
                             label: 'Aktivite',
                             value: _activityLevels.firstWhere(
-                                  (a) => a['key'] == _activityLevel,
+                              (a) => a['key'] == _activityLevel,
                               orElse: () => {'label': '-'},
                             )['label']!,
+                          ),
+                          _InfoRow(
+                            label: 'AI Koç İsmi',
+                            value: prefs?['ai_name'] as String? ?? 'TrackForge AI',
                           ),
                         ] else ...[
                           TextField(
@@ -283,10 +279,18 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                             ),
                           ),
                           const SizedBox(height: 12),
+                          TextField(
+                            controller: _aiNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'AI Koç İsmi',
+                              prefixIcon: Icon(Icons.smart_toy_outlined),
+                              hintText: 'Örn: Max, Aria, TrackForge AI',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
 
                           const Text('Cinsiyet',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w500)),
+                              style: TextStyle(fontWeight: FontWeight.w500)),
                           const SizedBox(height: 8),
                           Row(
                             children: [
@@ -294,36 +298,32 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                                 label: '👨 Erkek',
                                 value: 'male',
                                 selected: _gender,
-                                onTap: (v) =>
-                                    setState(() => _gender = v),
+                                onTap: (v) => setState(() => _gender = v),
                               ),
                               const SizedBox(width: 8),
                               _GenderButton(
                                 label: '👩 Kadın',
                                 value: 'female',
                                 selected: _gender,
-                                onTap: (v) =>
-                                    setState(() => _gender = v),
+                                onTap: (v) => setState(() => _gender = v),
                               ),
                             ],
                           ),
                           const SizedBox(height: 12),
 
                           const Text('Aktivite Seviyesi',
-                              style:
-                              TextStyle(fontWeight: FontWeight.w500)),
+                              style: TextStyle(fontWeight: FontWeight.w500)),
                           const SizedBox(height: 8),
                           DropdownButtonFormField<String>(
-                            // Backend değeri listede yoksa sedentary'e fall back
                             value: _safeActivityLevel(_activityLevel),
                             decoration: const InputDecoration(
                               prefixIcon: Icon(Icons.directions_run),
                             ),
                             items: _activityLevels
                                 .map((a) => DropdownMenuItem(
-                              value: a['key'],
-                              child: Text(a['label']!),
-                            ))
+                                      value: a['key'],
+                                      child: Text(a['label']!),
+                                    ))
                                 .toList(),
                             onChanged: (v) =>
                                 setState(() => _activityLevel = v!),
@@ -331,17 +331,16 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                           const SizedBox(height: 16),
 
                           ElevatedButton(
-                            onPressed:
-                            _isSaving ? null : _savePreferences,
+                            onPressed: _isSaving ? null : _savePreferences,
                             child: _isSaving
                                 ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
                                 : const Text('Kaydet'),
                           ),
                         ],
@@ -353,6 +352,40 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
             ),
 
             const SizedBox(height: 16),
+
+            // ── TEMA TOGGLE ───────────────────────────
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      ref.watch(themeModeProvider) == ThemeMode.dark
+                          ? Icons.dark_mode_outlined
+                          : Icons.light_mode_outlined,
+                      color: Theme.of(context).primaryColor,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        ref.watch(themeModeProvider) == ThemeMode.dark
+                            ? 'Karanlık Mod'
+                            : 'Aydınlık Mod',
+                        style: const TextStyle(fontSize: 15),
+                      ),
+                    ),
+                    Switch(
+                      value: ref.watch(themeModeProvider) == ThemeMode.dark,
+                      activeColor: Theme.of(context).primaryColor,
+                      onChanged: (_) =>
+                          ref.read(themeModeProvider.notifier).toggle(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 8),
 
             // ── ÇIKIŞ YAP ─────────────────────────────
             Card(
@@ -387,8 +420,7 @@ class _InfoRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: Theme.of(context).textTheme.bodySmall),
-          Text(value,
-              style: const TextStyle(fontWeight: FontWeight.w500)),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -431,8 +463,7 @@ class _GenderButton extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontWeight:
-              isSelected ? FontWeight.bold : FontWeight.normal,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
           ),
         ),

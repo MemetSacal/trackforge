@@ -57,14 +57,33 @@ class _EgzersizScreenState extends ConsumerState<EgzersizScreen> {
 
   // Yeni seans oluştur
   Future<void> _createSession() async {
-    final duration = int.tryParse(_durationController.text);
-    if (duration == null) {
+    final durationText = _durationController.text.trim();
+
+    if (durationText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Süreyi girin')),
+        const SnackBar(content: Text('Süre zorunludur')),
       );
       return;
     }
 
+    final duration = int.tryParse(durationText);
+    if (duration == null || duration < 1 || duration > 600) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Süre 1–600 dakika arasında olmalı')),
+      );
+      return;
+    }
+
+    final caloriesText = _caloriesController.text.trim();
+    if (caloriesText.isNotEmpty) {
+      final cal = double.tryParse(caloriesText);
+      if (cal == null || cal < 0 || cal > 5000) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kalori 0–5000 kcal arasında olmalı')),
+        );
+        return;
+      }
+    }
     setState(() => _isLoading = true);
 
     try {

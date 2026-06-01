@@ -1,29 +1,24 @@
 // ── seans_detay_screen.dart ─────────────────────────────
-// Antrenman seans detay ekranı.
-// GET /exercises/sessions/{id}/exercises → seansın egzersizlerini listeler
-// POST /exercises/sessions/{id}/exercises → yeni egzersiz ekler
-// DELETE /exercises/exercises/{id} → egzersiz siler
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../widgets/body_map/body_map_widget.dart';
 
-// FutureProvider.family — parametreli provider
-// Farklı seans ID'leri için farklı provider instance'ları oluşturur
 final sessionExercisesProvider =
-FutureProvider.family<List<Map<String, dynamic>>, String>(
+    FutureProvider.family<List<Map<String, dynamic>>, String>(
         (ref, sessionId) async {
-      try {
-        final response = await ApiClient.instance.get(
-          '${Endpoints.exerciseSessions}/$sessionId/exercises',
-        );
-        final list = response.data as List;
-        return list.map((e) => Map<String, dynamic>.from(e)).toList();
-      } catch (_) {
-        return [];
-      }
-    });
+  try {
+    final response = await ApiClient.instance.get(
+      '${Endpoints.exerciseSessions}/$sessionId/exercises',
+    );
+    final list = response.data as List;
+    return list.map((e) => Map<String, dynamic>.from(e)).toList();
+  } catch (_) {
+    return [];
+  }
+});
 
 class SeansDetayScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> session;
@@ -91,6 +86,16 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
     }
   }
 
+  Future<void> _openYouTube(String exerciseName) async {
+    final query = Uri.encodeComponent('$exerciseName nasıl yapılır');
+    final url = Uri.parse('https://www.youtube.com/results?search_query=$query');
+    try {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      await launchUrl(url, mode: LaunchMode.inAppWebView);
+    }
+  }
+
   Future<void> _deleteExercise(String exerciseId) async {
     try {
       await ApiClient.instance.delete('/exercises/exercises/$exerciseId');
@@ -120,10 +125,9 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Egzersiz Ekle',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            const Text('Egzersiz Ekle',
+                style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             TextField(
               controller: _nameController,
@@ -148,7 +152,8 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                   child: TextField(
                     controller: _repsController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Tekrar'),
+                    decoration:
+                        const InputDecoration(labelText: 'Tekrar'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -156,8 +161,7 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                   child: TextField(
                     controller: _weightController,
                     keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
+                        decimal: true),
                     decoration: const InputDecoration(labelText: 'Kg'),
                   ),
                 ),
@@ -168,13 +172,11 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
               onPressed: _isLoading ? null : _addExercise,
               child: _isLoading
                   ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
                   : const Text('Ekle'),
             ),
           ],
@@ -190,9 +192,7 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
     final date = widget.session['date'] as String? ?? '';
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('$duration dk — $date'),
-      ),
+      appBar: AppBar(title: Text('$duration dk — $date')),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddExerciseSheet,
         backgroundColor: Theme.of(context).primaryColor,
@@ -202,6 +202,7 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => const Center(child: Text('Veri yüklenemedi')),
         data: (exercises) {
+          // Boş durum
           if (exercises.isEmpty) {
             return Center(
               child: Column(
@@ -209,76 +210,126 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                 children: [
                   const Text('💪', style: TextStyle(fontSize: 64)),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Henüz egzersiz eklenmedi',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  const Text('Henüz egzersiz eklenmedi',
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text(
-                    '+ butonuna tıkla',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
+                  Text('+ butonuna tıkla',
+                      style: Theme.of(context).textTheme.bodySmall),
                 ],
               ),
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: exercises.length,
-            itemBuilder: (context, index) {
-              final exercise = exercises[index];
-              final name = exercise['exercise_name'] as String? ?? '';
-              final sets = exercise['sets'] as int?;
-              final reps = exercise['reps'] as int?;
-              final weight = (exercise['weight_kg'] as num?)?.toDouble();
+          // Tüm egzersizlerin çalıştırdığı kas gruplarını topla
+          // expand → her egzersizin kas listesini düzleştirir
+          // toSet → tekrar eden kasları kaldırır
+          final allMuscles = exercises
+              .expand((e) => getMusclesForExercise(
+                  e['exercise_name'] as String? ?? ''))
+              .toSet()
+              .toList();
 
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color:
-                      Theme.of(context).primaryColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '${index + 1}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).primaryColor,
-                        ),
+          return Column(
+            children: [
+              // ── VÜCUT HARİTASI KARTI ──────────────
+              // Sadece tanınan egzersizler varsa gösterilir
+              if (allMuscles.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Çalışan Kaslar',
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 12),
+                          BodyMapWidget(
+                            highlightedMuscles: allMuscles,
+                            height: 260,
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  title: Text(
-                    name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text(
-                    [
-                      if (sets != null) '$sets set',
-                      if (reps != null) '$reps tekrar',
-                      if (weight != null) '$weight kg',
-                    ].join(' · '),
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.red,
-                    ),
-                    onPressed: () =>
-                        _deleteExercise(exercise['id'] as String),
-                  ),
                 ),
-              );
-            },
+
+              // ── EGZERSİZ LİSTESİ ──────────────────
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: exercises.length,
+                  itemBuilder: (context, index) {
+                    final exercise = exercises[index];
+                    final name =
+                        exercise['exercise_name'] as String? ?? '';
+                    final sets = exercise['sets'] as int?;
+                    final reps = exercise['reps'] as int?;
+                    final weight =
+                        (exercise['weight_kg'] as num?)?.toDouble();
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .primaryColor
+                                .withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${index + 1}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).primaryColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                        title: Text(name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                          [
+                            if (sets != null) '$sets set',
+                            if (reps != null) '$reps tekrar',
+                            if (weight != null) '$weight kg',
+                          ].join(' · '),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                  Icons.play_circle_outline),
+                              color: Colors.red,
+                              tooltip: 'YouTube\'da İzle',
+                              onPressed: () => _openYouTube(name),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              color: Colors.red,
+                              onPressed: () => _deleteExercise(
+                                  exercise['id'] as String),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           );
         },
       ),

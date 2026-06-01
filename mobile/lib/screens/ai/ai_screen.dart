@@ -1,20 +1,30 @@
 // ── ai_screen.dart ──────────────────────────────────────
-// AI Koç ana ekranı.
-// 5 AI özelliğine erişim kartları gösterilir.
-// Her karta tıklanınca ilgili AI ekranı açılır.
-
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/api/api_client.dart';
+import '../../core/api/endpoints.dart';
 import 'weekly_summary_screen.dart';
 import 'workout_plan_screen.dart';
 import 'meal_advice_screen.dart';
 import 'recipe_screen.dart';
 import 'calorie_vision_screen.dart';
 
-class AiScreen extends StatelessWidget {
+final aiCoachNameProvider = FutureProvider<String>((ref) async {
+  try {
+    final response = await ApiClient.instance.get(Endpoints.preferences);
+    return response.data['ai_name'] as String? ?? 'TrackForge AI';
+  } catch (_) {
+    return 'TrackForge AI';
+  }
+});
+
+class AiScreen extends ConsumerWidget {
   const AiScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final coachName = ref.watch(aiCoachNameProvider).value ?? 'TrackForge AI';
+
     return Scaffold(
       appBar: AppBar(title: const Text('AI Koç')),
       body: SingleChildScrollView(
@@ -22,24 +32,20 @@ class AiScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Başlık açıklaması
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Text(
-                      '🤖',
-                      style: const TextStyle(fontSize: 36),
-                    ),
+                    const Text('🤖', style: TextStyle(fontSize: 36)),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Claude AI ile Tanış',
-                            style: TextStyle(
+                          Text(
+                            coachName,
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
@@ -58,7 +64,6 @@ class AiScreen extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // AI özellik kartları
             _AiFeatureCard(
               emoji: '📊',
               title: 'Haftalık Özet',
@@ -66,9 +71,7 @@ class AiScreen extends StatelessWidget {
               color: Colors.blue,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const WeeklySummaryScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const WeeklySummaryScreen()),
               ),
             ),
 
@@ -79,9 +82,7 @@ class AiScreen extends StatelessWidget {
               color: Colors.orange,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const WorkoutPlanScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const WorkoutPlanScreen()),
               ),
             ),
 
@@ -92,9 +93,7 @@ class AiScreen extends StatelessWidget {
               color: Colors.green,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const MealAdviceScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const MealAdviceScreen()),
               ),
             ),
 
@@ -105,9 +104,7 @@ class AiScreen extends StatelessWidget {
               color: Colors.purple,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const RecipeScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const RecipeScreen()),
               ),
             ),
 
@@ -118,9 +115,7 @@ class AiScreen extends StatelessWidget {
               color: Colors.red,
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const CalorieVisionScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const CalorieVisionScreen()),
               ),
             ),
           ],
@@ -130,7 +125,6 @@ class AiScreen extends StatelessWidget {
   }
 }
 
-// AI özellik kartı
 class _AiFeatureCard extends StatelessWidget {
   final String emoji;
   final String title;
@@ -151,14 +145,12 @@ class _AiFeatureCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        // InkWell — tıklanabilir alan, ripple efekti ekler
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // Emoji container
               Container(
                 width: 52,
                 height: 52,
@@ -171,8 +163,6 @@ class _AiFeatureCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 16),
-
-              // Başlık ve açıklama
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -192,7 +182,6 @@ class _AiFeatureCard extends StatelessWidget {
                   ],
                 ),
               ),
-
               Icon(
                 Icons.chevron_right,
                 color: Theme.of(context).textTheme.bodySmall?.color,

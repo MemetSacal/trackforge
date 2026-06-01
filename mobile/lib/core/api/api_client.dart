@@ -25,7 +25,7 @@ class ApiClient {
       BaseOptions(
         baseUrl: Endpoints.baseUrl, // Tüm isteklere otomatik eklenir
         connectTimeout: const Duration(seconds: 10), // Bağlantı timeout
-        receiveTimeout: const Duration(seconds: 30), // Yanıt timeout (AI için uzun)
+        receiveTimeout: const Duration(seconds: 120), // Yanıt timeout (AI için uzun)
         headers: {
           'Content-Type': 'application/json', // Her istekte JSON gönderiyoruz
           'Accept': 'application/json',

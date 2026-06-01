@@ -41,12 +41,32 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
   }
 
   Future<void> _saveSteps(Map<String, dynamic>? existing) async {
-    final steps = int.tryParse(_stepsController.text);
-    if (steps == null) {
+    final stepsText = _stepsController.text.trim();
+    final goalText = _goalController.text.trim();
+
+    if (stepsText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Geçerli bir adım sayısı girin')),
+        const SnackBar(content: Text('Adım sayısı zorunludur')),
       );
       return;
+    }
+
+    final steps = int.tryParse(stepsText);
+    if (steps == null || steps < 0 || steps > 100000) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Adım sayısı 0–100.000 arasında olmalı')),
+      );
+      return;
+    }
+
+    if (goalText.isNotEmpty) {
+      final goal = int.tryParse(goalText);
+      if (goal == null || goal < 1000 || goal > 50000) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Hedef 1.000–50.000 adım arasında olmalı')),
+        );
+        return;
+      }
     }
 
     setState(() => _isLoading = true);
