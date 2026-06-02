@@ -8,7 +8,7 @@ class Endpoints {
   Endpoints._(); // new Endpoints() yapılmasın diye private constructor
 
   // ── Temel URL ────────────────────────────────────────
-  static const String baseUrl = 'http://172.20.10.2:8000/api/v1';
+  static const String baseUrl = 'https://trackforge-3o2j.onrender.com/api/v1';
 
   // ── Auth ─────────────────────────────────────────────
   static const String register = '/auth/register';

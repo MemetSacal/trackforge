@@ -1,29 +1,16 @@
-# Malzeme bazlı sağlıklı tarif önerisi
+import asyncio
 import json
 from backend.app.ai.client import get_claude_client, CLAUDE_MODEL, MAX_TOKENS_RECIPE
 
 
 async def generate_recipe(
-    available_ingredients: list,    # Evdeki/alışveriş listesindeki malzemeler
+    available_ingredients: list,
     liked_foods: list = None,
     disliked_foods: list = None,
     allergies: list = None,
-    meal_type: str = "dinner",      # "breakfast", "lunch", "dinner", "snack"
+    meal_type: str = "dinner",
     calorie_limit: int = None,
 ) -> dict:
-    """
-    Mevcut malzemelere göre sağlıklı tarif önerisi üretir.
-
-    Returns:
-        dict: {
-            "recipe_name": str,
-            "ingredients": [...],
-            "steps": [...],
-            "nutrition": {...},
-            "prep_time_minutes": int,
-            "cook_time_minutes": int
-        }
-    """
     client = get_claude_client()
 
     meal_labels = {
@@ -68,11 +55,15 @@ SADECE JSON formatında yanıt ver:
 }}
 """
 
-    message = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=MAX_TOKENS_RECIPE,
-        messages=[{"role": "user", "content": prompt}]
-    )
+    # ✅ Senkron Claude çağrısını ayrı thread'de çalıştır
+    def _call():
+        return client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=MAX_TOKENS_RECIPE,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+    message = await asyncio.to_thread(_call)
 
     response_text = message.content[0].text.strip()
     if "```json" in response_text:
@@ -81,13 +72,3 @@ SADECE JSON formatında yanıt ver:
         response_text = response_text.split("```")[1].split("```")[0].strip()
 
     return json.loads(response_text)
-
-
-"""
-DOSYA AKIŞI:
-generate_recipe → malzeme listesi + tercihler alır → Claude'a gönderir → JSON tarif döner.
-available_ingredients: alışveriş listesinden veya kullanıcının manuel girişinden gelir.
-Adım adım talimatlar + besin değerleri birlikte döner.
-
-Spring Boot karşılığı: @Service + dış API entegrasyonu.
-"""

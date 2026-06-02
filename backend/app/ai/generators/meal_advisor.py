@@ -1,4 +1,4 @@
-# Kan değerleri ve hastalık geçmişine göre diyet tavsiyesi
+import asyncio
 import json
 from backend.app.ai.client import get_claude_client, CLAUDE_MODEL, MAX_TOKENS_MEAL
 
@@ -11,30 +11,14 @@ async def generate_meal_advice(
     blood_values: dict,
     fitness_goal: str,
     calorie_target: int = None,
-    # Fiziksel profil — BMR/TDEE hesabı için
     height_cm: float = None,
     age: int = None,
     gender: str = None,
     activity_level: str = None,
     weight_kg: float = None,
 ) -> dict:
-    """
-    Kullanıcının sağlık profili ve tercihlerine göre diyet tavsiyesi üretir.
-
-    Returns:
-        dict: {
-            "summary": str,
-            "daily_calorie_target": int,
-            "macros": {...},
-            "recommended_foods": [...],
-            "foods_to_avoid": [...],
-            "meal_suggestions": {...},
-            "warnings": [...]
-        }
-    """
     client = get_claude_client()
 
-    # Hedef etiketleri
     goal_labels = {
         "weight_loss": "kilo vermek",
         "muscle_gain": "kas kütlesi kazanmak",
@@ -42,28 +26,23 @@ async def generate_meal_advice(
     }
     goal_text = goal_labels.get(fitness_goal, fitness_goal)
 
-    # Kan değerlerini okunabilir formata çevir
     blood_text = ""
     if blood_values:
         blood_text = f"\nKan değerleri: {json.dumps(blood_values, ensure_ascii=False)}"
 
-    # Fiziksel profil varsa BMR ve TDEE hesapla (Mifflin-St Jeor formülü)
     physical_text = ""
     if height_cm and age and gender and weight_kg:
         if gender == "male":
-            # Erkek BMR formülü
             bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age + 5
         else:
-            # Kadın BMR formülü
             bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age - 161
 
-        # Aktivite seviyesine göre TDEE katsayıları
         activity_multipliers = {
-            "sedentary": 1.2,       # Hareketsiz — masa başı iş
-            "light": 1.375,         # Hafif aktif — haftada 1-3 gün egzersiz
-            "moderate": 1.55,       # Orta aktif — haftada 3-5 gün egzersiz
-            "active": 1.725,        # Aktif — haftada 6-7 gün egzersiz
-            "very_active": 1.9      # Çok aktif — günde 2 antrenman
+            "sedentary": 1.2,
+            "light": 1.375,
+            "moderate": 1.55,
+            "active": 1.725,
+            "very_active": 1.9
         }
         multiplier = activity_multipliers.get(activity_level or "moderate", 1.55)
         tdee = round(bmr * multiplier)
@@ -115,11 +94,15 @@ SADECE JSON formatında yanıt ver:
 }}
 """
 
-    message = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=MAX_TOKENS_MEAL,
-        messages=[{"role": "user", "content": prompt}]
-    )
+    # ✅ Senkron Claude çağrısını ayrı thread'de çalıştır
+    def _call():
+        return client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=MAX_TOKENS_MEAL,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+    message = await asyncio.to_thread(_call)
 
     response_text = message.content[0].text.strip()
     if "```json" in response_text:
@@ -128,21 +111,3 @@ SADECE JSON formatında yanıt ver:
         response_text = response_text.split("```")[1].split("```")[0].strip()
 
     return json.loads(response_text)
-
-
-"""
-DOSYA AKIŞI:
-generate_meal_advice → kullanıcı tercihleri + kan değerleri + fiziksel profil alır → Claude'a gönderir → JSON diyet tavsiyesi döner.
-
-BMR hesabı (Mifflin-St Jeor formülü):
-  Erkek: 10 × kilo + 6.25 × boy - 5 × yaş + 5
-  Kadın: 10 × kilo + 6.25 × boy - 5 × yaş - 161
-
-TDEE = BMR × aktivite katsayısı
-  sedentary: 1.2 / light: 1.375 / moderate: 1.55 / active: 1.725 / very_active: 1.9
-
-Fiziksel profil girilmemişse physical_text boş kalır, Claude genel tavsiye verir.
-"ÖNEMLİ: Bu tıbbi tavsiye değil" notu prompt'a eklendi — sorumluluk reddi.
-
-Spring Boot karşılığı: @Service + dış API entegrasyonu.
-"""
