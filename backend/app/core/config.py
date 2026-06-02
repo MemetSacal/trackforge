@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     ALLOWED_IMAGE_TYPES: list = ["image/jpeg", "image/png", "image/webp"]  # İzin verilen resim tipleri
     ALLOWED_PDF_TYPES: list = ["application/pdf"]  # İzin verilen PDF tipleri
 
-    CLAUDE_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
 
 
 @lru_cache()

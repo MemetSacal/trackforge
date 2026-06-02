@@ -6,7 +6,7 @@ settings = get_settings()
 
 def get_claude_client() -> anthropic.Anthropic:
     # Anthropic client'ı oluştur — API key .env'den okunur
-    return anthropic.Anthropic(api_key=settings.CLAUDE_API_KEY)
+    return anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
 # Kullanılacak model — en güncel Claude Sonnet

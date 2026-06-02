@@ -1,6 +1,6 @@
 # TrackForge — Mimari Tasarım Dokümanı
 
-**Versiyon:** v5.2 — Tam Güncel  
+**Versiyon:** v5.4 — Tam Güncel  
 **Tarih:** Nisan 2026  
 **Mimari:** Clean Architecture + Repository Pattern  
 **Yaklaşım:** Backend-First, AI-Ready, Mobile-First
@@ -909,18 +909,28 @@ Env:
 
 ## 20. Sonraki Aşama: Polish · Test · Deploy · Product
 
-### Polish Listesi
+### Polish Listesi — Tamamlananlar ✅
 1. ✅ `flutter_markdown` — AI yanıtlarında ## ve ** render
 2. ✅ Antrenman planı egzersiz kartları — ham JSON görünümü düzelt
 3. ✅ YouTube link entegrasyonu — egzersiz form videoları
 4. ✅ Dark mode toggle
-5. ✅ Gerçek adım sayarı — `pedometer` paketi aktif edilecek
-6. ✅ Regl takvimi ekranı — `menstrual_cycles` entegrasyonu
-7. ⌛ Push notification / hatırlatıcılar
-8. ✅ Kas grubu SVG anatomisi
-9. ✅ Tüm form alanlarına input validasyonu (Flutter + Pydantic)
-10. ⌛ Çoklu dil desteği — TR + EN (flutter_localizations + intl)
-11. ✅ AI koç ismi — onboarding veya ilk AI girişinde kullanıcıya sorulur, atlarsa default `TrackForge AI`, user_preferences.ai_name alanına kaydedilir
+5. ✅ Regl takvimi ekranı — `menstrual_cycles` entegrasyonu
+6. ✅ Kas grubu SVG anatomisi
+7. ✅ Tüm form alanlarına input validasyonu (Flutter + Pydantic)
+8. ✅ AI koç ismi — user_preferences.ai_name, default `TrackForge AI`
+
+### Polish Listesi — Devam Edenler ⏳
+1. Gerçek adım sayarı — `pedometer` paketi aktif edilecek
+2. Push notification / hatırlatıcılar
+3. Çoklu dil desteği — TR + EN (flutter_localizations + intl)
+4. Regl fazı AI entegrasyonu — diyet tavsiyesi ve antrenman planına döngü fazı bilgisi eklenmesi
+
+### Revize Edilecekler 🔄
+1. **Genel UI/UX revizyonu** — tüm ekranların yeniden yazımı
+2. **Tarif Önerici** — Mevcut akış (malzeme gir → tarif al) kaldırılacak.
+   Yeni akış: kullanıcı ne istediğini söyler (tatlı/tuzlu/hafif vs.) →
+   AI diyetine + kalori bankasına + alerjilerine bakarak uygun tarif üretir →
+   tarifin malzemeleri otomatik olarak alışveriş listesine eklenir.
 
 ### Deploy
 - Backend: Railway (aktif) — domain bağlı, Swagger erişilebilir
@@ -950,6 +960,6 @@ Commit: feat / fix / refactor / test / docs / chore
 ---
 
 *Bu doküman projenin yaşayan anayasası.*
-*Son güncelleme: Nisan 2026 — v5.2*
+*Son güncelleme: Nisan 2026 — v5.4*
 *Backend: Faz 1-9 tamamlandı · Flutter: Faz 10 tamamlandı*
 *Sonraki: Polish · Test · Deploy · Product*
