@@ -12,7 +12,7 @@ import '../gamification/gamification_screen.dart';
 import '../steps/steps_screen.dart';
 import '../cycle/cycle_screen.dart';
 
-final _genderProvider = FutureProvider<String>((ref) async {
+final _genderProvider = FutureProvider.autoDispose<String>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.preferences);
     return response.data['gender'] as String? ?? 'male';

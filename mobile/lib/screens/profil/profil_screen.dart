@@ -7,12 +7,12 @@ import '../../core/api/endpoints.dart';
 import '../../core/auth/token_manager.dart';
 import '../../app.dart';
 
-final profileUserProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+final profileUserProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final response = await ApiClient.instance.get(Endpoints.me);
   return Map<String, dynamic>.from(response.data);
 });
 
-final profilePrefsProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+final profilePrefsProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.preferences);
     return Map<String, dynamic>.from(response.data);
