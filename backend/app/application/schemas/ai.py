@@ -2,7 +2,6 @@
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
-
 # ── Haftalık özet request ──
 class WeeklySummaryRequest(BaseModel):
     # reference_date → o haftanın raporu çekilir, Claude'a gönderilir
@@ -74,6 +73,30 @@ class CalorieVisionResponse(BaseModel):
     confidence: str
     notes: Optional[str] = None
 
+# ── ai_schema_cycle_additions.py ────────────────────────
+class CycleAdviceRequest(BaseModel):
+    pass  # Tüm bilgiler token'dan ve DB'den çekiliyor, body gerekmez
+
+class CycleAdviceDietResponse(BaseModel):
+    focus_nutrients: List[str]
+    recommended_foods: List[str]
+    foods_to_limit: List[str]
+    calorie_adjustment: str
+    meal_tip: str
+
+class CycleAdviceWorkoutResponse(BaseModel):
+    recommended_types: List[str]
+    intensity: str
+    duration_minutes: int
+    workout_tip: str
+    avoid: List[str]
+
+class CycleAdviceResponse(BaseModel):
+    phase_summary: str
+    energy_level: str
+    diet_advice: CycleAdviceDietResponse
+    workout_advice: CycleAdviceWorkoutResponse
+    wellness_tips: List[str]
 
 """
 DOSYA AKIŞI:

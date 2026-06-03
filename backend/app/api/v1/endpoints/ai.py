@@ -22,6 +22,8 @@ from backend.app.ai.analyzers.calorie_vision_analyzer import analyze_food_calori
 from backend.app.ai.generators.workout_generator import generate_workout_plan
 from backend.app.ai.generators.meal_advisor import generate_meal_advice
 from backend.app.ai.generators.recipe_generator import generate_recipe
+from backend.app.ai.generators.cycle_advisor import generate_cycle_advice
+from backend.app.application.schemas.ai import CycleAdviceRequest, CycleAdviceResponse
 
 router = APIRouter()
 
@@ -187,6 +189,53 @@ async def get_calories_from_photo(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Kalori analizi yapılamadı: {str(e)}")
+
+@router.post("/cycle-advice", response_model=CycleAdviceResponse)
+async def get_cycle_advice(
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mevcut döngü fazına göre AI diyet ve antrenman tavsiyesi üret."""
+    from backend.app.application.services.cycle_service import CycleService
+    cycle_service = CycleService(db)
+    cycle = await cycle_service.get_current(current_user)
+
+    if not cycle:
+        raise HTTPException(
+            status_code=400,
+            detail="Önce regl döngüsü kaydı oluşturun (/cycle endpoint'i)."
+        )
+
+    pref_repo = UserPreferenceRepository(db)
+    prefs = await pref_repo.get_by_user_id(current_user)
+
+    result = await db.execute(
+        select(MeasurementModel)
+        .where(MeasurementModel.user_id == current_user)
+        .order_by(MeasurementModel.date.desc())
+        .limit(1)
+    )
+    last_measurement = result.scalar_one_or_none()
+    weight_kg = last_measurement.weight_kg if last_measurement else None
+
+    try:
+        advice = await generate_cycle_advice(
+            current_phase=cycle.current_phase or "",
+            current_day=cycle.current_day or 1,
+            cycle_length_days=cycle.cycle_length_days or 28,
+            period_length_days=cycle.period_length_days or 5,
+            fitness_goal=prefs.fitness_goal if prefs else None,
+            liked_foods=prefs.liked_foods if prefs else [],
+            disliked_foods=prefs.disliked_foods if prefs else [],
+            allergies=prefs.allergies if prefs else [],
+            weight_kg=weight_kg,
+            height_cm=prefs.height_cm if prefs else None,
+            age=prefs.age if prefs else None,
+            activity_level=prefs.activity_level if prefs else None,
+        )
+        return CycleAdviceResponse(**advice)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Döngü tavsiyesi oluşturulamadı: {str(e)}")
 
 
 """
