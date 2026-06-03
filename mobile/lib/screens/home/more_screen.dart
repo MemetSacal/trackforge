@@ -11,6 +11,7 @@ import '../profil/profil_screen.dart';
 import '../gamification/gamification_screen.dart';
 import '../steps/steps_screen.dart';
 import '../cycle/cycle_screen.dart';
+import '../notifications/notification_screen.dart';
 
 final _genderProvider = FutureProvider.autoDispose<String>((ref) async {
   try {
@@ -69,6 +70,7 @@ class MoreScreen extends ConsumerWidget {
         'title': 'Hesap',
         'items': [
           _Item('👤', 'Profil', 'Sağlık bilgileri ve tercihler', const Color(0xFF34D399), () => _push(context, const ProfilScreen())),
+          _Item('🔔', 'Bildirimler', 'Hatırlatıcı ayarları', const Color(0xFFFFB020), () => _push(context, const NotificationScreen())),
         ],
       },
     ];
