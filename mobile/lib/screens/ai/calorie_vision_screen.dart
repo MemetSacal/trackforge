@@ -1,384 +1,189 @@
 // ── calorie_vision_screen.dart ──────────────────────────
-// Fotoğraftan kalori tahmin ekranı.
-// Kullanıcı galeriden fotoğraf seçer.
-// POST /ai/calorie-from-photo → multipart/form-data olarak gönderilir.
-// Claude Vision fotoğrafı analiz eder — kalori, makro, yemek adı.
-
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:dio/dio.dart';
 import 'dart:typed_data';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/auth/token_manager.dart';
+import '../../app.dart';
+import 'ai_helpers.dart'; // import eklendi
 
-class CalorieVisionScreen extends StatefulWidget {
+class CalorieVisionScreen extends ConsumerStatefulWidget {
   const CalorieVisionScreen({super.key});
-
   @override
-  State<CalorieVisionScreen> createState() => _CalorieVisionScreenState();
+  ConsumerState<CalorieVisionScreen> createState() => _CalorieVisionScreenState();
 }
 
-class _CalorieVisionScreenState extends State<CalorieVisionScreen> {
+class _CalorieVisionScreenState extends ConsumerState<CalorieVisionScreen> {
   Uint8List? _imageBytes;
   Map<String, dynamic>? _result;
   bool _isLoading = false;
   String? _error;
-
   final _picker = ImagePicker();
 
-  Future<void> _pickImage() async {
+  Future<void> _pick(ImageSource source) async {
     try {
-      final picked = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
-      );
+      final picked = await _picker.pickImage(source: source, maxWidth: 1024, maxHeight: 1024, imageQuality: 85);
       if (picked == null) return;
+      setState(() { _imageBytes = null; _result = null; _error = null; });
       final bytes = await picked.readAsBytes();
-      setState(() {
-        _imageBytes = bytes;
-        _result = null;
-        _error = null;
-      });
-    } catch (e) {
-      setState(() => _error = 'Fotoğraf seçilirken hata oluştu.');
-    }
+      setState(() => _imageBytes = bytes);
+    } catch (_) { setState(() => _error = 'Fotoğraf seçilirken hata oluştu.'); }
   }
 
-  Future<void> _takePhoto() async {
-    try {
-      final picked = await _picker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
-      );
-      if (picked == null) return;
-      final bytes = await picked.readAsBytes();
-      setState(() {
-        _imageBytes = bytes;
-        _result = null;
-        _error = null;
-      });
-    } catch (e) {
-      setState(() => _error = 'Fotoğraf çekilirken hata oluştu.');
-    }
-  }
-
-  Future<void> _analyzeImage() async {
+  Future<void> _analyze() async {
     if (_imageBytes == null) return;
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-      _result = null;
-    });
-
+    setState(() { _isLoading = true; _error = null; _result = null; });
     try {
-      final formData = FormData.fromMap({
-        'file': MultipartFile.fromBytes(
-          _imageBytes!,
-          filename: 'food.jpg',
-          contentType: DioMediaType('image', 'jpeg'),
-        ),
-      });
-
-      // Token'ı manuel ekle — multipart'ta interceptor bazen kaçırıyor
+      final formData = FormData.fromMap({'file': MultipartFile.fromBytes(_imageBytes!, filename: 'food.jpg', contentType: DioMediaType('image', 'jpeg'))});
       final token = await TokenManager.getAccessToken();
-
-      final response = await ApiClient.instance.post(
-        Endpoints.aiCalorieFromPhoto,
-        data: formData,
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
-      );
-
+      final response = await ApiClient.instance.post(Endpoints.aiCalorieFromPhoto, data: formData, options: Options(headers: {'Authorization': 'Bearer $token'}));
       setState(() => _result = Map<String, dynamic>.from(response.data));
-    } catch (e) {
-      setState(() => _error = 'Analiz sırasında hata oluştu. Tekrar dene.');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    } catch (_) { setState(() => _error = 'Analiz sırasında hata oluştu.'); }
+    finally { if (mounted) setState(() => _isLoading = false); }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark   = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final bg       = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
+    final bgCard   = isDark ? const Color(0xFF141620) : Colors.white;
+    final bgSoft   = isDark ? const Color(0xFF0F1016) : const Color(0xFFE8EBF2);
+    final border   = isDark ? const Color(0x12FFFFFF) : const Color(0x12000000);
+    final text     = isDark ? const Color(0xFFF0EEF8) : const Color(0xFF111318);
+    final textSoft = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
+    final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
+    final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
+    final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
+    final danger   = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Fotoğraftan Kalori')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-
-            // ── FOTOĞRAF SEÇ ──────────────────────────
-            const Text(
-              'Yemeğin fotoğrafını ekle',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-
-            GestureDetector(
-              onTap: _pickImage,
-              child: Container(
-                width: double.infinity,
-                height: 220,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: _imageBytes != null
-                        ? Theme.of(context).primaryColor
-                        : Theme.of(context).dividerColor,
-                    width: _imageBytes != null ? 2 : 1,
-                  ),
-                ),
-                child: _imageBytes != null
-                    ? ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: Image.memory(_imageBytes!, fit: BoxFit.cover),
-                )
-                    : Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.add_photo_alternate_outlined,
-                      size: 48,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Fotoğraf seçmek için tıkla',
-                      style: TextStyle(fontSize: 15),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'veya kamera ile çek',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickImage,
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Galeri'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _takePhoto,
-                    icon: const Icon(Icons.camera_alt_outlined),
-                    label: const Text('Kamera'),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // ── ANALİZ BUTONU ─────────────────────────
-            if (_imageBytes != null && _result == null && !_isLoading)
-              ElevatedButton.icon(
-                onPressed: _analyzeImage,
-                icon: const Text('📸'),
-                label: const Text('Kaloriyi Hesapla'),
-              ),
-
-            // ── YÜKLEME ───────────────────────────────
-            if (_isLoading)
-              Center(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 24),
-                    CircularProgressIndicator(
-                        color: Theme.of(context).primaryColor),
-                    const SizedBox(height: 24),
-                    const Text('📸 Claude yemeği analiz ediyor...'),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Bu 10-20 saniye sürebilir',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-
-            // ── HATA ──────────────────────────────────
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Text(
-                  _error!,
-                  style:
-                  TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ),
-
-            // ── SONUÇ GELDİ ───────────────────────────
-            if (_result != null) ...[
-              const SizedBox(height: 24),
-
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Toplam kalori — büyük göster
-                      Center(
-                        child: Column(
+      backgroundColor: bg,
+      body: Column(
+        children: [
+          aiHeader(context, ref, isDark, bg, bgCard, border, text, textSoft, muted, accent, 'Fotoğraftan Kalori'),
+          Expanded(
+            child: _isLoading
+                ? aiLoadingState(accent, text, '📸 Claude yemeği analiz ediyor...')
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                    child: Column(
+                      children: [
+                        // Fotoğraf alanı
+                        GestureDetector(
+                          onTap: () => _pick(ImageSource.gallery),
+                          child: Container(
+                            width: double.infinity, height: 220,
+                            decoration: BoxDecoration(
+                              color: bgCard,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: _imageBytes != null ? accent : border, width: _imageBytes != null ? 2 : 1),
+                            ),
+                            child: _imageBytes != null
+                                ? ClipRRect(borderRadius: BorderRadius.circular(18), child: Image.memory(_imageBytes!, fit: BoxFit.cover))
+                                : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                    Icon(Icons.add_photo_alternate_outlined, size: 48, color: accent),
+                                    const SizedBox(height: 12),
+                                    Text('Fotoğraf seçmek için tıkla', style: TextStyle(fontSize: 14, color: text)),
+                                    const SizedBox(height: 4),
+                                    Text('veya kamera ile çek', style: TextStyle(fontSize: 12, color: muted)),
+                                  ]),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
                           children: [
-                            const Text('🔥', style: TextStyle(fontSize: 40)),
-                            Text(
-                              '${_result!['total_calories'] ?? '?'} kcal',
-                              style: TextStyle(
-                                fontSize: 36,
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).primaryColor,
-                              ),
-                            ),
-                            Text(
-                              'Tahmini Toplam Kalori',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
+                            Expanded(child: aiOutlineBtn('Galeri',  Icons.photo_library_outlined, accent, border, () => _pick(ImageSource.gallery))),
+                            const SizedBox(width: 10),
+                            Expanded(child: aiOutlineBtn('Kamera',  Icons.camera_alt_outlined,    accent, border, () => _pick(ImageSource.camera))),
                           ],
                         ),
-                      ),
 
-                      const SizedBox(height: 16),
+                        if (_error != null) ...[
+                          const SizedBox(height: 12),
+                          aiErrorCard(_error!, danger, border),
+                        ],
 
-                      // Yemek öğeleri listesi
-                      if (_result!['food_items'] != null) ...[
-                        const Divider(),
-                        const SizedBox(height: 8),
-                        const Text(
-                          '🍽️ Tespit Edilen Yiyecekler',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        ...(_result!['food_items'] as List).map((item) {
-                          final itemMap = item is Map
-                              ? Map<String, dynamic>.from(item)
-                              : {'name': item.toString()};
-                          final name = itemMap['name'] ??
-                              itemMap['food'] ??
-                              item.toString();
-                          final cal = itemMap['calories'] ??
-                              itemMap['estimated_calories'];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Row(
-                              mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('• $name'),
-                                if (cal != null)
-                                  Text(
-                                    '$cal kcal',
-                                    style: TextStyle(
-                                      color: Theme.of(context).primaryColor,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        }),
-                      ],
+                        if (_imageBytes != null && _result == null && !_isLoading) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _analyze, child: const Text('📸  Kaloriyi Hesapla'))),
+                        ],
 
-                      // Makrolar
-                      if (_result!['macros'] != null) ...[
-                        const Divider(),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Makrolar',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: Map<String, dynamic>.from(
-                            _result!['macros'],
-                          )
-                              .entries
-                              .map((e) => Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context)
-                                  .primaryColor
-                                  .withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${e.key}: ${e.value}',
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ))
-                              .toList(),
-                        ),
-                      ],
-
-                      // Güven skoru
-                      if (_result!['confidence'] != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          '📊 Güven: ${_result!['confidence']}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-
-                      // Notlar
-                      if (_result!['notes'] != null) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
+                        if (_result != null) ...[
+                          const SizedBox(height: 16),
+                          // Toplam kalori
+                          Container(
+                            decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
+                            padding: const EdgeInsets.all(20),
+                            child: Column(children: [
+                              const Text('🔥', style: TextStyle(fontSize: 40)),
+                              Text('${_result!['total_calories'] ?? '?'} kcal',
+                                style: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: accent)),
+                              Text('Tahmini Toplam Kalori', style: TextStyle(fontSize: 12, color: muted)),
+                            ]),
                           ),
-                          child: Text(
-                            '⚠️ ${_result!['notes']}',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
+                          const SizedBox(height: 12),
+
+                          if (_result!['food_items'] != null) ...[
+                            Container(
+                              decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                              padding: const EdgeInsets.all(16),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text('🍽️ Tespit Edilen Yiyecekler', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                                const SizedBox(height: 10),
+                                ...(_result!['food_items'] as List).map((item) {
+                                  final m = item is Map ? Map<String, dynamic>.from(item) : {'name': item.toString()};
+                                  final name = m['name'] ?? m['food'] ?? item.toString();
+                                  final cal  = m['calories'] ?? m['estimated_calories'];
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                    decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(10)),
+                                    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                                      Text('$name', style: TextStyle(fontSize: 13, color: text)),
+                                      if (cal != null) Text('$cal kcal', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: accent)),
+                                    ]),
+                                  );
+                                }),
+                              ]),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+
+                          if (_result!['macros'] != null) ...[
+                            Container(
+                              decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                              padding: const EdgeInsets.all(16),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text('Makrolar', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                                const SizedBox(height: 10),
+                                Wrap(spacing: 8, runSpacing: 8,
+                                  children: Map<String, dynamic>.from(_result!['macros']).entries.map((e) =>
+                                    Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(99), border: Border.all(color: border)),
+                                      child: Text('${e.key}: ${e.value}', style: TextStyle(fontSize: 12, color: text)))
+                                  ).toList(),
+                                ),
+                              ]),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+
+                          if (_result!['confidence'] != null)
+                            Align(alignment: Alignment.centerLeft,
+                              child: Text('📊 Güven: ${_result!['confidence']}', style: TextStyle(fontSize: 11, color: muted))),
+
+                          const SizedBox(height: 12),
+                          aiOutlineBtn('Yeni Fotoğraf', Icons.refresh, accent, border,
+                            () => setState(() { _result = null; _imageBytes = null; })),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              OutlinedButton.icon(
-                onPressed: () => setState(() {
-                  _result = null;
-                  _imageBytes = null;
-                }),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Yeni Fotoğraf'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 48),
-                ),
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

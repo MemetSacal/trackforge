@@ -1,34 +1,28 @@
 // ── register_screen.dart ────────────────────────────────
-// Yeni kullanıcı kayıt ekranı.
-// Ad soyad, email ve şifre alıp POST /auth/register atar.
-// Başarılıysa otomatik login yapıp onboarding'e yönlendirir.
-
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/api_exceptions.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/auth/token_manager.dart';
+import '../../app.dart';
 
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
-
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
-  // ── CONTROLLERS ─────────────────────────────────────────
-  final _fullNameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+  final _fullNameController        = TextEditingController();
+  final _emailController           = TextEditingController();
+  final _passwordController        = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-
-  // ── STATE ───────────────────────────────────────────────
-  bool _isLoading = false;
+  bool _isLoading       = false;
   bool _obscurePassword = true;
-  bool _obscureConfirm = true;
+  bool _obscureConfirm  = true;
   String? _errorMessage;
 
   @override
@@ -40,65 +34,77 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  // ── REGISTER FONKSİYONU ─────────────────────────────────
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
-
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
+    setState(() { _isLoading = true; _errorMessage = null; });
     try {
-      // Adım 1 — Kayıt ol
-      await ApiClient.instance.post(
-        Endpoints.register,
-        data: {
-          'full_name': _fullNameController.text.trim(),
-          'email': _emailController.text.trim(),
-          'password': _passwordController.text,
-        },
-      );
-
-      // Adım 2 — Otomatik login yap (kayıt sonrası token al)
-      final loginResponse = await ApiClient.instance.post(
-        Endpoints.login,
-        data: {
-          'email': _emailController.text.trim(),
-          'password': _passwordController.text,
-        },
-      );
-
-      // Adım 3 — Token'ları kaydet
+      await ApiClient.instance.post(Endpoints.register, data: {
+        'full_name': _fullNameController.text.trim(),
+        'email':     _emailController.text.trim(),
+        'password':  _passwordController.text,
+      });
+      final loginResponse = await ApiClient.instance.post(Endpoints.login, data: {
+        'email':    _emailController.text.trim(),
+        'password': _passwordController.text,
+      });
       await TokenManager.saveTokens(
-        accessToken: loginResponse.data['access_token'],
+        accessToken:  loginResponse.data['access_token'],
         refreshToken: loginResponse.data['refresh_token'],
       );
-
       if (!mounted) return;
-
-      // Adım 4 — Onboarding'e yönlendir (ilk kez giriş yapıyor)
       context.go('/onboarding');
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
-    } catch (e) {
+    } catch (_) {
       setState(() => _errorMessage = 'Bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ── UI ──────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      // Geri butonu — login'e dön
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/login'),
+    final isDark   = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final bg       = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
+    final bgCard   = isDark ? const Color(0xFF141620) : Colors.white;
+    final border   = isDark ? const Color(0x12FFFFFF) : const Color(0x12000000);
+    final text     = isDark ? const Color(0xFFF0EEF8) : const Color(0xFF111318);
+    final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
+    final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
+    final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
+    final danger   = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
+    final inputBg  = isDark ? const Color(0xFF1C1E2A) : Colors.white;
+
+    // Input decoration factory — login ile aynı
+    InputDecoration _inputDec(String label, IconData icon, {Widget? suffix}) {
+      return InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: muted),
+        prefixIcon: Icon(icon, color: muted),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: inputBg,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: border.withOpacity(0.5)),
         ),
-      ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: accent, width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: danger),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: danger, width: 1.5),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: bg,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -109,193 +115,157 @@ class _RegisterScreenState extends State<RegisterScreen> {
               children: [
                 const SizedBox(height: 16),
 
-                // ── BAŞLIK ────────────────────────────────
-                Text(
-                  'Hesap Oluştur',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+                // Geri butonu
+                GestureDetector(
+                  onTap: () => context.go('/login'),
+                  child: Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      color: bgCard,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: border),
+                    ),
+                    child: Icon(Icons.arrow_back_ios_new_rounded, size: 15, color: muted),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'TrackForge\'a hoş geldin!',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontSize: 14,
-                  ),
-                ),
+                const SizedBox(height: 28),
+
+                Text('Hesap Oluştur 🚀',
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: text, letterSpacing: -0.5)),
+                const SizedBox(height: 6),
+                Text("TrackForge'a hoş geldin!",
+                    style: TextStyle(fontSize: 14, color: muted)),
                 const SizedBox(height: 32),
 
-                // ── AD SOYAD ──────────────────────────────
+                // Ad Soyad
                 TextFormField(
                   controller: _fullNameController,
                   textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                    labelText: 'Ad Soyad',
-                    prefixIcon: Icon(Icons.person_outlined),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Ad soyad gerekli';
-                    }
-                    if (value.trim().length < 2) {
-                      return 'Ad soyad en az 2 karakter olmalı';
-                    }
+                  style: TextStyle(color: text),
+                  decoration: _inputDec('Ad Soyad', Icons.person_outlined),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Ad soyad gerekli';
+                    if (v.trim().length < 2) return 'Ad soyad en az 2 karakter olmalı';
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
-                // ── EMAIL ─────────────────────────────────
+                // E-posta
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'E-posta',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'E-posta adresi gerekli';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Geçerli bir e-posta adresi girin';
-                    }
+                  style: TextStyle(color: text),
+                  decoration: _inputDec('E-posta', Icons.email_outlined),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'E-posta adresi gerekli';
+                    if (!v.contains('@')) return 'Geçerli bir e-posta girin';
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
-                // ── ŞİFRE ─────────────────────────────────
+                // Şifre
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  decoration: InputDecoration(
-                    labelText: 'Şifre',
-                    prefixIcon: const Icon(Icons.lock_outlined),
-                    suffixIcon: IconButton(
+                  style: TextStyle(color: text),
+                  decoration: _inputDec(
+                    'Şifre',
+                    Icons.lock_outlined,
+                    suffix: IconButton(
                       icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
+                        _obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        color: muted,
                       ),
-                      onPressed: () =>
-                          setState(() => _obscurePassword = !_obscurePassword),
+                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     ),
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Şifre gerekli';
-                    }
-                    if (value.length < 6) {
-                      return 'Şifre en az 6 karakter olmalı';
-                    }
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Şifre gerekli';
+                    if (v.length < 6) return 'Şifre en az 6 karakter olmalı';
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
-                // ── ŞİFRE TEKRAR ──────────────────────────
+                // Şifre tekrar
                 TextFormField(
                   controller: _confirmPasswordController,
                   obscureText: _obscureConfirm,
-                  decoration: InputDecoration(
-                    labelText: 'Şifre Tekrar',
-                    prefixIcon: const Icon(Icons.lock_outlined),
-                    suffixIcon: IconButton(
+                  style: TextStyle(color: text),
+                  decoration: _inputDec(
+                    'Şifre Tekrar',
+                    Icons.lock_outlined,
+                    suffix: IconButton(
                       icon: Icon(
-                        _obscureConfirm
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
+                        _obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        color: muted,
                       ),
-                      onPressed: () =>
-                          setState(() => _obscureConfirm = !_obscureConfirm),
+                      onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Şifre tekrarı gerekli';
-                    }
-                    // İki şifre eşleşiyor mu?
-                    if (value != _passwordController.text) {
-                      return 'Şifreler eşleşmiyor';
-                    }
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Şifre tekrarı gerekli';
+                    if (v != _passwordController.text) return 'Şifreler eşleşmiyor';
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
-                // ── HATA MESAJI ───────────────────────────
+                // Hata mesajı
                 if (_errorMessage != null)
                   Container(
+                    margin: const EdgeInsets.only(bottom: 14),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .error
-                          .withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      color: danger.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: danger.withOpacity(0.3)),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          color: Theme.of(context).colorScheme.error,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _errorMessage!,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: Row(children: [
+                      Icon(Icons.error_outline, color: danger, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(_errorMessage!, style: TextStyle(color: danger, fontSize: 13))),
+                    ]),
                   ),
 
-                const SizedBox(height: 24),
-
-                // ── KAYIT OL BUTONU ───────────────────────
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _register,
-                  child: _isLoading
-                      ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
+                // Kayıt ol butonu
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _register,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accent,
+                      foregroundColor: isDark ? Colors.black : Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
                     ),
-                  )
-                      : const Text('Kayıt Ol'),
+                    child: _isLoading
+                        ? SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: isDark ? Colors.black : Colors.white,
+                            ),
+                          )
+                        : const Text('Kayıt Ol',
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  ),
                 ),
+                const SizedBox(height: 20),
 
-                const SizedBox(height: 16),
-
-                // ── GİRİŞ YAP LİNKİ ──────────────────────
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Zaten hesabın var mı? ',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    GestureDetector(
-                      onTap: () => context.go('/login'),
-                      child: Text(
-                        'Giriş Yap',
-                        style: TextStyle(
-                          color: Theme.of(context).primaryColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                // Giriş yap linki
+                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Text('Zaten hesabın var mı? ', style: TextStyle(color: muted)),
+                  GestureDetector(
+                    onTap: () => context.go('/login'),
+                    child: Text('Giriş Yap',
+                        style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
+                  ),
+                ]),
               ],
             ),
           ),

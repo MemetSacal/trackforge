@@ -1,23 +1,22 @@
 // ── more_screen.dart ────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../app.dart';
+import '../../core/api/api_client.dart';
+import '../../core/api/endpoints.dart';
 import '../raporlar/raporlar_screen.dart';
 import '../sosyal/sosyal_screen.dart';
 import '../alisveris/alisveris_screen.dart';
 import '../profil/profil_screen.dart';
 import '../gamification/gamification_screen.dart';
 import '../steps/steps_screen.dart';
-import '../../core/api/api_client.dart';
-import '../../core/api/endpoints.dart';
 import '../cycle/cycle_screen.dart';
 
 final _genderProvider = FutureProvider<String>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.preferences);
     return response.data['gender'] as String? ?? 'male';
-  } catch (_) {
-    return 'male';
-  }
+  } catch (_) { return 'male'; }
 });
 
 class MoreScreen extends ConsumerWidget {
@@ -25,183 +24,153 @@ class MoreScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDark   = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final bg       = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
+    final bgCard   = isDark ? const Color(0xFF141620) : Colors.white;
+    final bgSoft   = isDark ? const Color(0xFF0F1016) : const Color(0xFFE8EBF2);
+    final border   = isDark ? const Color(0x12FFFFFF) : const Color(0x12000000);
+    final text     = isDark ? const Color(0xFFF0EEF8) : const Color(0xFF111318);
+    final textSoft = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
+    final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
+    final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
+    final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
+
     final gender = ref.watch(_genderProvider).value ?? 'male';
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Daha Fazla')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SectionTitle(title: 'Analiz'),
-            _MenuItem(
-              emoji: '📊',
-              title: 'Raporlar',
-              description: 'Haftalık ve aylık grafikler',
-              color: Colors.blue,
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const RaporlarScreen())),
-            ),
-            _MenuItem(
-              emoji: '🏆',
-              title: 'Gamification',
-              description: 'XP, rozetler, seviye',
-              color: Colors.amber,
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const GamificationScreen())),
-            ),
-            _MenuItem(
-              emoji: '👟',
-              title: 'Adım Sayar',
-              description: 'Günlük adım takibi',
-              color: Colors.green,
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const StepsScreen())),
-            ),
-
-            const SizedBox(height: 16),
-
-            _SectionTitle(title: 'Sosyal'),
-            _MenuItem(
-              emoji: '👥',
-              title: 'Arkadaşlar & Liderlik',
-              description: 'Arkadaşlarınla yarış',
-              color: Colors.purple,
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const SosyalScreen())),
-            ),
-
-            const SizedBox(height: 16),
-
-            _SectionTitle(title: 'Alışveriş'),
-            _MenuItem(
-              emoji: '🛒',
-              title: 'Alışveriş Listesi',
-              description: 'Barkod tarayıcı dahil',
-              color: Colors.orange,
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const AlisverisScreen())),
-            ),
-
-            const SizedBox(height: 16),
-
-            if (gender == 'female') ...[
-              _SectionTitle(title: 'Sağlık'),
-              _MenuItem(
-                emoji: '🌸',
-                title: 'Regl Takvimi',
-                description: 'Döngü takibi ve faz analizi',
-                color: Colors.pink,
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const CycleScreen())),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            _SectionTitle(title: 'Hesap'),
-            _MenuItem(
-              emoji: '👤',
-              title: 'Profil',
-              description: 'Sağlık bilgileri ve tercihler',
-              color: Colors.teal,
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const ProfilScreen())),
-            ),
-
-            const SizedBox(height: 80),
+    final sections = <Map<String, dynamic>>[
+      {
+        'title': 'Analiz',
+        'items': [
+          _Item('📊', 'Raporlar',       'Haftalık ve aylık grafikler', const Color(0xFF22D3EE),  () => _push(context, const RaporlarScreen())),
+          _Item('🏆', 'Gamification',   'XP, rozetler, seviye',        const Color(0xFFFFB020),  () => _push(context, const GamificationScreen())),
+          _Item('👟', 'Adım Sayar',     'Günlük adım takibi',          const Color(0xFF34D399),  () => _push(context, const StepsScreen())),
+        ],
+      },
+      {
+        'title': 'Sosyal',
+        'items': [
+          _Item('👥', 'Arkadaşlar & Liderlik', 'Arkadaşlarınla yarış', const Color(0xFFA78BFA), () => _push(context, const SosyalScreen())),
+        ],
+      },
+      {
+        'title': 'Alışveriş',
+        'items': [
+          _Item('🛒', 'Alışveriş Listesi', 'Barkod tarayıcı dahil', const Color(0xFFFFB020), () => _push(context, const AlisverisScreen())),
+        ],
+      },
+      if (gender == 'female')
+        {
+          'title': 'Sağlık',
+          'items': [
+            _Item('🌸', 'Regl Takvimi', 'Döngü takibi ve faz analizi', const Color(0xFFFF69B4), () => _push(context, const CycleScreen())),
           ],
-        ),
-      ),
-    );
-  }
-}
+        },
+      {
+        'title': 'Hesap',
+        'items': [
+          _Item('👤', 'Profil', 'Sağlık bilgileri ve tercihler', const Color(0xFF34D399), () => _push(context, const ProfilScreen())),
+        ],
+      },
+    ];
 
-class _SectionTitle extends StatelessWidget {
-  final String title;
-  const _SectionTitle({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).textTheme.bodySmall?.color,
-          letterSpacing: 0.5,
-        ),
-      ),
-    );
-  }
-}
-
-class _MenuItem extends StatelessWidget {
-  final String emoji;
-  final String title;
-  final String description;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _MenuItem({
-    required this.emoji,
-    required this.title,
-    required this.description,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: Text(emoji, style: const TextStyle(fontSize: 24)),
-                ),
+    return Scaffold(
+      backgroundColor: bg,
+      body: CustomScrollView(
+        slivers: [
+          // ── HEADER ────────────────────────────────
+          SliverToBoxAdapter(
+            child: Container(
+              color: bg,
+              padding: const EdgeInsets.fromLTRB(16, 56, 16, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('TRACKFORGE', style: TextStyle(fontSize: 9, letterSpacing: 3, color: muted, fontWeight: FontWeight.w600)),
+                        Text('Daha Fazla', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: text, letterSpacing: -0.5)),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => ref.read(themeModeProvider.notifier).toggle(),
+                    child: Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
+                      child: Icon(isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round, size: 15, color: textSoft),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
+            ),
+          ),
+
+          // ── İÇERİK ────────────────────────────────
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                ...sections.map((section) => Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8, top: 4),
+                      child: Text(
+                        section['title'] as String,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted, letterSpacing: 0.5),
                       ),
                     ),
-                    Text(
-                      description,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+                    ...(section['items'] as List<_Item>).map((item) => GestureDetector(
+                      onTap: item.onTap,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44, height: 44,
+                              decoration: BoxDecoration(
+                                color: item.color.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Center(child: Text(item.emoji, style: const TextStyle(fontSize: 22))),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(item.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                                  const SizedBox(height: 2),
+                                  Text(item.desc, style: TextStyle(fontSize: 11, color: muted)),
+                                ],
+                              ),
+                            ),
+                            Icon(Icons.chevron_right, size: 16, color: muted),
+                          ],
+                        ),
+                      ),
+                    )),
+                    const SizedBox(height: 8),
                   ],
-                ),
-              ),
-              Icon(
-                Icons.chevron_right,
-                color: Theme.of(context).textTheme.bodySmall?.color,
-              ),
-            ],
+                )),
+              ]),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
+
+  void _push(BuildContext context, Widget screen) =>
+      Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+}
+
+class _Item {
+  final String emoji, title, desc;
+  final Color color;
+  final VoidCallback onTap;
+  const _Item(this.emoji, this.title, this.desc, this.color, this.onTap);
 }

@@ -1,32 +1,19 @@
 // ── su_tab.dart ─────────────────────────────────────────
-// Günlük su takibi ekranı.
-// GET /water/date/{date} → bugünkü su logunu çeker
-// POST /water → yeni su ekler
-// Hedef: günlük 2800ml (varsayılan)
-// Progress bar ile görsel olarak gösterilir.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 
-// ── PROVIDER ────────────────────────────────────────────
 final todayWaterProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   try {
-    final response = await ApiClient.instance.get(
-      '${Endpoints.water}/date/${TFDateUtils.today()}',
-    );
+    final response = await ApiClient.instance.get('${Endpoints.water}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(response.data);
-  } catch (_) {
-    return null;
-  }
+  } catch (_) { return null; }
 });
 
-// ── SU TAB ──────────────────────────────────────────────
 class SuTab extends ConsumerStatefulWidget {
   const SuTab({super.key});
-
   @override
   ConsumerState<SuTab> createState() => _SuTabState();
 }
@@ -36,285 +23,191 @@ class _SuTabState extends ConsumerState<SuTab> {
   bool _isLoading = false;
 
   @override
-  void dispose() {
-    _amountController.dispose();
-    super.dispose();
-  }
+  void dispose() { _amountController.dispose(); super.dispose(); }
 
-  Future<void> _addWater(int currentAmount) async {
+  Future<void> _addWater(int current, Map<String, dynamic>? existing, int target) async {
     final text = _amountController.text.trim();
-
-    if (text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Miktar zorunludur')),
-      );
-      return;
-    }
-
+    if (text.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Miktar zorunludur'))); return; }
     final amount = int.tryParse(text);
     if (amount == null || amount < 50 || amount > 10000) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Miktar 50–10000 ml arasında olmalı')),
-      );
-      return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Miktar 50–10000 ml arasında olmalı'))); return;
     }
     setState(() => _isLoading = true);
-
     try {
-      final waterAsync = ref.read(todayWaterProvider);
-      final existingLog = waterAsync.value;
-
-      if (existingLog != null) {
-        // Log var — mevcut miktara ekle, PUT ile güncelle
-        // num cast — backend'den gelen değerler LinkedMap'ten num olarak gelir
-        await ApiClient.instance.put(
-          '${Endpoints.water}/${existingLog['id']}',
-          data: {
-            'amount_ml': currentAmount + amount,
-            'target_ml': (existingLog['target_ml'] as num?)?.toInt() ?? 2800,
-          },
-        );
+      if (existing != null) {
+        await ApiClient.instance.put('${Endpoints.water}/${existing['id']}', data: {
+          'amount_ml': current + amount, 'target_ml': target,
+        });
       } else {
-        // Log yok — yeni oluştur
-        await ApiClient.instance.post(
-          Endpoints.water,
-          data: {
-            'date': TFDateUtils.today(),
-            'amount_ml': amount,
-            'target_ml': 2800,
-          },
-        );
+        await ApiClient.instance.post(Endpoints.water, data: {
+          'date': TFDateUtils.today(), 'amount_ml': amount, 'target_ml': 2000,
+        });
       }
-
       _amountController.clear();
       ref.invalidate(todayWaterProvider);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Su eklenirken hata oluştu')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Su eklenirken hata oluştu')));
+    } finally { if (mounted) setState(() => _isLoading = false); }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark   = Theme.of(context).brightness == Brightness.dark;
+    final bgCard   = isDark ? const Color(0xFF141620) : Colors.white;
+    final bgSoft   = isDark ? const Color(0xFF0F1016) : const Color(0xFFE8EBF2);
+    final border   = isDark ? const Color(0x12FFFFFF) : const Color(0x12000000);
+    final text     = isDark ? const Color(0xFFF0EEF8) : const Color(0xFF111318);
+    final textSoft = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
+    final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
+    final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
+    final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
+
     final waterAsync = ref.watch(todayWaterProvider);
 
     return waterAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => const Center(child: Text('Veri yüklenemedi')),
+      loading: () => Center(child: CircularProgressIndicator(color: accent)),
+      error:   (_, __) => Center(child: Text('Veri yüklenemedi', style: TextStyle(color: text))),
       data: (waterLog) {
-        // num cast — LinkedMap'ten gelen değerler int değil num olabilir
         final current = (waterLog?['amount_ml'] as num?)?.toInt() ?? 0;
-        final target = (waterLog?['target_ml'] as num?)?.toInt() ?? 2800;
+        final target  = (waterLog?['target_ml'] as num?)?.toInt() ?? 2000;
         final progress = (current / target).clamp(0.0, 1.0);
 
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           child: Column(
             children: [
-              const SizedBox(height: 16),
-
-              // ── DAİRESEL PROGRESS ─────────────────────
-              SizedBox(
-                width: 200,
-                height: 200,
-                child: Stack(
-                  alignment: Alignment.center,
+              // ── BÜYÜK SU KARTI ────────────────────────
+              Container(
+                decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                padding: const EdgeInsets.all(20),
+                child: Column(
                   children: [
-                    SizedBox(
-                      width: 200,
-                      height: 200,
-                      child: CircularProgressIndicator(
-                        value: progress,
-                        strokeWidth: 16,
-                        backgroundColor: Theme.of(context)
-                            .primaryColor
-                            .withOpacity(0.15),
-                        color: Theme.of(context).primaryColor,
+                    Text(
+                      current > 0 ? '${(current / 1000).toStringAsFixed(1)}L' : '0.0L',
+                      style: TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: accent, height: 1),
+                    ),
+                    const SizedBox(height: 4),
+                    Text('Günlük hedef: ${(target / 1000).toStringAsFixed(1)}L', style: TextStyle(fontSize: 13, color: textSoft)),
+                    const SizedBox(height: 16),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: progress, minHeight: 8,
+                        backgroundColor: accent.withOpacity(0.15),
+                        color: accent,
                       ),
                     ),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    const SizedBox(height: 6),
+                    Text('%${(progress * 100).toInt()} tamamlandı', style: TextStyle(fontSize: 12, color: muted)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // ── BUGÜNKÜ GİRİŞLER (mock görsel) ────────
+              if (waterLog != null) ...[
+                Container(
+                  decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Bugünkü Eklemeler', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+                      const SizedBox(height: 12),
+                      // Su bar görselleştirme
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: List.generate(5, (i) {
+                          final h = i < (current / (target / 5)).floor() ? 1.0 : (i == (current / (target / 5)).floor() ? (current % (target / 5)) / (target / 5) : 0.05);
+                          return Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 3),
+                              child: Container(
+                                height: 40,
+                                decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(5)),
+                                alignment: Alignment.bottomCenter,
+                                child: FractionallySizedBox(
+                                  heightFactor: h.clamp(0.05, 1.0),
+                                  child: Container(decoration: BoxDecoration(color: const Color(0xFF22D3EE), borderRadius: BorderRadius.circular(4))),
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                      const SizedBox(height: 8),
+                      Text('$current ml / $target ml', style: TextStyle(fontSize: 12, color: textSoft)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              // ── HIZLI EKLE ────────────────────────────
+              Container(
+                decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Hızlı Ekle', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: ['150ml', '250ml', '500ml', '1L'].map((label) {
+                        final ml = label == '1L' ? 1000 : int.parse(label.replaceAll('ml', ''));
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
+                            child: GestureDetector(
+                              onTap: () {
+                                _amountController.text = '$ml';
+                                _addWater(current, waterLog, target);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 11),
+                                decoration: BoxDecoration(
+                                  color: accentDim,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: accent.withOpacity(0.4)),
+                                ),
+                                child: Center(child: Text(label, style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 13))),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
                       children: [
-                        const Text('💧', style: TextStyle(fontSize: 32)),
-                        Text(
-                          '${(current / 1000).toStringAsFixed(1)}L',
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: TextField(
+                            controller: _amountController,
+                            keyboardType: TextInputType.number,
+                            style: TextStyle(color: text),
+                            decoration: const InputDecoration(labelText: 'Miktar (ml)', prefixIcon: Icon(Icons.water_drop_outlined)),
                           ),
                         ),
-                        Text(
-                          'Hedef: ${(target / 1000).toStringAsFixed(1)}L',
-                          style: Theme.of(context).textTheme.bodySmall,
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 80,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : () => _addWater(current, waterLog, target),
+                            child: _isLoading
+                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                                : const Text('Ekle'),
+                          ),
                         ),
                       ],
                     ),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 32),
-
-              // ── HIZLI EKLE BUTONLARI ──────────────────
-              const Text(
-                'Hızlı Ekle',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _QuickAddButton(
-                    label: '150ml',
-                    onTap: () {
-                      _amountController.text = '150';
-                      _addWater(current);
-                    },
-                  ),
-                  _QuickAddButton(
-                    label: '250ml',
-                    onTap: () {
-                      _amountController.text = '250';
-                      _addWater(current);
-                    },
-                  ),
-                  _QuickAddButton(
-                    label: '500ml',
-                    onTap: () {
-                      _amountController.text = '500';
-                      _addWater(current);
-                    },
-                  ),
-                  _QuickAddButton(
-                    label: '1L',
-                    onTap: () {
-                      _amountController.text = '1000';
-                      _addWater(current);
-                    },
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // ── MANUEL GİRİŞ ──────────────────────────
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _amountController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Miktar (ml)',
-                        prefixIcon: Icon(Icons.water_drop_outlined),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : () => _addWater(current),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(80, 52),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                        : const Text('Ekle'),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // ── GÜNLÜK ÖZET ───────────────────────────
-              if (waterLog != null)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Bugün',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        LinearProgressIndicator(
-                          value: progress,
-                          backgroundColor: Theme.of(context)
-                              .primaryColor
-                              .withOpacity(0.15),
-                          color: Theme.of(context).primaryColor,
-                          minHeight: 8,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('$current ml içildi'),
-                            Text(
-                              '${(progress * 100).toInt()}%',
-                              style: TextStyle(
-                                color: Theme.of(context).primaryColor,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-// Hızlı ekle butonu
-class _QuickAddButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  const _QuickAddButton({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).primaryColor.withOpacity(0.15),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Theme.of(context).primaryColor.withOpacity(0.3),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: Theme.of(context).primaryColor,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
     );
   }
 }

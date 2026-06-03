@@ -78,4 +78,5 @@ class Endpoints {
   static const String aiMealAdvice = '/ai/meal-advice';
   static const String aiRecipe = '/ai/recipe';
   static const String aiCalorieFromPhoto = '/ai/calorie-from-photo';
+  static const aiCycleAdvice = '$baseUrl/api/v1/ai/cycle-advice';
 }

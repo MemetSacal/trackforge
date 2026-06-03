@@ -1,578 +1,307 @@
 // ── workout_plan_screen.dart ────────────────────────────
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
+import '../../app.dart';
 import '../egzersiz/seans_detay_screen.dart';
+import 'ai_helpers.dart'; // import eklendi
 
-class WorkoutPlanScreen extends StatefulWidget {
+class WorkoutPlanScreen extends ConsumerStatefulWidget {
   const WorkoutPlanScreen({super.key});
-
   @override
-  State<WorkoutPlanScreen> createState() => _WorkoutPlanScreenState();
+  ConsumerState<WorkoutPlanScreen> createState() => _WorkoutPlanScreenState();
 }
 
-class _WorkoutPlanScreenState extends State<WorkoutPlanScreen> {
-  String _goal = 'muscle_gain';
+class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
+  String _goal     = 'muscle_gain';
   String _location = 'gym';
-  int _daysPerWeek = 3;
-  int _sessionDuration = 60;
+  int _daysPerWeek      = 3;
+  int _sessionDuration  = 60;
 
   String? _planTitle;
   String? _weeklyNotes;
   List<Map<String, dynamic>> _schedule = [];
-  bool _isLoading = false;
+  bool _isLoading         = false;
   bool _isCreatingSession = false;
   String? _error;
 
   final _goals = [
-    {'key': 'muscle_gain', 'label': '💪 Kas Kazanmak'},
-    {'key': 'weight_loss', 'label': '⚡ Yağ Yakmak'},
-    {'key': 'endurance', 'label': '🏃 Dayanıklılık'},
-    {'key': 'strength', 'label': '🏋️ Güç'},
+    {'key': 'muscle_gain',     'label': '💪 Kas Kazanmak'},
+    {'key': 'weight_loss',     'label': '⚡ Yağ Yakmak'},
+    {'key': 'endurance',       'label': '🏃 Dayanıklılık'},
+    {'key': 'strength',        'label': '🏋️ Güç'},
     {'key': 'general_fitness', 'label': '⭐ Genel Fitness'},
   ];
 
   final _locations = [
-    {'key': 'gym', 'label': '🏋️ Spor Salonu'},
-    {'key': 'home', 'label': '🏠 Ev'},
+    {'key': 'gym',     'label': '🏋️ Spor Salonu'},
+    {'key': 'home',    'label': '🏠 Ev'},
     {'key': 'outdoor', 'label': '🌳 Dışarısı'},
   ];
 
   final _turkishDays = {
-    'pazartesi': 1,
-    'salı': 2,
-    'çarşamba': 3,
-    'perşembe': 4,
-    'cuma': 5,
-    'cumartesi': 6,
-    'pazar': 7,
+    'pazartesi': 1, 'salı': 2, 'çarşamba': 3,
+    'perşembe': 4,  'cuma': 5, 'cumartesi': 6, 'pazar': 7,
   };
 
-  Future<void> _generatePlan() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-      _planTitle = null;
-      _weeklyNotes = null;
-      _schedule = [];
-    });
-
-    String? debugResponse;
+  Future<void> _generate() async {
+    setState(() { _isLoading = true; _error = null; _planTitle = null; _weeklyNotes = null; _schedule = []; });
     try {
-      final response = await ApiClient.instance.post(
-        Endpoints.aiWorkoutPlan,
-        data: {
-          'workout_location': _location,
-          'fitness_goal': _goal,
-          'fitness_level': 'intermediate',
-          'available_days': _daysPerWeek,
-        },
-      );
-
-      debugResponse = response.data.toString();
-
-      final rawSchedule = response.data['weekly_schedule'];
-      if (rawSchedule is List) {
-        _schedule = rawSchedule
-            .map((day) => Map<String, dynamic>.from(day))
-            .toList();
-      }
-
-      setState(() {
-        _planTitle = response.data['plan_title'] as String? ?? '';
-        _weeklyNotes = response.data['weekly_notes'] as String? ?? '';
+      final response = await ApiClient.instance.post(Endpoints.aiWorkoutPlan, data: {
+        'workout_location': _location, 'fitness_goal': _goal,
+        'fitness_level': 'intermediate', 'available_days': _daysPerWeek,
       });
-    } catch (e) {
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: const Text('Debug Hata'),
-            content: SingleChildScrollView(child: Text('$e\n\n$debugResponse')),
-            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Tamam'))],
-          ),
-        );
-      }
-      setState(() => _error = 'Hata: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+      final raw = response.data['weekly_schedule'];
+      if (raw is List) _schedule = raw.map((d) => Map<String, dynamic>.from(d)).toList();
+      setState(() {
+        _planTitle   = response.data['plan_title']    as String? ?? '';
+        _weeklyNotes = response.data['weekly_notes']  as String? ?? '';
+      });
+    } catch (e) { setState(() => _error = 'Plan oluşturulurken hata oluştu: $e'); }
+    finally { if (mounted) setState(() => _isLoading = false); }
   }
 
   Future<void> _startTodayWorkout() async {
     if (_schedule.isEmpty) return;
-
-    final todayWeekday = DateTime.now().weekday;
-
+    final todayWd = DateTime.now().weekday;
     Map<String, dynamic>? todaySchedule;
     for (final day in _schedule) {
-      final dayName = (day['day'] as String? ?? '').toLowerCase().trim();
-      final dayIndex = _turkishDays[dayName];
-      if (dayIndex == todayWeekday) {
-        todaySchedule = day;
-        break;
-      }
+      final dayIndex = _turkishDays[(day['day'] as String? ?? '').toLowerCase().trim()];
+      if (dayIndex == todayWd) { todaySchedule = day; break; }
     }
     todaySchedule ??= _schedule.first;
 
-    final dayName = todaySchedule['day'] as String? ?? 'Antrenman';
-    final focus = todaySchedule['focus'] as String? ?? '';
+    final dayName  = todaySchedule['day'] as String? ?? 'Antrenman';
+    final focus    = todaySchedule['focus'] as String? ?? '';
     final duration = todaySchedule['estimated_duration_minutes'] as int? ?? _sessionDuration;
     final calories = (todaySchedule['estimated_calories'] as num?)?.toDouble();
-    final rawExercises = todaySchedule['exercises'] as List? ?? [];
+    final exercises= todaySchedule['exercises'] as List? ?? [];
 
     setState(() => _isCreatingSession = true);
-
     try {
-      final sessionResponse = await ApiClient.instance.post(
-        Endpoints.exerciseSessions,
-        data: {
-          'date': TFDateUtils.today(),
-          'duration_minutes': duration,
-          'calories_burned': calories,
-          'notes': '$dayName — $focus',
-        },
-      );
-
-      final session = Map<String, dynamic>.from(sessionResponse.data);
+      final sessionRes = await ApiClient.instance.post(Endpoints.exerciseSessions, data: {
+        'date': TFDateUtils.today(), 'duration_minutes': duration,
+        'calories_burned': calories, 'notes': '$dayName — $focus',
+      });
+      final session   = Map<String, dynamic>.from(sessionRes.data);
       final sessionId = session['id'] as String;
 
-      for (final rawEx in rawExercises) {
+      for (final rawEx in exercises) {
         try {
-          Map<String, dynamic> ex;
-          if (rawEx is Map) {
-            ex = Map<String, dynamic>.from(rawEx);
-          } else {
-            ex = {'name': rawEx.toString()};
-          }
-
+          final ex   = rawEx is Map ? Map<String, dynamic>.from(rawEx) : {'name': rawEx.toString()};
           final name = ex['name'] as String? ?? ex['exercise_name'] as String? ?? 'Egzersiz';
           final sets = (ex['sets'] as num?)?.toInt();
           final repsRaw = ex['reps'];
           int? reps;
-          if (repsRaw is int) {
-            reps = repsRaw;
-          } else if (repsRaw is String) {
-            reps = int.tryParse(repsRaw.split('-').first.trim().split(' ').first);
-          }
-
-          await ApiClient.instance.post(
-            '${Endpoints.exerciseSessions}/$sessionId/exercises',
-            data: {
-              'exercise_name': name,
-              'sets': sets,
-              'reps': reps,
-              'weight_kg': null,
-              'notes': ex['notes'] as String?,
-            },
-          );
-        } catch (_) {
-          continue;
-        }
+          if (repsRaw is int) reps = repsRaw;
+          else if (repsRaw is String) reps = int.tryParse(repsRaw.split('-').first.trim().split(' ').first);
+          await ApiClient.instance.post('${Endpoints.exerciseSessions}/$sessionId/exercises', data: {
+            'exercise_name': name, 'sets': sets, 'reps': reps, 'weight_kg': null, 'notes': ex['notes'] as String?,
+          });
+        } catch (_) { continue; }
       }
-
       if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => SeansDetayScreen(session: session)),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Seans oluşturulurken hata oluştu')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isCreatingSession = false);
-    }
+      Navigator.push(context, MaterialPageRoute(builder: (_) => SeansDetayScreen(session: session)));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Seans oluşturulurken hata oluştu')));
+    } finally { if (mounted) setState(() => _isCreatingSession = false); }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark   = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final bg       = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
+    final bgCard   = isDark ? const Color(0xFF141620) : Colors.white;
+    final bgSoft   = isDark ? const Color(0xFF0F1016) : const Color(0xFFE8EBF2);
+    final border   = isDark ? const Color(0x12FFFFFF) : const Color(0x12000000);
+    final text     = isDark ? const Color(0xFFF0EEF8) : const Color(0xFF111318);
+    final textSoft = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
+    final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
+    final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
+    final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
+    final danger   = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
+
     final hasPlan = _planTitle != null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Antrenman Planı')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      backgroundColor: bg,
+      body: Column(
+        children: [
+          aiHeader(context, ref, isDark, bg, bgCard, border, text, textSoft, muted, accent, 'Antrenman Planı'),
+          Expanded(
+            child: _isLoading
+                ? aiLoadingState(accent, text, '💪 Antrenman planı hazırlanıyor...')
+                : _error != null
+                    ? aiErrorState(_error!, danger, accent, _generate)
+                    : hasPlan
+                        ? _planResult(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim)
+                        : _planForm(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim),
+          ),
+        ],
+      ),
+    );
+  }
 
-            if (!hasPlan && !_isLoading) ...[
-              const Text('Hedefin ne?',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _goals.map((g) {
-                  final isSelected = _goal == g['key'];
-                  return GestureDetector(
-                    onTap: () => setState(() => _goal = g['key']!),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? Theme.of(context).primaryColor.withOpacity(0.15)
-                            : Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isSelected
-                              ? Theme.of(context).primaryColor
-                              : Theme.of(context).dividerColor,
-                          width: isSelected ? 2 : 1,
-                        ),
-                      ),
-                      child: Text(g['label']!,
-                          style: TextStyle(
-                              fontWeight: isSelected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal)),
-                    ),
-                  );
-                }).toList(),
-              ),
-
-              const SizedBox(height: 24),
-
-              const Text('Nerede antrenman yapacaksın?',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Row(
-                children: _locations.map((l) {
-                  final isSelected = _location == l['key'];
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _location = l['key']!),
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? Theme.of(context).primaryColor.withOpacity(0.15)
-                              : Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected
-                                ? Theme.of(context).primaryColor
-                                : Theme.of(context).dividerColor,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        child: Text(l['label']!,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: isSelected
-                                    ? FontWeight.bold
-                                    : FontWeight.normal)),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-
-              const SizedBox(height: 24),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Haftada kaç gün?',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  Text('$_daysPerWeek gün',
-                      style: TextStyle(
-                          color: Theme.of(context).primaryColor,
-                          fontWeight: FontWeight.bold)),
-                ],
-              ),
-              Slider(
-                value: _daysPerWeek.toDouble(),
-                min: 2, max: 6, divisions: 4,
-                label: '$_daysPerWeek',
-                activeColor: Theme.of(context).primaryColor,
-                onChanged: (v) => setState(() => _daysPerWeek = v.toInt()),
-              ),
-
-              const SizedBox(height: 16),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Seans süresi?',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  Text('$_sessionDuration dk',
-                      style: TextStyle(
-                          color: Theme.of(context).primaryColor,
-                          fontWeight: FontWeight.bold)),
-                ],
-              ),
-              Slider(
-                value: _sessionDuration.toDouble(),
-                min: 30, max: 120, divisions: 6,
-                label: '$_sessionDuration dk',
-                activeColor: Theme.of(context).primaryColor,
-                onChanged: (v) => setState(() => _sessionDuration = v.toInt()),
-              ),
-
-              const SizedBox(height: 24),
-
-              ElevatedButton.icon(
-                onPressed: _generatePlan,
-                icon: const Text('🤖'),
-                label: const Text('Plan Oluştur'),
-              ),
-            ],
-
-            if (_isLoading)
-              Center(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 48),
-                    CircularProgressIndicator(color: Theme.of(context).primaryColor),
-                    const SizedBox(height: 24),
-                    const Text('💪 Antrenman planı hazırlanıyor...'),
-                    const SizedBox(height: 8),
-                    Text('Bu 10-20 saniye sürebilir',
-                        style: Theme.of(context).textTheme.bodySmall),
-                  ],
-                ),
-              ),
-
-            if (_error != null)
-              Center(
-                child: Column(
-                  children: [
-                    Text(_error!,
-                        style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                    const SizedBox(height: 16),
-                    ElevatedButton(onPressed: _generatePlan, child: const Text('Tekrar Dene')),
-                  ],
-                ),
-              ),
-
-            if (hasPlan) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const Text('💪', style: TextStyle(fontSize: 32)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _planTitle!.isNotEmpty ? _planTitle! : 'Kişisel Antrenman Planın',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              ..._schedule.map((day) {
-                final dayName = day['day'] as String? ?? '';
-                final focus = day['focus'] as String? ?? '';
-                final duration = day['estimated_duration_minutes'];
-                final calories = day['estimated_calories'];
-                final exercises = day['exercises'] as List? ?? [];
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).primaryColor.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                dayName.toUpperCase(),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Theme.of(context).primaryColor,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(focus,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600, fontSize: 14)),
-                            ),
-                          ],
-                        ),
-
-                        if (duration != null || calories != null) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              if (duration != null)
-                                _PlanChip(icon: '⏱️', label: '$duration dk'),
-                              const SizedBox(width: 8),
-                              if (calories != null)
-                                _PlanChip(icon: '🔥', label: '$calories kcal'),
-                            ],
-                          ),
-                        ],
-
-                        if (exercises.isNotEmpty) ...[
-                          const SizedBox(height: 12),
-                          const Divider(height: 1),
-                          const SizedBox(height: 12),
-                          ...exercises.map((rawEx) {
-                            final ex = rawEx is Map
-                                ? Map<String, dynamic>.from(rawEx)
-                                : {'name': rawEx.toString()};
-                            final name = ex['name'] as String? ??
-                                ex['exercise_name'] as String? ??
-                                'Egzersiz';
-                            final sets = ex['sets'];
-                            final reps = ex['reps'];
-                            final notes = ex['notes'] as String?;
-
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    width: 8, height: 8,
-                                    margin: const EdgeInsets.only(top: 6, right: 10),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context).primaryColor,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(name,
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 14)),
-                                        if (sets != null || reps != null)
-                                          Text(
-                                            [
-                                              if (sets != null) '$sets set',
-                                              if (reps != null) '$reps tekrar',
-                                            ].join(' × '),
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: Theme.of(context).primaryColor,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        if (notes != null && notes.isNotEmpty)
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 2),
-                                            child: Text(notes,
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  color: Theme.of(context)
-                                                      .textTheme
-                                                      .bodySmall
-                                                      ?.color,
-                                                )),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }),
-                        ],
-                      ],
-                    ),
-                  ),
-                );
-              }),
-
-              if (_weeklyNotes != null && _weeklyNotes!.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Card(
-                  color: Theme.of(context).primaryColor.withOpacity(0.07),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('📝', style: TextStyle(fontSize: 18)),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(_weeklyNotes!,
-                              style: const TextStyle(fontSize: 14, height: 1.5)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 16),
-
-              ElevatedButton.icon(
-                onPressed: _isCreatingSession ? null : _startTodayWorkout,
-                icon: _isCreatingSession
-                    ? const SizedBox(
-                        width: 20, height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('🚀'),
-                label: Text(_isCreatingSession
-                    ? 'Seans oluşturuluyor...'
-                    : 'Bugün Antrenmana Başla'),
-              ),
-
-              const SizedBox(height: 12),
-
-              OutlinedButton.icon(
-                onPressed: () => setState(() {
-                  _planTitle = null;
-                  _weeklyNotes = null;
-                  _schedule = [];
-                }),
-                icon: const Icon(Icons.arrow_back),
-                label: const Text('Yeni Plan Oluştur'),
-                style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 48)),
-              ),
-            ],
-          ],
+  Widget _planForm(Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Hedefin ne?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8,
+          children: _goals.map((g) {
+            final sel = _goal == g['key'];
+            return GestureDetector(onTap: () => setState(() => _goal = g['key']!),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(color: sel ? accentDim : bgCard, borderRadius: BorderRadius.circular(99), border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1)),
+                child: Text(g['label']!, style: TextStyle(fontSize: 13, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text)),
+              ));
+          }).toList()),
+        const SizedBox(height: 20),
+        Text('Nerede antrenman yapacaksın?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+        const SizedBox(height: 10),
+        Row(children: _locations.map((l) {
+          final sel = _location == l['key'];
+          return Expanded(child: GestureDetector(onTap: () => setState(() => _location = l['key']!),
+            child: Container(
+              margin: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(color: sel ? accentDim : bgCard, borderRadius: BorderRadius.circular(14), border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1)),
+              child: Text(l['label']!, textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text)),
+            )));
+        }).toList()),
+        const SizedBox(height: 20),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('Haftada kaç gün?', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: text)),
+          Text('$_daysPerWeek gün', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
+        ]),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(activeTrackColor: accent, thumbColor: accent, inactiveTrackColor: accent.withOpacity(0.2)),
+          child: Slider(value: _daysPerWeek.toDouble(), min: 2, max: 6, divisions: 4, label: '$_daysPerWeek', onChanged: (v) => setState(() => _daysPerWeek = v.toInt())),
         ),
-      ),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('Seans süresi?', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: text)),
+          Text('$_sessionDuration dk', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
+        ]),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(activeTrackColor: accent, thumbColor: accent, inactiveTrackColor: accent.withOpacity(0.2)),
+          child: Slider(value: _sessionDuration.toDouble(), min: 30, max: 120, divisions: 6, label: '$_sessionDuration dk', onChanged: (v) => setState(() => _sessionDuration = v.toInt())),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _generate, child: const Text('🤖  Plan Oluştur'))),
+      ]),
     );
   }
-}
 
-class _PlanChip extends StatelessWidget {
-  final String icon;
-  final String label;
-  const _PlanChip({required this.icon, required this.label});
+  Widget _planResult(Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+      child: Column(children: [
+        // Plan başlık
+        Container(
+          decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            const Text('💪', style: TextStyle(fontSize: 32)),
+            const SizedBox(width: 12),
+            Expanded(child: Text(_planTitle!.isNotEmpty ? _planTitle! : 'Kişisel Antrenman Planın',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: text))),
+          ]),
+        ),
+        const SizedBox(height: 12),
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
-      child: Text('$icon $label', style: const TextStyle(fontSize: 12)),
+        // Günler
+        ..._schedule.map((day) {
+          final dayName  = day['day']    as String? ?? '';
+          final focus    = day['focus']  as String? ?? '';
+          final duration = day['estimated_duration_minutes'];
+          final calories = day['estimated_calories'];
+          final exercises= day['exercises'] as List? ?? [];
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(99), border: Border.all(color: accent)),
+                  child: Text(dayName.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: accent)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(focus, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: text))),
+              ]),
+              if (duration != null || calories != null) ...[
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, children: [
+                  if (duration != null) _chip2('⏱️ $duration dk', bgSoft, border, text),
+                  if (calories != null) _chip2('🔥 $calories kcal', bgSoft, border, text),
+                ]),
+              ],
+              if (exercises.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Divider(color: border, height: 1),
+                const SizedBox(height: 12),
+                ...exercises.map((rawEx) {
+                  final ex   = rawEx is Map ? Map<String, dynamic>.from(rawEx) : {'name': rawEx.toString()};
+                  final name = ex['name'] as String? ?? ex['exercise_name'] as String? ?? 'Egzersiz';
+                  final sets = ex['sets'];
+                  final reps = ex['reps'];
+                  final notes= ex['notes'] as String?;
+                  return Padding(padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Container(width: 6, height: 6, margin: const EdgeInsets.only(top: 7, right: 10),
+                        decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(name, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: text)),
+                        if (sets != null || reps != null)
+                          Text([if (sets != null) '$sets set', if (reps != null) '$reps tekrar'].join(' × '),
+                            style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w500)),
+                        if (notes != null && notes.isNotEmpty)
+                          Text(notes, style: TextStyle(fontSize: 11, color: muted)),
+                      ])),
+                    ]));
+                }),
+              ],
+            ]),
+          );
+        }),
+
+        if (_weeklyNotes != null && _weeklyNotes!.isNotEmpty) ...[
+          Container(
+            decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+            padding: const EdgeInsets.all(16),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('📝', style: TextStyle(fontSize: 18)),
+              const SizedBox(width: 10),
+              Expanded(child: Text(_weeklyNotes!, style: TextStyle(fontSize: 13, color: text, height: 1.5))),
+            ]),
+          ),
+          const SizedBox(height: 10),
+        ],
+
+        SizedBox(width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isCreatingSession ? null : _startTodayWorkout,
+            child: _isCreatingSession
+                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                : const Text('🚀  Bugün Antrenmana Başla'),
+          ),
+        ),
+        const SizedBox(height: 10),
+        aiOutlineBtn('Yeni Plan Oluştur', Icons.arrow_back, accent, border,
+          () => setState(() { _planTitle = null; _weeklyNotes = null; _schedule = []; })),
+      ]),
     );
   }
+
+  Widget _chip2(String label, Color bg, Color border, Color text) =>
+    Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: border)),
+      child: Text(label, style: TextStyle(fontSize: 11, color: text)));
 }
