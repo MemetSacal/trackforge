@@ -48,9 +48,10 @@ class MealAdviceResponse(BaseModel):
 
 # ── Tarif önerisi request ──
 class RecipeRequest(BaseModel):
-    available_ingredients: List[str] = Field(..., min_length=1)
-    meal_type: str = Field(default="dinner", description="breakfast / lunch / dinner / snack")
+    available_ingredients: List[str] = Field(default=[])  # min_length kaldırıldı
+    meal_type: str = Field(default="dinner")
     calorie_limit: Optional[int] = Field(None, gt=0)
+    craving: Optional[str] = None
 
 
 # ── Tarif önerisi response ──

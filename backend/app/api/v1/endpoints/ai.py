@@ -133,28 +133,61 @@ async def get_meal_advice(
 
 @router.post("/recipe", response_model=RecipeResponse)
 async def get_recipe_suggestion(
-    data: RecipeRequest,
-    current_user: str = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+        data: RecipeRequest,
+        current_user: str = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
 ):
-    """Malzeme listesine göre sağlıklı tarif öner."""
     try:
-        # Kullanıcı tercihlerini getir (opsiyonel)
         pref_repo = UserPreferenceRepository(db)
         prefs = await pref_repo.get_by_user_id(current_user)
 
+        # Bugünkü kalori bankası verisi
+        from backend.app.application.services.report_service import ReportService
+        from datetime import date as date_module
+        report_service = ReportService(db)
+        weekly_bank_balance = None
+        daily_calorie_target = None
+        try:
+            report = await report_service.get_weekly_report(current_user, date_module.today())
+            weekly_bank_balance = report.calorie_balance  # veya uygun alan adı
+            if prefs:
+                # TDEE hesapla
+                result = await db.execute(
+                    select(MeasurementModel)
+                    .where(MeasurementModel.user_id == current_user)
+                    .order_by(MeasurementModel.date.desc())
+                    .limit(1)
+                )
+                last_m = result.scalar_one_or_none()
+                weight_kg = last_m.weight_kg if last_m else None
+                if prefs.height_cm and prefs.age and prefs.gender and weight_kg:
+                    if prefs.gender == 'male':
+                        bmr = 10 * weight_kg + 6.25 * prefs.height_cm - 5 * prefs.age + 5
+                    else:
+                        bmr = 10 * weight_kg + 6.25 * prefs.height_cm - 5 * prefs.age - 161
+                    multipliers = {
+                        'sedentary': 1.2, 'light': 1.375, 'moderate': 1.55,
+                        'active': 1.725, 'very_active': 1.9
+                    }
+                    m = multipliers.get(prefs.activity_level or 'moderate', 1.55)
+                    daily_calorie_target = round(bmr * m)
+        except Exception:
+            pass  # Kalori bankası alınamazsa normal devam et
+
         recipe = await generate_recipe(
-            available_ingredients=data.available_ingredients,
+            available_ingredients=data.available_ingredients or [],
             liked_foods=prefs.liked_foods if prefs else [],
             disliked_foods=prefs.disliked_foods if prefs else [],
             allergies=prefs.allergies if prefs else [],
             meal_type=data.meal_type,
             calorie_limit=data.calorie_limit,
+            craving=data.craving,
+            weekly_bank_balance=weekly_bank_balance,
+            daily_calorie_target=daily_calorie_target,
         )
         return RecipeResponse(**recipe)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Tarif oluşturulamadı: {str(e)}")
-
 
 @router.post("/calorie-from-photo", response_model=CalorieVisionResponse)
 async def get_calories_from_photo(
