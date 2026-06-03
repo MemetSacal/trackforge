@@ -6,6 +6,7 @@ import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
 import 'seans_detay_screen.dart';
+import '../../widgets/body_map/body_map_widget.dart';
 
 final sessionsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   try {
@@ -367,7 +368,8 @@ class _SeanslarTab extends StatelessWidget {
 }
 
 // ── KAS GRUPLARI TAB ────────────────────────────────────
-class _KasGruplariTab extends StatelessWidget {
+// ── KAS GRUPLARI TAB ────────────────────────────────────
+class _KasGruplariTab extends StatefulWidget {
   final AsyncValue<List<Map<String, dynamic>>> sessionsAsync;
   final Color bg, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim;
 
@@ -379,35 +381,68 @@ class _KasGruplariTab extends StatelessWidget {
   });
 
   @override
+  State<_KasGruplariTab> createState() => _KasGruplariTabState();
+}
+
+class _KasGruplariTabState extends State<_KasGruplariTab> {
+  String? _selectedGroup;
+
+  // Kas grubu → BodyMapWidget muscle key'leri
+  static const _groupMuscles = {
+    'Göğüs': ['chest'],
+    'Sırt':  ['back', 'lower_back', 'traps'],
+    'Bacak': ['quad', 'hamstring', 'glutes', 'calf'],
+    'Omuz':  ['front_shoulder', 'side_shoulder', 'rear_shoulder'],
+    'Kol':   ['biceps', 'triceps'],
+    'Karın': ['abs'],
+  };
+
+  static const _groupColors = {
+    'Göğüs': _EC.accent,
+    'Sırt':  _EC.cyan,
+    'Bacak': _EC.positive,
+    'Omuz':  _EC.purple,
+    'Kol':   _EC.accent,
+    'Karın': Color(0xFFFF5555),
+  };
+
+  @override
   Widget build(BuildContext context) {
+    final highlighted = _selectedGroup != null
+        ? _groupMuscles[_selectedGroup!] ?? []
+        : <String>[];
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       children: [
-        // Anatomik vücut SVG kartı
         Container(
-          decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+          decoration: BoxDecoration(color: widget.bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: widget.border)),
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Kas Grubu Anatomisi', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Kas Grubu Anatomisi', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: widget.text)),
+                  if (_selectedGroup != null)
+                    GestureDetector(
+                      onTap: () => setState(() => _selectedGroup = null),
+                      child: Text('Temizle', style: TextStyle(fontSize: 12, color: widget.accent, fontWeight: FontWeight.w600)),
+                    ),
+                ],
+              ),
               const SizedBox(height: 14),
-              Container(
-                decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(16)),
-                padding: const EdgeInsets.all(20),
-                child: Center(
-                  child: CustomPaint(
-                    size: const Size(120, 220),
-                    painter: _BodyPainter(accent: accent, border: border, bgCard: bgCard, accentDim: accentDim),
-                  ),
-                ),
+              BodyMapWidget(
+                highlightedMuscles: highlighted,
+                height: 280,
               ),
             ],
           ),
         ),
         const SizedBox(height: 12),
 
-        // Kas grubu listesi
+        // Kas grubu grid
         GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -415,91 +450,37 @@ class _KasGruplariTab extends StatelessWidget {
           mainAxisSpacing: 8,
           crossAxisSpacing: 8,
           childAspectRatio: 2.2,
-          children: [
-            ['Göğüs',  _EC.accent,   'Bu hafta: 2x'],
-            ['Sırt',   _EC.cyan,     'Bu hafta: 1x'],
-            ['Bacak',  _EC.positive, 'Bu hafta: 1x'],
-            ['Omuz',   _EC.purple,   'Bu hafta: 2x'],
-            ['Kol',    _EC.accent,   'Bu hafta: 1x'],
-            ['Karın',  const Color(0xFFFF5555), 'Bu hafta: 0x'],
-          ].map((row) => Container(
-            decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(16), border: Border.all(color: border)),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Container(width: 8, height: 8, decoration: BoxDecoration(color: row[1] as Color, shape: BoxShape.circle)),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(row[0] as String, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: text)),
-                      Text(row[2] as String, style: TextStyle(fontSize: 10, color: muted)),
-                    ],
-                  ),
+          children: _groupMuscles.keys.map((group) {
+            final color   = _groupColors[group] ?? widget.accent;
+            final isSelected = _selectedGroup == group;
+            return GestureDetector(
+              onTap: () => setState(() => _selectedGroup = isSelected ? null : group),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isSelected ? color.withOpacity(0.12) : widget.bgCard,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: isSelected ? color : widget.border, width: isSelected ? 1.5 : 1),
                 ),
-              ],
-            ),
-          )).toList(),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(group, style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                        color: isSelected ? color : widget.text,
+                      )),
+                    ),
+                    if (isSelected) Icon(Icons.check_circle, size: 14, color: color),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );
   }
-}
-
-// Basit vücut anatomisi painter
-class _BodyPainter extends CustomPainter {
-  final Color accent, border, bgCard, accentDim;
-  const _BodyPainter({required this.accent, required this.border, required this.bgCard, required this.accentDim});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final fillPaint  = Paint()..color = accentDim..style = PaintingStyle.fill;
-    final strokePaint= Paint()..color = accent..style = PaintingStyle.stroke..strokeWidth = 1.5;
-    final bodyPaint  = Paint()..color = bgCard..style = PaintingStyle.fill;
-    final bodySPaint = Paint()..color = border..style = PaintingStyle.stroke..strokeWidth = 1.5;
-
-    // Baş
-    canvas.drawOval(Rect.fromCenter(center: Offset(size.width/2, 20), width: 32, height: 36), bodyPaint);
-    canvas.drawOval(Rect.fromCenter(center: Offset(size.width/2, 20), width: 32, height: 36), bodySPaint);
-
-    // Gövde (göğüs — vurgulu)
-    final chest = RRect.fromRectAndRadius(Rect.fromLTWH(38, 40, 44, 55), const Radius.circular(8));
-    canvas.drawRRect(chest, fillPaint);
-    canvas.drawRRect(chest, strokePaint);
-
-    // Sol kol
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(18, 42, 18, 44), const Radius.circular(7)), bodyPaint);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(18, 42, 18, 44), const Radius.circular(7)), bodySPaint);
-
-    // Sağ kol
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(84, 42, 18, 44), const Radius.circular(7)), bodyPaint);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(84, 42, 18, 44), const Radius.circular(7)), bodySPaint);
-
-    // Sol üst bacak
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(36, 97, 20, 58), const Radius.circular(8)), bodyPaint);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(36, 97, 20, 58), const Radius.circular(8)), bodySPaint);
-
-    // Sağ üst bacak
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(64, 97, 20, 58), const Radius.circular(8)), bodyPaint);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(64, 97, 20, 58), const Radius.circular(8)), bodySPaint);
-
-    // Sol alt bacak
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(36, 157, 20, 48), const Radius.circular(7)), bodyPaint);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(36, 157, 20, 48), const Radius.circular(7)), bodySPaint);
-
-    // Sağ alt bacak
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(64, 157, 20, 48), const Radius.circular(7)), bodyPaint);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(64, 157, 20, 48), const Radius.circular(7)), bodySPaint);
-
-    // GÖĞÜS yazısı
-    final tp = TextPainter(
-      text: TextSpan(text: 'GÖĞÜS', style: TextStyle(fontSize: 7, fontWeight: FontWeight.w700, color: accent)),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, Offset(size.width/2 - tp.width/2, 64));
-  }
-
-  @override bool shouldRepaint(_BodyPainter o) => false;
 }
