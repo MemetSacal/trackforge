@@ -37,6 +37,10 @@ app.include_router(router)
 async def landing():
     return FileResponse(os.path.join(BASE_DIR, "..", "static", "index.html"))
 
+@app.get("/static/privacy-policy.html", include_in_schema=False)
+async def privacy_policy():
+    return FileResponse(os.path.join(BASE_DIR, "..", "static", "privacy-policy.html"))
+
 
 def custom_openapi():
     if app.openapi_schema:
