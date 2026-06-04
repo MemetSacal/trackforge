@@ -10,36 +10,33 @@ class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
 
-  // ── Notification ID'leri ────────────────────────────
-  static const int _waterBaseId     = 100; // 100-108 arası su bildirimleri
-  static const int _workoutId       = 200;
-  static const int _sleepId         = 300;
-  static const int _mealId          = 400;
-  static const int _stepsId         = 500;
-  static const int _streakId        = 600;
-  static const int _weeklyReportId  = 700;
+  static const int _waterBaseId    = 100;
+  static const int _workoutId      = 200;
+  static const int _sleepId        = 300;
+  static const int _mealId         = 400;
+  static const int _stepsId        = 500;
+  static const int _streakId       = 600;
+  static const int _weeklyReportId = 700;
 
-  // ── SharedPrefs Key'leri ────────────────────────────
-  static const String _keyWaterEnabled    = 'notif_water_enabled';
-  static const String _keyWorkoutEnabled  = 'notif_workout_enabled';
-  static const String _keyWorkoutHour     = 'notif_workout_hour';
-  static const String _keyWorkoutMin      = 'notif_workout_min';
-  static const String _keySleepEnabled    = 'notif_sleep_enabled';
-  static const String _keySleepHour       = 'notif_sleep_hour';
-  static const String _keySleepMin        = 'notif_sleep_min';
-  static const String _keyMealEnabled     = 'notif_meal_enabled';
-  static const String _keyStepsEnabled    = 'notif_steps_enabled';
-  static const String _keyStreakEnabled   = 'notif_streak_enabled';
-  static const String _keyWeeklyEnabled   = 'notif_weekly_enabled';
+  static const String _keyWaterEnabled   = 'notif_water_enabled';
+  static const String _keyWorkoutEnabled = 'notif_workout_enabled';
+  static const String _keyWorkoutHour    = 'notif_workout_hour';
+  static const String _keyWorkoutMin     = 'notif_workout_min';
+  static const String _keySleepEnabled   = 'notif_sleep_enabled';
+  static const String _keySleepHour      = 'notif_sleep_hour';
+  static const String _keySleepMin       = 'notif_sleep_min';
+  static const String _keyMealEnabled    = 'notif_meal_enabled';
+  static const String _keyStepsEnabled   = 'notif_steps_enabled';
+  static const String _keyStreakEnabled  = 'notif_streak_enabled';
+  static const String _keyWeeklyEnabled  = 'notif_weekly_enabled';
 
-  // ── Init ────────────────────────────────────────────
   static Future<void> init() async {
     if (_initialized) return;
     tz.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Europe/Istanbul'));
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosSettings     = DarwinInitializationSettings(
+    const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
@@ -51,7 +48,6 @@ class NotificationService {
     _initialized = true;
   }
 
-  // ── İzin iste ───────────────────────────────────────
   static Future<bool> requestPermission() async {
     final status = await Permission.notification.request();
     return status.isGranted;
@@ -62,7 +58,6 @@ class NotificationService {
     return status.isGranted;
   }
 
-  // ── Kanal oluştur (Android 8+) ──────────────────────
   static AndroidNotificationDetails _channel({
     required String channelId,
     required String channelName,
@@ -78,9 +73,6 @@ class NotificationService {
     );
   }
 
-  // ════════════════════════════════════════════════════
-  // SU HATIRLATICILARı — her 2 saatte bir 09:00-21:00
-  // ════════════════════════════════════════════════════
   static Future<void> scheduleWaterReminders() async {
     await cancelWaterReminders();
     final prefs = await SharedPreferences.getInstance();
@@ -88,16 +80,16 @@ class NotificationService {
 
     final hours = [9, 11, 13, 15, 17, 19, 21];
     for (int i = 0; i < hours.length; i++) {
-      final scheduledTime = _nextTime(hours[i], 0);
       await _plugin.zonedSchedule(
         _waterBaseId + i,
         '💧 Su İçme Vakti',
         'Bugün yeterli su içiyor musun? Hedefine ulaşmak için şimdi bir bardak iç!',
-        scheduledTime,
+        _nextTime(hours[i], 0),
         NotificationDetails(
           android: _channel(channelId: 'water', channelName: 'Su Hatırlatıcısı'),
           iOS: const DarwinNotificationDetails(),
         ),
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.time,
       );
@@ -110,9 +102,6 @@ class NotificationService {
     }
   }
 
-  // ════════════════════════════════════════════════════
-  // ANTRENMAN HATIRLATICISı
-  // ════════════════════════════════════════════════════
   static Future<void> scheduleWorkoutReminder({
     required int hour,
     required int minute,
@@ -133,6 +122,7 @@ class NotificationService {
         android: _channel(channelId: 'workout', channelName: 'Antrenman Hatırlatıcısı'),
         iOS: const DarwinNotificationDetails(),
       ),
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
     );
@@ -142,9 +132,6 @@ class NotificationService {
     await _plugin.cancel(_workoutId);
   }
 
-  // ════════════════════════════════════════════════════
-  // UYKU HATIRLATICISı
-  // ════════════════════════════════════════════════════
   static Future<void> scheduleSleepReminder({
     required int hour,
     required int minute,
@@ -165,6 +152,7 @@ class NotificationService {
         android: _channel(channelId: 'sleep', channelName: 'Uyku Hatırlatıcısı'),
         iOS: const DarwinNotificationDetails(),
       ),
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
     );
@@ -174,9 +162,6 @@ class NotificationService {
     await _plugin.cancel(_sleepId);
   }
 
-  // ════════════════════════════════════════════════════
-  // ÖĞÜN / KALORİ HATIRLATICISı — 12:00 ve 19:00
-  // ════════════════════════════════════════════════════
   static Future<void> scheduleMealReminders() async {
     await cancelMealReminders();
     final prefs = await SharedPreferences.getInstance();
@@ -197,6 +182,7 @@ class NotificationService {
           android: _channel(channelId: 'meal', channelName: 'Öğün Hatırlatıcısı'),
           iOS: const DarwinNotificationDetails(),
         ),
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.time,
       );
@@ -208,9 +194,6 @@ class NotificationService {
     await _plugin.cancel(_mealId + 1);
   }
 
-  // ════════════════════════════════════════════════════
-  // ADIM HEDEFİ — her gün 20:00
-  // ════════════════════════════════════════════════════
   static Future<void> scheduleStepsReminder() async {
     await _plugin.cancel(_stepsId);
     final prefs = await SharedPreferences.getInstance();
@@ -225,14 +208,12 @@ class NotificationService {
         android: _channel(channelId: 'steps', channelName: 'Adım Hatırlatıcısı'),
         iOS: const DarwinNotificationDetails(),
       ),
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
     );
   }
 
-  // ════════════════════════════════════════════════════
-  // SERİ KORUMA — her gün 21:00
-  // ════════════════════════════════════════════════════
   static Future<void> scheduleStreakReminder() async {
     await _plugin.cancel(_streakId);
     final prefs = await SharedPreferences.getInstance();
@@ -247,21 +228,18 @@ class NotificationService {
         android: _channel(channelId: 'streak', channelName: 'Seri Hatırlatıcısı'),
         iOS: const DarwinNotificationDetails(),
       ),
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.time,
     );
   }
 
-  // ════════════════════════════════════════════════════
-  // HAFTALIK RAPOR — Pazartesi 09:00
-  // ════════════════════════════════════════════════════
   static Future<void> scheduleWeeklyReport() async {
     await _plugin.cancel(_weeklyReportId);
     final prefs = await SharedPreferences.getInstance();
     if (!(prefs.getBool(_keyWeeklyEnabled) ?? true)) return;
 
-    // Bir sonraki Pazartesi 09:00
-    final now  = tz.TZDateTime.now(tz.local);
+    final now = tz.TZDateTime.now(tz.local);
     var monday = now;
     while (monday.weekday != DateTime.monday) {
       monday = monday.add(const Duration(days: 1));
@@ -277,14 +255,12 @@ class NotificationService {
         android: _channel(channelId: 'weekly', channelName: 'Haftalık Rapor'),
         iOS: const DarwinNotificationDetails(),
       ),
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
     );
   }
 
-  // ════════════════════════════════════════════════════
-  // TÜM BİLDİRİMLERİ ZAMANLA (uygulama açılışında çağır)
-  // ════════════════════════════════════════════════════
   static Future<void> scheduleAll() async {
     final prefs = await SharedPreferences.getInstance();
     await scheduleWaterReminders();
@@ -293,21 +269,17 @@ class NotificationService {
     await scheduleStreakReminder();
     await scheduleWeeklyReport();
 
-    // Antrenman — kaydedilmiş saat varsa uygula
     final workoutHour = prefs.getInt(_keyWorkoutHour) ?? 18;
     final workoutMin  = prefs.getInt(_keyWorkoutMin)  ?? 0;
     await scheduleWorkoutReminder(hour: workoutHour, minute: workoutMin);
 
-    // Uyku — kaydedilmiş saat varsa uygula, yoksa 22:30
     final sleepHour = prefs.getInt(_keySleepHour) ?? 22;
     final sleepMin  = prefs.getInt(_keySleepMin)  ?? 30;
     await scheduleSleepReminder(hour: sleepHour, minute: sleepMin);
   }
 
-  // ── Tümünü iptal et ─────────────────────────────────
   static Future<void> cancelAll() async => _plugin.cancelAll();
 
-  // ── Yardımcı: bir sonraki saat:dakika anı ───────────
   static tz.TZDateTime _nextTime(int hour, int minute) {
     final now = tz.TZDateTime.now(tz.local);
     var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
@@ -317,25 +289,23 @@ class NotificationService {
     return scheduled;
   }
 
-  // ── Ayarları oku ────────────────────────────────────
   static Future<Map<String, dynamic>> getSettings() async {
     final prefs = await SharedPreferences.getInstance();
     return {
-      'water':    prefs.getBool(_keyWaterEnabled)   ?? true,
-      'workout':  prefs.getBool(_keyWorkoutEnabled) ?? true,
-      'workoutHour': prefs.getInt(_keyWorkoutHour)  ?? 18,
-      'workoutMin':  prefs.getInt(_keyWorkoutMin)   ?? 0,
-      'sleep':    prefs.getBool(_keySleepEnabled)   ?? true,
-      'sleepHour':   prefs.getInt(_keySleepHour)    ?? 22,
-      'sleepMin':    prefs.getInt(_keySleepMin)     ?? 30,
-      'meal':     prefs.getBool(_keyMealEnabled)    ?? true,
-      'steps':    prefs.getBool(_keyStepsEnabled)   ?? true,
-      'streak':   prefs.getBool(_keyStreakEnabled)  ?? true,
-      'weekly':   prefs.getBool(_keyWeeklyEnabled)  ?? true,
+      'water':       prefs.getBool(_keyWaterEnabled)   ?? true,
+      'workout':     prefs.getBool(_keyWorkoutEnabled) ?? true,
+      'workoutHour': prefs.getInt(_keyWorkoutHour)     ?? 18,
+      'workoutMin':  prefs.getInt(_keyWorkoutMin)      ?? 0,
+      'sleep':       prefs.getBool(_keySleepEnabled)   ?? true,
+      'sleepHour':   prefs.getInt(_keySleepHour)       ?? 22,
+      'sleepMin':    prefs.getInt(_keySleepMin)        ?? 30,
+      'meal':        prefs.getBool(_keyMealEnabled)    ?? true,
+      'steps':       prefs.getBool(_keyStepsEnabled)   ?? true,
+      'streak':      prefs.getBool(_keyStreakEnabled)  ?? true,
+      'weekly':      prefs.getBool(_keyWeeklyEnabled)  ?? true,
     };
   }
 
-  // ── Ayarları kaydet ─────────────────────────────────
   static Future<void> saveSetting(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();
     if (value is bool) await prefs.setBool('notif_${key}_enabled', value);

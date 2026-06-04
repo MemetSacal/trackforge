@@ -60,6 +60,8 @@ dev_dependencies:
   json_serializable: ^6.8.0
   freezed: ^2.5.7
   riverpod_generator: ^2.6.1
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.3
 
 
 
@@ -68,4 +70,21 @@ flutter:
   assets:
     - assets/images/body_front.jpg
     - assets/images/body_back.jpg
+    - assets/images/app_icon.png
 
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#1a1a2e"
+  adaptive_icon_foreground: "assets/images/app_icon.png"
+
+flutter_native_splash:
+  color: "#0d0d0d"
+  image: assets/images/app_icon.png
+  color_dark: "#0d0d0d"
+  image_dark: assets/images/app_icon.png
+  android_12:
+    color: "#0d0d0d"
+    image: assets/images/app_icon.png

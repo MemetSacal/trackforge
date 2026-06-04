@@ -37,6 +37,16 @@ mobile/.flutter-plugins-dependencies
 mobile/.packages
 mobile/.metadata
 
+
 # IDE
 mobile/.idea/
 *.iml
+
+# Railway (artık Render kullanılıyor)
+railway.toml
+
+# Root uploads klasörü
+uploads/
+
+# count_lines script
+count_lines.py
