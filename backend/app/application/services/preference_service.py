@@ -19,12 +19,10 @@ class PreferenceService:
         return UserPreferenceResponse(
             id=entity.id,
             user_id=entity.user_id,
-            # Fiziksel profil
             height_cm=entity.height_cm,
             age=entity.age,
             gender=entity.gender,
             activity_level=entity.activity_level,
-            # Yemek tercihleri
             liked_foods=entity.liked_foods,
             disliked_foods=entity.disliked_foods,
             allergies=entity.allergies,
@@ -33,6 +31,10 @@ class PreferenceService:
             blood_values=entity.blood_values,
             workout_location=entity.workout_location,
             fitness_goal=entity.fitness_goal,
+            ai_name=getattr(entity, 'ai_name', None),
+            diet_preference=getattr(entity, 'diet_preference', None),
+            target_weight_kg=getattr(entity, 'target_weight_kg', None),
+            daily_calorie_habit=getattr(entity, 'daily_calorie_habit', None),
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
@@ -91,6 +93,10 @@ class PreferenceService:
         entity.blood_values = data.blood_values if data.blood_values is not None else entity.blood_values
         entity.workout_location = data.workout_location if data.workout_location is not None else entity.workout_location
         entity.fitness_goal = data.fitness_goal if data.fitness_goal is not None else entity.fitness_goal
+        entity.ai_name = data.ai_name if data.ai_name is not None else entity.ai_name
+        entity.diet_preference = data.diet_preference if data.diet_preference is not None else entity.diet_preference
+        entity.target_weight_kg = data.target_weight_kg if data.target_weight_kg is not None else entity.target_weight_kg
+        entity.daily_calorie_habit = data.daily_calorie_habit if data.daily_calorie_habit is not None else entity.daily_calorie_habit
 
         updated = await self.repo.update(entity)
         await self.db.commit()

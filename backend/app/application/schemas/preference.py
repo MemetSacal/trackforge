@@ -22,13 +22,10 @@ class UserPreferenceCreate(BaseModel):
 
 
 class UserPreferenceUpdate(BaseModel):
-    # Fiziksel profil
     height_cm: Optional[float] = Field(None, gt=0, le=300)
     age: Optional[int] = Field(None, gt=0, le=120)
     gender: Optional[str] = None
     activity_level: Optional[str] = None
-
-    # Diğer alanlar
     liked_foods: Optional[List[str]] = None
     disliked_foods: Optional[List[str]] = None
     allergies: Optional[List[str]] = None
@@ -37,6 +34,10 @@ class UserPreferenceUpdate(BaseModel):
     blood_values: Optional[Dict[str, Any]] = None
     workout_location: Optional[str] = None
     fitness_goal: Optional[str] = None
+    ai_name: Optional[str] = None
+    diet_preference: Optional[str] = None
+    target_weight_kg: Optional[float] = None
+    daily_calorie_habit: Optional[str] = None
 
 
 class UserPreferenceResponse(BaseModel):
@@ -54,6 +55,10 @@ class UserPreferenceResponse(BaseModel):
     blood_values: Optional[Dict[str, Any]] = None
     workout_location: Optional[str] = None
     fitness_goal: Optional[str] = None
+    ai_name: Optional[str] = None
+    diet_preference: Optional[str] = None
+    target_weight_kg: Optional[float] = None
+    daily_calorie_habit: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
