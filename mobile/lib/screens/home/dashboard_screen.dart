@@ -54,9 +54,26 @@ final dashWeeklyProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref
 });
 
 // ── Bugünkü kalori bankası verisi ───────────────────────
+// ── Bugünkü kalori bankası verisi ───────────────────────
 final dashMealProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
     final res = await ApiClient.instance.get('${Endpoints.mealCompliance}/date/${TFDateUtils.today()}');
+    return Map<String, dynamic>.from(res.data);
+  } catch (_) { return null; }
+});
+
+// ── Bugünkü su verisi ────────────────────────────────────
+final dashWaterTodayProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  try {
+    final res = await ApiClient.instance.get('${Endpoints.water}/date/${TFDateUtils.today()}');
+    return Map<String, dynamic>.from(res.data);
+  } catch (_) { return null; }
+});
+
+// ── Bugünkü uyku verisi ──────────────────────────────────
+final dashSleepTodayProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  try {
+    final res = await ApiClient.instance.get('${Endpoints.sleep}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(res.data);
   } catch (_) { return null; }
 });
@@ -171,10 +188,12 @@ class DashboardScreen extends ConsumerWidget {
     final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
     final t = _Theme(isDark);
 
-    final userAsync   = ref.watch(dashUserProvider);
-    final gamiAsync   = ref.watch(dashGamificationProvider);
-    final weeklyAsync = ref.watch(dashWeeklyProvider);
-    final mealAsync   = ref.watch(dashMealProvider);
+    final userAsync      = ref.watch(dashUserProvider);
+    final gamiAsync      = ref.watch(dashGamificationProvider);
+    final weeklyAsync    = ref.watch(dashWeeklyProvider);
+    final mealAsync      = ref.watch(dashMealProvider);
+    final waterToday     = ref.watch(dashWaterTodayProvider).value;
+    final sleepToday     = ref.watch(dashSleepTodayProvider).value;
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -186,6 +205,8 @@ class DashboardScreen extends ConsumerWidget {
           ref.invalidate(dashGamificationProvider);
           ref.invalidate(dashWeeklyProvider);
           ref.invalidate(dashMealProvider);
+          ref.invalidate(dashWaterTodayProvider);
+          ref.invalidate(dashSleepTodayProvider);
         },
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -240,9 +261,9 @@ class DashboardScreen extends ConsumerWidget {
                 delegate: SliverChildListDelegate([
                   gamiAsync.when(
                     data: (gami) => weeklyAsync.when(
-                      data: (weekly) => _HeroCard(t: t, gami: gami, weekly: weekly),
-                      loading: () => _HeroCard(t: t, gami: gami, weekly: {}),
-                      error: (_, __) => _HeroCard(t: t, gami: gami, weekly: {}),
+                      data: (weekly) => _HeroCard(t: t, gami: gami, weekly: weekly, waterToday: waterToday, sleepToday: sleepToday, mealToday: mealAsync.value),
+                      loading: () => _HeroCard(t: t, gami: gami, weekly: {}, waterToday: waterToday, sleepToday: sleepToday, mealToday: mealAsync.value),
+                      error: (_, __) => _HeroCard(t: t, gami: gami, weekly: {}, waterToday: waterToday, sleepToday: sleepToday, mealToday: mealAsync.value),
                     ),
                     loading: () => _shimmer(t, 180),
                     error: (_, __) => _HeroCard(t: t, gami: {}, weekly: {}),
@@ -424,7 +445,10 @@ class _HeroCard extends StatelessWidget {
   final _Theme t;
   final Map<String, dynamic> gami;
   final Map<String, dynamic> weekly;
-  const _HeroCard({required this.t, required this.gami, required this.weekly});
+  final Map<String, dynamic>? waterToday;
+  final Map<String, dynamic>? sleepToday;
+  final Map<String, dynamic>? mealToday;
+  const _HeroCard({required this.t, required this.gami, required this.weekly, this.waterToday, this.sleepToday, this.mealToday});
 
   @override
   Widget build(BuildContext context) {
@@ -498,11 +522,9 @@ class _HeroCard extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                weightChange != null
-                    ? 'Kilo trendin ${weightChange < 0 ? "düşüyor (${weightChange.toStringAsFixed(1)} kg)" : "yükseliyor (+${weightChange.toStringAsFixed(1)} kg)"}. Harika gidiyorsun!'
-                    : 'Verilerini girerek kişisel AI analizini aktifleştir.',
-                style: TextStyle(fontSize: 12, color: heroText.withOpacity(0.82), height: 1.5),
-              ),
+                              _buildDailyMessage(weightChange),
+                              style: TextStyle(fontSize: 12, color: heroText.withOpacity(0.82), height: 1.5),
+                            ),
               const SizedBox(height: 14),
               ...missions.map((m) => Padding(
                 padding: const EdgeInsets.only(bottom: 5),
@@ -526,6 +548,39 @@ class _HeroCard extends StatelessWidget {
       ),
     );
   }
+  String _buildDailyMessage(double? weightChange) {
+      final messages = <String>[];
+
+      // Su kontrolü — bugünkü veri
+      final amountMl = (waterToday?['amount_ml'] as num?)?.toDouble();
+      final targetMl = (waterToday?['target_ml'] as num?)?.toDouble() ?? 2000;
+      if (amountMl != null && amountMl < targetMl * 0.5) {
+        messages.add('💧 Bugün su içmeyi unutuyorsun!');
+      }
+
+      // Uyku kontrolü — dünkü veri
+      final sleepHours = (sleepToday?['duration_hours'] as num?)?.toDouble();
+      if (sleepHours != null && sleepHours < 6) {
+        messages.add('😴 Dün az uyudun (${sleepHours.toStringAsFixed(1)} saat).');
+      }
+
+      // Kalori kontrolü
+      final consumed = (mealToday?['calories_consumed'] as num?)?.toDouble();
+      final target   = (mealToday?['calories_target']   as num?)?.toDouble();
+      if (consumed != null && target != null && consumed > target * 1.2) {
+        messages.add('🍽️ Bugün kalori hedefini aştın.');
+      }
+
+      // Kilo trendi
+      if (weightChange != null) {
+        messages.add(weightChange < 0
+            ? 'Kilo trendin düşüyor (${weightChange.toStringAsFixed(1)} kg). Harika!'
+            : 'Kilo biraz arttı (+${weightChange.toStringAsFixed(1)} kg), dikkat et.');
+      }
+
+      if (messages.isEmpty) return 'Verilerini girerek kişisel AI analizini aktifleştir.';
+      return messages.join(' ');
+    }
 }
 
 // ── STAT GRID ───────────────────────────────────────────
