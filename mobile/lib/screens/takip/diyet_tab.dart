@@ -25,7 +25,6 @@ class DiyetTab extends ConsumerStatefulWidget {
 class _DiyetTabState extends ConsumerState<DiyetTab> {
   final _caloriesController = TextEditingController();
   final _notesController    = TextEditingController();
-  bool _complied    = true;
   bool _isLoading   = false;
   bool _initialized = false;
   String? _savedAdvice;
@@ -81,14 +80,12 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
     try {
       if (existing != null) {
         await ApiClient.instance.put('${Endpoints.mealCompliance}/${existing['id']}', data: {
-          'complied': _complied,
           'calories_consumed': cal,
           'notes': _notesController.text.isEmpty ? null : _notesController.text,
         });
       } else {
         await ApiClient.instance.post(Endpoints.mealCompliance, data: {
           'date': TFDateUtils.today(),
-          'complied': _complied,
           'calories_consumed': cal,
           'notes': _notesController.text.isEmpty ? null : _notesController.text,
         });
@@ -130,7 +127,6 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
         if (mealLog != null && !_initialized && !_isLoading) {
           final consumed = (mealLog['calories_consumed'] as num?)?.toDouble();
           if (consumed != null) _caloriesController.text = consumed.toInt().toString();
-          _complied    = mealLog['complied'] as bool? ?? true;
           _initialized = true;
         }
 
@@ -248,7 +244,7 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                       ...[
                         ['Günlük Fark',    '${balance > 0 ? "+" : ""}${balance.toInt()} kcal', balance <= 0],
                         ['Haftalık Banka', '${bankBalance > 0 ? "+" : ""}${bankBalance.toInt()} kcal', bankBalance >= 0],
-                        ['Diyet Uyumu',    _complied ? '✔ uyuldu' : '✖ uyulmadı', _complied],
+                        ['Diyet Uyumu', (mealLog?['complied'] as bool? ?? true) ? '✔ uyuldu' : '✖ uyulmadı', (mealLog?['complied'] as bool? ?? true)],
                       ].map((row) => Container(
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -461,19 +457,6 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                       decoration: const InputDecoration(
                         labelText: 'Tüketilen Kalori (kcal)',
                         prefixIcon: Icon(Icons.local_fire_department_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
-                      child: Row(
-                        children: [
-                          Text('Diyete uyuldu mu?', style: TextStyle(fontSize: 13, color: text)),
-                          const Spacer(),
-                          Switch(value: _complied, activeColor: accent, onChanged: (v) => setState(() => _complied = v)),
-                          Text(_complied ? '✅' : '❌'),
-                        ],
                       ),
                     ),
                     const SizedBox(height: 10),

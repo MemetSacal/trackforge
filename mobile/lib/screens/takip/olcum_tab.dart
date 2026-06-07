@@ -1,6 +1,7 @@
 // ── olcum_tab.dart ──────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:math' as math;
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
@@ -19,28 +20,27 @@ final measurementsProvider = FutureProvider.autoDispose<List<Map<String, dynamic
   } catch (_) { return []; }
 });
 
-// ── RENKLER ─────────────────────────────────────────────
 class _OC {
-  static const bg       = Color(0xFF0C0D10);
-  static const bgCard   = Color(0xFF141620);
-  static const bgSoft   = Color(0xFF0F1016);
-  static const border   = Color(0x12FFFFFF);
-  static const text     = Color(0xFFF0EEF8);
-  static const textSoft = Color(0xFF8A88A8);
-  static const textMuted= Color(0xFF4A4860);
-  static const accent   = Color(0xFFFFB020);
-  static const accentDim= Color(0x1FFFB020);
-  static const positive = Color(0xFF34D399);
-  static const lBg      = Color(0xFFF0F2F6);
-  static const lBgCard  = Color(0xFFFFFFFF);
-  static const lBgSoft  = Color(0xFFE8EBF2);
-  static const lBorder  = Color(0x12000000);
-  static const lText    = Color(0xFF111318);
-  static const lTextSoft= Color(0xFF5A6078);
-  static const lTextMuted=Color(0xFF9AA0B8);
-  static const lAccent  = Color(0xFFFF6B2B);
-  static const lAccentDim=Color(0x1AFF6B2B);
-  static const lPositive= Color(0xFF059669);
+  static const bg        = Color(0xFF0C0D10);
+  static const bgCard    = Color(0xFF141620);
+  static const bgSoft    = Color(0xFF0F1016);
+  static const border    = Color(0x12FFFFFF);
+  static const text      = Color(0xFFF0EEF8);
+  static const textSoft  = Color(0xFF8A88A8);
+  static const textMuted = Color(0xFF4A4860);
+  static const accent    = Color(0xFFFFB020);
+  static const accentDim = Color(0x1FFFB020);
+  static const positive  = Color(0xFF34D399);
+  static const lBg       = Color(0xFFF0F2F6);
+  static const lBgCard   = Color(0xFFFFFFFF);
+  static const lBgSoft   = Color(0xFFE8EBF2);
+  static const lBorder   = Color(0x12000000);
+  static const lText     = Color(0xFF111318);
+  static const lTextSoft = Color(0xFF5A6078);
+  static const lTextMuted= Color(0xFF9AA0B8);
+  static const lAccent   = Color(0xFFFF6B2B);
+  static const lAccentDim= Color(0x1AFF6B2B);
+  static const lPositive = Color(0xFF059669);
 }
 
 class OlcumTab extends ConsumerStatefulWidget {
@@ -68,6 +68,176 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
     _chestController.dispose(); _hipController.dispose();
     _armController.dispose(); _legController.dispose();
     super.dispose();
+  }
+
+  // ── Navy Method yağ oranı hesaplama ──────────────────
+  double? _navyBodyFat({
+    required bool isMale,
+    required double waistCm,
+    required double neckCm,
+    required double heightCm,
+    double? hipCm,
+  }) {
+    if (waistCm <= neckCm) return null;
+    if (!isMale && (hipCm == null || waistCm + hipCm <= neckCm)) return null;
+
+    double val;
+    if (isMale) {
+      val = 1.0324
+          - 0.19077 * (math.log(waistCm - neckCm) / math.log(10))
+          + 0.15456 * (math.log(heightCm) / math.log(10));
+    } else {
+      val = 1.29579
+          - 0.35004 * (math.log(waistCm + hipCm! - neckCm) / math.log(10))
+          + 0.22100 * (math.log(heightCm) / math.log(10));
+    }
+    if (val <= 0) return null;
+    final result = (495 / val) - 450;
+    return result.clamp(1.0, 60.0);
+  }
+
+  // ── Navy Method bottom sheet ──────────────────────────
+  void _showNavySheet(BuildContext context, Color bgCard, Color border, Color text, Color muted, Color accent, Color accentDim, Color danger) {
+    final neckCtrl   = TextEditingController();
+    final waistCtrl  = TextEditingController();
+    final hipCtrl    = TextEditingController();
+    final heightCtrl = TextEditingController();
+    String gender    = 'male';
+    String? result;
+    String? error;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: bgCard,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModal) => Padding(
+          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 24),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 40, height: 4,
+                  decoration: BoxDecoration(color: border, borderRadius: BorderRadius.circular(99)))),
+                const SizedBox(height: 16),
+                Text('Yağ Oranı Hesapla', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: text)),
+                const SizedBox(height: 4),
+                Text('Navy Method — Boy + çevre ölçümleriyle tahmin', style: TextStyle(fontSize: 12, color: muted)),
+                const SizedBox(height: 16),
+
+                // Cinsiyet
+                Row(children: [
+                  _navyGenderBtn('male',   '👨 Erkek', gender, accent, accentDim, border, text, (v) => setModal(() { gender = v; result = null; })),
+                  const SizedBox(width: 8),
+                  _navyGenderBtn('female', '👩 Kadın', gender, accent, accentDim, border, text, (v) => setModal(() { gender = v; result = null; })),
+                ]),
+                const SizedBox(height: 12),
+
+                _navyField(heightCtrl, 'Boy (cm)', text, muted),
+                const SizedBox(height: 10),
+                _navyField(neckCtrl, 'Boyun çevresi (cm)', text, muted),
+                const SizedBox(height: 10),
+                _navyField(waistCtrl, 'Bel çevresi (cm) — göbek hizası', text, muted),
+                if (gender == 'female') ...[
+                  const SizedBox(height: 10),
+                  _navyField(hipCtrl, 'Kalça çevresi (cm)', text, muted),
+                ],
+                const SizedBox(height: 16),
+
+                if (error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(error!, style: TextStyle(color: danger, fontSize: 13)),
+                  ),
+
+                if (result != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(14), border: Border.all(color: accent)),
+                    child: Column(children: [
+                      Text('Tahmini Yağ Oranı', style: TextStyle(fontSize: 12, color: muted)),
+                      const SizedBox(height: 4),
+                      Text(result!, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: accent)),
+                    ]),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        _bodyFatController.text = result!.replaceAll('%', '').trim();
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text('Bu değeri kullan'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+
+                if (result == null)
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        final h  = double.tryParse(heightCtrl.text);
+                        final n  = double.tryParse(neckCtrl.text);
+                        final w  = double.tryParse(waistCtrl.text);
+                        final hi = double.tryParse(hipCtrl.text);
+                        if (h == null || n == null || w == null) {
+                          setModal(() => error = 'Boy, boyun ve bel zorunludur');
+                          return;
+                        }
+                        if (gender == 'female' && hi == null) {
+                          setModal(() => error = 'Kadın için kalça ölçüsü zorunludur');
+                          return;
+                        }
+                        final bf = _navyBodyFat(isMale: gender == 'male', waistCm: w, neckCm: n, heightCm: h, hipCm: hi);
+                        if (bf == null) {
+                          setModal(() => error = 'Geçersiz ölçüm değerleri');
+                          return;
+                        }
+                        setModal(() { result = '%${bf.toStringAsFixed(1)}'; error = null; });
+                      },
+                      child: const Text('Hesapla'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navyField(TextEditingController c, String label, Color text, Color muted) {
+    return TextField(
+      controller: c,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      style: TextStyle(color: text),
+      decoration: InputDecoration(labelText: label, hintStyle: TextStyle(color: muted)),
+    );
+  }
+
+  Widget _navyGenderBtn(String val, String label, String current, Color accent, Color accentDim, Color border, Color text, Function(String) onTap) {
+    final sel = current == val;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onTap(val),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: sel ? accentDim : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1),
+          ),
+          child: Text(label, textAlign: TextAlign.center,
+            style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text, fontSize: 13)),
+        ),
+      ),
+    );
   }
 
   String? _validate() {
@@ -110,17 +280,9 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
         'leg_cm':         double.tryParse(_legController.text),
       };
       if (existing != null) {
-        // ── Bugün kayıt var → güncelle ──
-        await ApiClient.instance.put(
-          '${Endpoints.measurements}/${existing['id']}',
-          data: data,
-        );
+        await ApiClient.instance.put('${Endpoints.measurements}/${existing['id']}', data: data);
       } else {
-        // ── Bugün kayıt yok → yeni ekle ──
-        await ApiClient.instance.post(Endpoints.measurements, data: {
-          'date': TFDateUtils.today(),
-          ...data,
-        });
+        await ApiClient.instance.post(Endpoints.measurements, data: {'date': TFDateUtils.today(), ...data});
       }
       setState(() => _showForm = false);
       ref.invalidate(measurementsProvider);
@@ -134,17 +296,18 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark  = Theme.of(context).brightness == Brightness.dark;
-    final bg      = isDark ? _OC.bg       : _OC.lBg;
-    final bgCard  = isDark ? _OC.bgCard   : _OC.lBgCard;
-    final bgSoft  = isDark ? _OC.bgSoft   : _OC.lBgSoft;
-    final border  = isDark ? _OC.border   : _OC.lBorder;
-    final text    = isDark ? _OC.text     : _OC.lText;
-    final textSoft= isDark ? _OC.textSoft : _OC.lTextSoft;
-    final muted   = isDark ? _OC.textMuted: _OC.lTextMuted;
-    final accent  = isDark ? _OC.accent   : _OC.lAccent;
-    final accentDim=isDark ? _OC.accentDim: _OC.lAccentDim;
-    final positive= isDark ? _OC.positive : _OC.lPositive;
+    final isDark   = Theme.of(context).brightness == Brightness.dark;
+    final bg       = isDark ? _OC.bg        : _OC.lBg;
+    final bgCard   = isDark ? _OC.bgCard    : _OC.lBgCard;
+    final bgSoft   = isDark ? _OC.bgSoft    : _OC.lBgSoft;
+    final border   = isDark ? _OC.border    : _OC.lBorder;
+    final text     = isDark ? _OC.text      : _OC.lText;
+    final textSoft = isDark ? _OC.textSoft  : _OC.lTextSoft;
+    final muted    = isDark ? _OC.textMuted : _OC.lTextMuted;
+    final accent   = isDark ? _OC.accent    : _OC.lAccent;
+    final accentDim= isDark ? _OC.accentDim : _OC.lAccentDim;
+    final positive = isDark ? _OC.positive  : _OC.lPositive;
+    final danger   = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
 
     final measurementsAsync = ref.watch(measurementsProvider);
 
@@ -153,9 +316,7 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
       error:   (_, __) => Center(child: Text('Veri yüklenemedi', style: TextStyle(color: text))),
       data: (measurements) {
         final latest = measurements.isNotEmpty ? measurements.last : null;
-
-        // Son ölçümden önceki ile fark hesapla
-        final prev = measurements.length > 1 ? measurements[measurements.length - 2] : null;
+        final prev   = measurements.length > 1 ? measurements[measurements.length - 2] : null;
         double? weightChange;
         if (latest != null && prev != null) {
           final lw = (latest['weight_kg'] as num?)?.toDouble();
@@ -169,7 +330,6 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
-              // ── ÖZET GRID ─────────────────────────────
               if (latest != null) ...[
                 GridView.count(
                   shrinkWrap: true,
@@ -179,89 +339,51 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                   crossAxisSpacing: 8,
                   childAspectRatio: 1.6,
                   children: [
-                    _MetricCard(
-                      label: 'Kilo', bgCard: bgCard, border: border, text: text,
-                      textSoft: textSoft, accent: accent, positive: positive,
+                    _MetricCard(label: 'Kilo', bgCard: bgCard, border: border, text: text, textSoft: textSoft, accent: accent, positive: positive,
                       value: latest['weight_kg'] != null ? '${latest['weight_kg']} kg' : '--',
                       delta: weightChange != null ? '${weightChange < 0 ? "↓" : "↑"} ${weightChange.abs().toStringAsFixed(1)}' : null,
-                      isPositive: weightChange != null && weightChange <= 0,
-                    ),
-                    _MetricCard(
-                      label: 'Yağ Oranı', bgCard: bgCard, border: border, text: text,
-                      textSoft: textSoft, accent: accent, positive: positive,
-                      value: latest['body_fat_pct'] != null ? '${latest['body_fat_pct']}%' : '--',
-                    ),
-                    _MetricCard(
-                      label: 'Kas Kitlesi', bgCard: bgCard, border: border, text: text,
-                      textSoft: textSoft, accent: accent, positive: positive,
-                      value: latest['muscle_mass_kg'] != null ? '${latest['muscle_mass_kg']} kg' : '--',
-                    ),
-                    _MetricCard(
-                      label: 'Bel', bgCard: bgCard, border: border, text: text,
-                      textSoft: textSoft, accent: accent, positive: positive,
-                      value: latest['waist_cm'] != null ? '${latest['waist_cm']} cm' : '--',
-                    ),
+                      isPositive: weightChange != null && weightChange <= 0),
+                    _MetricCard(label: 'Yağ Oranı', bgCard: bgCard, border: border, text: text, textSoft: textSoft, accent: accent, positive: positive,
+                      value: latest['body_fat_pct'] != null ? '${latest['body_fat_pct']}%' : '--'),
+                    _MetricCard(label: 'Kas Kitlesi', bgCard: bgCard, border: border, text: text, textSoft: textSoft, accent: accent, positive: positive,
+                      value: latest['muscle_mass_kg'] != null ? '${latest['muscle_mass_kg']} kg' : '--'),
+                    _MetricCard(label: 'Bel', bgCard: bgCard, border: border, text: text, textSoft: textSoft, accent: accent, positive: positive,
+                      value: latest['waist_cm'] != null ? '${latest['waist_cm']} cm' : '--'),
                   ],
                 ),
                 const SizedBox(height: 12),
-
-                // ── VÜCUT ÖLÇÜLERİ ────────────────────
                 Container(
-                  decoration: BoxDecoration(
-                    color: bgCard,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: border),
-                  ),
+                  decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Vücut Ölçüleri', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
-                          GestureDetector(
-                            onTap: () => setState(() => _showForm = !_showForm),
-                            child: Text(_showForm ? 'Kapat' : 'Ekle', style: TextStyle(fontSize: 13, color: accent, fontWeight: FontWeight.w600)),
-                          ),
-                        ],
-                      ),
+                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        Text('Vücut Ölçüleri', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+                        GestureDetector(
+                          onTap: () => setState(() => _showForm = !_showForm),
+                          child: Text(_showForm ? 'Kapat' : 'Ekle', style: TextStyle(fontSize: 13, color: accent, fontWeight: FontWeight.w600)),
+                        ),
+                      ]),
                       const SizedBox(height: 14),
                       ...([
-                        ['Göğüs', latest['chest_cm'],  88.0],
-                        ['Kalça', latest['hip_cm'],     82.0],
-                        ['Kol',   latest['arm_cm'],     55.0],
-                        ['Bacak', latest['leg_cm'],     65.0],
+                        ['Göğüs', latest['chest_cm'], 88.0],
+                        ['Kalça', latest['hip_cm'],   82.0],
+                        ['Kol',   latest['arm_cm'],   55.0],
+                        ['Bacak', latest['leg_cm'],   65.0],
                       ].map((row) {
                         final val = (row[1] as num?)?.toDouble();
                         final pct = row[2] as double;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: Row(
-                            children: [
-                              SizedBox(width: 60, child: Text(row[0] as String, style: TextStyle(fontSize: 12, color: textSoft))),
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(99),
-                                  child: LinearProgressIndicator(
-                                    value: pct / 100,
-                                    minHeight: 6,
-                                    backgroundColor: bgSoft,
-                                    color: accent,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              SizedBox(
-                                width: 60,
-                                child: Text(
-                                  val != null ? '$val cm' : '--',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: text),
-                                  textAlign: TextAlign.right,
-                                ),
-                              ),
-                            ],
-                          ),
+                          child: Row(children: [
+                            SizedBox(width: 60, child: Text(row[0] as String, style: TextStyle(fontSize: 12, color: textSoft))),
+                            Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(99),
+                              child: LinearProgressIndicator(value: pct / 100, minHeight: 6, backgroundColor: bgSoft, color: accent))),
+                            const SizedBox(width: 10),
+                            SizedBox(width: 60, child: Text(val != null ? '$val cm' : '--',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: text), textAlign: TextAlign.right)),
+                          ]),
                         );
                       })),
                     ],
@@ -270,14 +392,9 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                 const SizedBox(height: 12),
               ],
 
-              // ── FORM ──────────────────────────────────
               if (_showForm || latest == null) ...[
                 Container(
-                  decoration: BoxDecoration(
-                    color: bgCard,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: border),
-                  ),
+                  decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -286,9 +403,35 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                       const SizedBox(height: 4),
                       Text('En az bir alan zorunludur', style: TextStyle(fontSize: 11, color: muted)),
                       const SizedBox(height: 16),
+                      // Kilo
+                      Padding(padding: const EdgeInsets.only(bottom: 10),
+                        child: TextField(controller: _weightController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          style: TextStyle(color: text),
+                          decoration: InputDecoration(labelText: 'Kilo (kg)', prefixIcon: const Icon(Icons.monitor_weight_outlined, size: 18)))),
+                      // Vücut yağı + Navy Method butonu
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          Expanded(
+                            child: TextField(controller: _bodyFatController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              style: TextStyle(color: text),
+                              decoration: const InputDecoration(labelText: 'Vücut Yağ %', prefixIcon: Icon(Icons.percent, size: 18))),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () => _showNavySheet(context, bgCard, border, text, muted, accent, accentDim, danger),
+                            child: Container(
+                              height: 52, width: 52,
+                              decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12), border: Border.all(color: accent)),
+                              child: Center(child: Text('?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: accent))),
+                            ),
+                          ),
+                        ]),
+                      ),
+                      // Diğer alanlar
                       ...[
-                        [_weightController,     'Kilo (kg)',        Icons.monitor_weight_outlined],
-                        [_bodyFatController,    'Vücut Yağ %',      Icons.percent],
                         [_muscleMassController, 'Kas Kütlesi (kg)', Icons.fitness_center],
                         [_waistController,      'Bel (cm)',         Icons.straighten],
                         [_chestController,      'Göğüs (cm)',       Icons.straighten],
@@ -301,12 +444,7 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                           controller: f[0] as TextEditingController,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           style: TextStyle(color: text),
-                          decoration: InputDecoration(
-                            labelText: f[1] as String,
-                            prefixIcon: Icon(f[2] as IconData, size: 18),
-                          ),
-                        ),
-                      )),
+                          decoration: InputDecoration(labelText: f[1] as String, prefixIcon: Icon(f[2] as IconData, size: 18))))),
                       const SizedBox(height: 6),
                       SizedBox(
                         width: double.infinity,
@@ -358,22 +496,15 @@ class _MetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: bgCard,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: border),
-      ),
+      decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(fontSize: 10, color: textSoft)),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: text)),
-          if (delta != null)
-            Text(delta!, style: TextStyle(fontSize: 11, color: isPositive ? positive : const Color(0xFFFF5555), fontWeight: FontWeight.w600)),
-        ],
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: TextStyle(fontSize: 10, color: textSoft)),
+        const SizedBox(height: 4),
+        Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: text)),
+        if (delta != null)
+          Text(delta!, style: TextStyle(fontSize: 11, color: isPositive ? positive : const Color(0xFFFF5555), fontWeight: FontWeight.w600)),
+      ]),
     );
   }
 }

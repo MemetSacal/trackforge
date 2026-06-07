@@ -5,28 +5,27 @@ import '../../core/api/api_client.dart';
 import '../../core/api/api_exceptions.dart';
 import '../../core/api/endpoints.dart';
 
-// ── RENKLER ─────────────────────────────────────────────
 class _ON {
-  static const bg       = Color(0xFF0C0D10);
-  static const bgCard   = Color(0xFF141620);
-  static const bgSoft   = Color(0xFF0F1016);
-  static const border   = Color(0x12FFFFFF);
-  static const text     = Color(0xFFF0EEF8);
-  static const textSoft = Color(0xFF8A88A8);
-  static const textMuted= Color(0xFF4A4860);
-  static const accent   = Color(0xFFFFB020);
-  static const accentDim= Color(0x1FFFB020);
-  static const positive = Color(0xFF34D399);
-  static const danger   = Color(0xFFFF5555);
-  static const lBg      = Color(0xFFF0F2F6);
-  static const lBgCard  = Color(0xFFFFFFFF);
-  static const lBgSoft  = Color(0xFFE8EBF2);
-  static const lBorder  = Color(0x12000000);
-  static const lText    = Color(0xFF111318);
-  static const lTextSoft= Color(0xFF5A6078);
-  static const lTextMuted=Color(0xFF9AA0B8);
-  static const lAccent  = Color(0xFFFF6B2B);
-  static const lAccentDim=Color(0x1AFF6B2B);
+  static const bg        = Color(0xFF0C0D10);
+  static const bgCard    = Color(0xFF141620);
+  static const bgSoft    = Color(0xFF0F1016);
+  static const border    = Color(0x12FFFFFF);
+  static const text      = Color(0xFFF0EEF8);
+  static const textSoft  = Color(0xFF8A88A8);
+  static const textMuted = Color(0xFF4A4860);
+  static const accent    = Color(0xFFFFB020);
+  static const accentDim = Color(0x1FFFB020);
+  static const positive  = Color(0xFF34D399);
+  static const danger    = Color(0xFFFF5555);
+  static const lBg       = Color(0xFFF0F2F6);
+  static const lBgCard   = Color(0xFFFFFFFF);
+  static const lBgSoft   = Color(0xFFE8EBF2);
+  static const lBorder   = Color(0x12000000);
+  static const lText     = Color(0xFF111318);
+  static const lTextSoft = Color(0xFF5A6078);
+  static const lTextMuted= Color(0xFF9AA0B8);
+  static const lAccent   = Color(0xFFFF6B2B);
+  static const lAccentDim= Color(0x1AFF6B2B);
 }
 
 class OnboardingScreen extends StatefulWidget {
@@ -37,7 +36,7 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   int _step = 0;
-  static const int _totalSteps = 5;
+  static const int _totalSteps = 6; // ← 5'ten 6'ya çıktı
 
   // Step 0 — Hedefler
   final List<String> _selectedGoals = [];
@@ -53,9 +52,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   ];
 
   // Step 1 — Temel bilgiler
-  final _heightController = TextEditingController();
-  final _weightController = TextEditingController();
-  final _ageController    = TextEditingController();
+  final _heightController    = TextEditingController();
+  final _weightController    = TextEditingController();
+  final _ageController       = TextEditingController();
+  final _targetWeightController = TextEditingController(); // ← YENİ
   String _gender = 'male';
 
   // Step 2 — Aktivite
@@ -77,7 +77,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     {'key': 'gluten_free', 'label': 'Glutensiz', 'emoji': '🌾'},
   ];
 
-  // Step 4 — AI Koç ismi
+  // Step 4 — Kalori alışkanlığı ← YENİ
+  String _calorieHabit = '1500_2000';
+  final _calorieHabits = [
+    {'key': 'under_1500', 'label': '1500 kcal altı',   'emoji': '🥗'},
+    {'key': '1500_2000',  'label': '1500–2000 kcal',   'emoji': '🍽️'},
+    {'key': '2000_2500',  'label': '2000–2500 kcal',   'emoji': '🍖'},
+    {'key': '2500_3000',  'label': '2500–3000 kcal',   'emoji': '🥩'},
+    {'key': 'over_3000',  'label': '3000 kcal üzeri',  'emoji': '🍔'},
+  ];
+
+  // Step 5 — AI Koç ismi
   final _aiNameController = TextEditingController(text: 'TrackForge AI');
 
   bool _isLoading = false;
@@ -88,6 +98,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     _heightController.dispose();
     _weightController.dispose();
     _ageController.dispose();
+    _targetWeightController.dispose();
     _aiNameController.dispose();
     super.dispose();
   }
@@ -107,6 +118,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         if (w == null || w < 30 || w > 300) return 'Kilo 30–300 kg arasında olmalı';
         if (_ageController.text.isEmpty) return 'Yaş zorunludur';
         if (a == null || a < 10 || a > 100) return 'Yaş 10–100 arasında olmalı';
+        // Hedef kilo opsiyonel ama girilmişse validate et
+        if (_targetWeightController.text.isNotEmpty) {
+          final tw = double.tryParse(_targetWeightController.text);
+          if (tw == null || tw < 30 || tw > 300) return 'Hedef kilo 30–300 kg arasında olmalı';
+        }
         return null;
       default:
         return null;
@@ -116,41 +132,59 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _complete(Color accent, Color bgCard, Color border, Color text) async {
     setState(() { _isLoading = true; _error = null; });
     try {
+      final targetWeight = _targetWeightController.text.isNotEmpty
+          ? double.tryParse(_targetWeightController.text)
+          : null;
+
       // Onboarding
       try {
         await ApiClient.instance.get(Endpoints.onboarding);
         await ApiClient.instance.put(Endpoints.onboarding, data: {
-          'goals': _selectedGoals, 'diet_preference': _diet,
+          'goals': _selectedGoals,
+          'diet_preference': _diet,
+          'target_weight_kg': targetWeight,
+          'daily_calorie_habit': _calorieHabit,
         });
       } catch (_) {
         await ApiClient.instance.post(Endpoints.onboarding, data: {
-          'goals': _selectedGoals, 'diet_preference': _diet,
+          'goals': _selectedGoals,
+          'diet_preference': _diet,
+        });
+        await ApiClient.instance.put(Endpoints.onboarding, data: {
+          'target_weight_kg': targetWeight,
+          'daily_calorie_habit': _calorieHabit,
         });
       }
 
-      // Preferences (ai_name dahil)
+      // Preferences
       final aiName = _aiNameController.text.trim().isEmpty ? 'TrackForge AI' : _aiNameController.text.trim();
       try {
         await ApiClient.instance.get(Endpoints.preferences);
         await ApiClient.instance.put(Endpoints.preferences, data: {
-          'height_cm':     double.tryParse(_heightController.text) ?? 0,
-          'age':           int.tryParse(_ageController.text) ?? 0,
-          'gender':        _gender,
+          'height_cm':      double.tryParse(_heightController.text) ?? 0,
+          'age':            int.tryParse(_ageController.text) ?? 0,
+          'gender':         _gender,
           'activity_level': _activity,
-          'ai_name':       aiName,
+          'ai_name':        aiName,
+          if (targetWeight != null) 'target_weight_kg': targetWeight,
+          'daily_calorie_habit': _calorieHabit,
         });
       } catch (_) {
         await ApiClient.instance.post(Endpoints.preferences, data: {
-          'height_cm':     double.tryParse(_heightController.text) ?? 0,
-          'age':           int.tryParse(_ageController.text) ?? 0,
-          'gender':        _gender,
+          'height_cm':      double.tryParse(_heightController.text) ?? 0,
+          'age':            int.tryParse(_ageController.text) ?? 0,
+          'gender':         _gender,
           'activity_level': _activity,
-          'ai_name':       aiName,
+          'ai_name':        aiName,
         });
       }
 
+      // Complete
       await ApiClient.instance.post(Endpoints.onboardingComplete, data: {
-        'goals': _selectedGoals, 'diet_preference': _diet,
+        'goals':               _selectedGoals,
+        'diet_preference':     _diet,
+        'target_weight_kg':    targetWeight,
+        'daily_calorie_habit': _calorieHabit,
       });
 
       if (!mounted) return;
@@ -179,31 +213,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (_step > 0) setState(() { _step--; _error = null; });
   }
 
-  // Step meta
-  final _stepTitles = ['Hedeflerin', 'Temel Bilgiler', 'Aktivite', 'Diyet Tercihi', 'AI Koçun'];
+  final _stepTitles = ['Hedeflerin', 'Temel Bilgiler', 'Aktivite', 'Diyet Tercihi', 'Kalori Alışkanlığı', 'AI Koçun'];
   final _stepSubs   = [
     'Ne elde etmek istiyorsun?',
     'Kalori hesaplama için gerekli',
     'TDEE hesaplama için gerekli',
     'AI önerileri buna göre kişiselleşir',
+    'Şu an günde ne kadar yiyorsun?',
     'Koçun sana nasıl hitap etsin?',
   ];
-  final _stepEmojis = ['🎯', '📏', '⚡', '🥗', '🤖'];
+  final _stepEmojis = ['🎯', '📏', '⚡', '🥗', '🍽️', '🤖'];
 
   @override
   Widget build(BuildContext context) {
-    final isDark   = Theme.of(context).brightness == Brightness.dark;
-    final bg       = isDark ? _ON.bg       : _ON.lBg;
-    final bgCard   = isDark ? _ON.bgCard   : _ON.lBgCard;
-    final bgSoft   = isDark ? _ON.bgSoft   : _ON.lBgSoft;
-    final border   = isDark ? _ON.border   : _ON.lBorder;
-    final text     = isDark ? _ON.text     : _ON.lText;
-    final textSoft = isDark ? _ON.textSoft : _ON.lTextSoft;
-    final muted    = isDark ? _ON.textMuted: _ON.lTextMuted;
-    final accent   = isDark ? _ON.accent   : _ON.lAccent;
-    final accentDim= isDark ? _ON.accentDim: _ON.lAccentDim;
-    final positive = isDark ? _ON.positive : const Color(0xFF059669);
-    final danger   = isDark ? _ON.danger   : const Color(0xFFDC2626);
+    final isDark    = Theme.of(context).brightness == Brightness.dark;
+    final bg        = isDark ? _ON.bg        : _ON.lBg;
+    final bgCard    = isDark ? _ON.bgCard    : _ON.lBgCard;
+    final bgSoft    = isDark ? _ON.bgSoft    : _ON.lBgSoft;
+    final border    = isDark ? _ON.border    : _ON.lBorder;
+    final text      = isDark ? _ON.text      : _ON.lText;
+    final textSoft  = isDark ? _ON.textSoft  : _ON.lTextSoft;
+    final muted     = isDark ? _ON.textMuted : _ON.lTextMuted;
+    final accent    = isDark ? _ON.accent    : _ON.lAccent;
+    final accentDim = isDark ? _ON.accentDim : _ON.lAccentDim;
+    final positive  = isDark ? _ON.positive  : const Color(0xFF059669);
+    final danger    = isDark ? _ON.danger    : const Color(0xFFDC2626);
 
     return Scaffold(
       backgroundColor: bg,
@@ -231,15 +265,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       const SizedBox(width: 36),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('TRACKFORGE', style: TextStyle(fontSize: 9, letterSpacing: 3, color: muted, fontWeight: FontWeight.w600)),
-                          Text('Kurulum', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: text, letterSpacing: -0.5)),
-                        ],
-                      ),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('TRACKFORGE', style: TextStyle(fontSize: 9, letterSpacing: 3, color: muted, fontWeight: FontWeight.w600)),
+                        Text('Kurulum', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: text, letterSpacing: -0.5)),
+                      ]),
                     ),
-                    // Adım sayacı
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(99), border: Border.all(color: accent.withOpacity(0.4))),
@@ -248,22 +278,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-
-                // Progress bar
                 Container(
                   height: 4,
                   decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(99)),
                   child: FractionallySizedBox(
                     widthFactor: (_step + 1) / _totalSteps,
                     alignment: Alignment.centerLeft,
-                    child: Container(
-                      decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(99)),
-                    ),
+                    child: Container(decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(99))),
                   ),
                 ),
                 const SizedBox(height: 20),
-
-                // Step başlık kartı
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -280,17 +304,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     children: [
                       Text(_stepEmojis[_step], style: const TextStyle(fontSize: 32)),
                       const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(_stepTitles[_step], style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
-                                color: isDark ? accent : Colors.white)),
-                            Text(_stepSubs[_step], style: TextStyle(fontSize: 12,
-                                color: isDark ? accent.withOpacity(0.7) : Colors.white.withOpacity(0.85))),
-                          ],
-                        ),
-                      ),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(_stepTitles[_step], style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800,
+                            color: isDark ? accent : Colors.white)),
+                        Text(_stepSubs[_step], style: TextStyle(fontSize: 12,
+                            color: isDark ? accent.withOpacity(0.7) : Colors.white.withOpacity(0.85))),
+                      ])),
                     ],
                   ),
                 ),
@@ -298,7 +317,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
 
-          // ── İÇERİK ────────────────────────────────
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -306,22 +324,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
 
-          // ── HATA ──────────────────────────────────
           if (_error != null)
             Container(
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: danger.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: danger.withOpacity(0.3))),
-              child: Row(
-                children: [
-                  Icon(Icons.error_outline, color: danger, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(_error!, style: TextStyle(color: danger, fontSize: 13))),
-                ],
-              ),
+              child: Row(children: [
+                Icon(Icons.error_outline, color: danger, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_error!, style: TextStyle(color: danger, fontSize: 13))),
+              ]),
             ),
 
-          // ── DEVAM BUTONU ──────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
             child: SizedBox(
@@ -346,12 +360,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       case 1: return _buildBasicInfo(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim);
       case 2: return _buildActivity(bgCard, border, text, textSoft, muted, accent, accentDim, positive);
       case 3: return _buildDiet(bgCard, border, text, muted, accent, accentDim, positive);
-      case 4: return _buildAiName(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim, isDark);
+      case 4: return _buildCalorieHabit(bgCard, border, text, muted, accent, accentDim); // ← YENİ
+      case 5: return _buildAiName(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim, isDark);
       default: return const SizedBox();
     }
   }
 
-  // ── STEP 0: HEDEFLER ────────────────────────────────
+  // ── STEP 0: HEDEFLER ────────────────────────────────────
   Widget _buildGoals(Color bgCard, Color bgSoft, Color border, Color text, Color accent, Color accentDim, Color positive) {
     return GridView.builder(
       shrinkWrap: true,
@@ -361,7 +376,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
       itemCount: _goals.length,
       itemBuilder: (_, i) {
-        final g = _goals[i];
+        final g   = _goals[i];
         final sel = _selectedGoals.contains(g['key']);
         return GestureDetector(
           onTap: () => setState(() {
@@ -374,41 +389,51 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(g['emoji']!, style: const TextStyle(fontSize: 20)),
-                const SizedBox(width: 8),
-                Flexible(child: Text(g['label']!, style: TextStyle(
-                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                  fontSize: 12, color: sel ? accent : text,
-                ))),
-                if (sel) ...[const SizedBox(width: 4), Icon(Icons.check_circle, color: accent, size: 14)],
-              ],
-            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(g['emoji']!, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Flexible(child: Text(g['label']!, style: TextStyle(
+                fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 12, color: sel ? accent : text))),
+              if (sel) ...[const SizedBox(width: 4), Icon(Icons.check_circle, color: accent, size: 14)],
+            ]),
           ),
         );
       },
     );
   }
 
-  // ── STEP 1: TEMEL BİLGİLER ──────────────────────────
+  // ── STEP 1: TEMEL BİLGİLER ──────────────────────────────
   Widget _buildBasicInfo(Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim) {
     return Column(
       children: [
         _field(_heightController, 'Boy (cm)', Icons.height, text, '100–250'),
         const SizedBox(height: 10),
-        _field(_weightController, 'Kilo (kg)', Icons.monitor_weight_outlined, text, '30–300'),
+        _field(_weightController, 'Mevcut Kilo (kg)', Icons.monitor_weight_outlined, text, '30–300'),
         const SizedBox(height: 10),
         _field(_ageController, 'Yaş', Icons.cake_outlined, text, '10–100', isNumber: true),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            _genderBtn('male',   '👨 Erkek', bgCard, border, text, accent, accentDim),
-            const SizedBox(width: 10),
-            _genderBtn('female', '👩 Kadın', bgCard, border, text, accent, accentDim),
-          ],
+        const SizedBox(height: 10),
+        // ── YENİ: Hedef kilo ──
+        _field(_targetWeightController, 'Hedef Kilo (kg) — opsiyonel', Icons.flag_outlined, text, '30–300'),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(10)),
+          child: Row(children: [
+            Icon(Icons.info_outline, color: accent, size: 14),
+            const SizedBox(width: 8),
+            Expanded(child: Text(
+              'Hedef kilonu girersen AI sana ne kadar sürede ulaşabileceğini tahmin eder.',
+              style: TextStyle(fontSize: 11, color: text),
+            )),
+          ]),
         ),
+        const SizedBox(height: 16),
+        Row(children: [
+          _genderBtn('male',   '👨 Erkek', bgCard, border, text, accent, accentDim),
+          const SizedBox(width: 10),
+          _genderBtn('female', '👩 Kadın', bgCard, border, text, accent, accentDim),
+        ]),
       ],
     );
   }
@@ -435,14 +460,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1),
           ),
           child: Text(label, textAlign: TextAlign.center,
-            style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-              color: sel ? accent : text, fontSize: 14)),
+            style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text, fontSize: 14)),
         ),
       ),
     );
   }
 
-  // ── STEP 2: AKTİVİTE ────────────────────────────────
+  // ── STEP 2: AKTİVİTE ────────────────────────────────────
   Widget _buildActivity(Color bgCard, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim, Color positive) {
     return Column(
       children: _activities.map((a) {
@@ -457,28 +481,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(a['label']!, style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text, fontSize: 14)),
-                      const SizedBox(height: 2),
-                      Text(a['desc']!, style: TextStyle(fontSize: 12, color: muted)),
-                    ],
-                  ),
-                ),
-                if (sel) Icon(Icons.check_circle_rounded, color: accent, size: 20),
-              ],
-            ),
+            child: Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(a['label']!, style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text, fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(a['desc']!, style: TextStyle(fontSize: 12, color: muted)),
+              ])),
+              if (sel) Icon(Icons.check_circle_rounded, color: accent, size: 20),
+            ]),
           ),
         );
       }).toList(),
     );
   }
 
-  // ── STEP 3: DİYET ───────────────────────────────────
+  // ── STEP 3: DİYET ───────────────────────────────────────
   Widget _buildDiet(Color bgCard, Color border, Color text, Color muted, Color accent, Color accentDim, Color positive) {
     return Column(
       children: _diets.map((d) {
@@ -493,105 +510,129 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1),
             ),
-            child: Row(
-              children: [
-                Text(d['emoji']!, style: const TextStyle(fontSize: 24)),
-                const SizedBox(width: 16),
-                Expanded(child: Text(d['label']!, style: TextStyle(
-                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                  color: sel ? accent : text, fontSize: 15))),
-                if (sel) Icon(Icons.check_circle_rounded, color: accent, size: 20),
-              ],
-            ),
+            child: Row(children: [
+              Text(d['emoji']!, style: const TextStyle(fontSize: 24)),
+              const SizedBox(width: 16),
+              Expanded(child: Text(d['label']!, style: TextStyle(
+                fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text, fontSize: 15))),
+              if (sel) Icon(Icons.check_circle_rounded, color: accent, size: 20),
+            ]),
           ),
         );
       }).toList(),
     );
   }
 
-  // ── STEP 4: AI KOÇ İSMİ ─────────────────────────────
+  // ── STEP 4: KALORİ ALIŞKANLIĞI ─────────────────────────
+  Widget _buildCalorieHabit(Color bgCard, Color border, Color text, Color muted, Color accent, Color accentDim) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12), border: Border.all(color: accent.withOpacity(0.3))),
+          child: Row(children: [
+            Icon(Icons.info_outline, color: accent, size: 16),
+            const SizedBox(width: 8),
+            Expanded(child: Text(
+              'Bunu doğru girmen önemli! Mevcut alışkanlığından başlayarak seni zorlamadan hedefe götüreceğiz.',
+              style: TextStyle(fontSize: 12, color: text, height: 1.4),
+            )),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        ..._calorieHabits.map((h) {
+          final sel = _calorieHabit == h['key'];
+          return GestureDetector(
+            onTap: () => setState(() => _calorieHabit = h['key']!),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: sel ? accentDim : bgCard,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1),
+              ),
+              child: Row(children: [
+                Text(h['emoji']!, style: const TextStyle(fontSize: 24)),
+                const SizedBox(width: 16),
+                Expanded(child: Text(h['label']!, style: TextStyle(
+                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text, fontSize: 15))),
+                if (sel) Icon(Icons.check_circle_rounded, color: accent, size: 20),
+              ]),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  // ── STEP 5: AI KOÇ İSMİ ─────────────────────────────────
   Widget _buildAiName(Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim, bool isDark) {
     final suggestions = ['TrackForge AI', 'Coach', 'Mentor', 'Atlas', 'Zara', 'Max'];
     return Column(
       children: [
-        // AI koç tanıtım kartı
         Container(
           decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
           padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              const Text('🤖', style: TextStyle(fontSize: 48)),
-              const SizedBox(height: 12),
-              Text(
-                _aiNameController.text.trim().isEmpty ? 'TrackForge AI' : _aiNameController.text.trim(),
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: accent),
-              ),
-              const SizedBox(height: 4),
-              Text('AI Koçunun adı bu olacak', style: TextStyle(fontSize: 12, color: muted)),
-            ],
-          ),
+          child: Column(children: [
+            const Text('🤖', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 12),
+            Text(
+              _aiNameController.text.trim().isEmpty ? 'TrackForge AI' : _aiNameController.text.trim(),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: accent),
+            ),
+            const SizedBox(height: 4),
+            Text('AI Koçunun adı bu olacak', style: TextStyle(fontSize: 12, color: muted)),
+          ]),
         ),
         const SizedBox(height: 16),
-
-        // İsim giriş alanı
         Container(
           decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('İsim Ver', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _aiNameController,
-                style: TextStyle(color: text),
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  labelText: 'AI Koç İsmi',
-                  prefixIcon: const Icon(Icons.smart_toy_outlined),
-                  hintText: 'TrackForge AI',
-                  suffixIcon: _aiNameController.text.isNotEmpty
-                      ? IconButton(
-                          icon: Icon(Icons.clear, size: 16, color: muted),
-                          onPressed: () { _aiNameController.clear(); setState(() {}); },
-                        )
-                      : null,
-                ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('İsim Ver', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _aiNameController,
+              style: TextStyle(color: text),
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'AI Koç İsmi',
+                prefixIcon: const Icon(Icons.smart_toy_outlined),
+                hintText: 'TrackForge AI',
+                suffixIcon: _aiNameController.text.isNotEmpty
+                    ? IconButton(icon: Icon(Icons.clear, size: 16, color: muted),
+                        onPressed: () { _aiNameController.clear(); setState(() {}); })
+                    : null,
               ),
-            ],
-          ),
+            ),
+          ]),
         ),
         const SizedBox(height: 12),
-
-        // Hazır isim önerileri
         Container(
           decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Hazır İsimler', style: TextStyle(fontSize: 13, color: muted, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8, runSpacing: 8,
-                children: suggestions.map((s) {
-                  final sel = _aiNameController.text == s;
-                  return GestureDetector(
-                    onTap: () { _aiNameController.text = s; setState(() {}); },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: sel ? accentDim : bgSoft,
-                        borderRadius: BorderRadius.circular(99),
-                        border: Border.all(color: sel ? accent : border),
-                      ),
-                      child: Text(s, style: TextStyle(fontSize: 13, color: sel ? accent : textSoft, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Hazır İsimler', style: TextStyle(fontSize: 13, color: muted, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8,
+              children: suggestions.map((s) {
+                final sel = _aiNameController.text == s;
+                return GestureDetector(
+                  onTap: () { _aiNameController.text = s; setState(() {}); },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: sel ? accentDim : bgSoft,
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: sel ? accent : border),
                     ),
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
+                    child: Text(s, style: TextStyle(fontSize: 13, color: sel ? accent : textSoft, fontWeight: sel ? FontWeight.w700 : FontWeight.w500)),
+                  ),
+                );
+              }).toList()),
+          ]),
         ),
       ],
     );

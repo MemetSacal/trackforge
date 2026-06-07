@@ -158,19 +158,6 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Hedefin ne?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
-        const SizedBox(height: 10),
-        Wrap(spacing: 8, runSpacing: 8,
-          children: _goals.map((g) {
-            final sel = _goal == g['key'];
-            return GestureDetector(onTap: () => setState(() => _goal = g['key']!),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(color: sel ? accentDim : bgCard, borderRadius: BorderRadius.circular(99), border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1)),
-                child: Text(g['label']!, style: TextStyle(fontSize: 13, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text)),
-              ));
-          }).toList()),
-        const SizedBox(height: 20),
         Text('Nerede antrenman yapacaksın?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
         const SizedBox(height: 10),
         Row(children: _locations.map((l) {
