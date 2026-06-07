@@ -18,8 +18,9 @@ class TokenResponse(BaseModel):
     # Login/register sonrası dönen token şeması
     access_token: str
     refresh_token: str
-    token_type: str = "bearer"  # Default "bearer"
-
+    token_type: str = "bearer"
+    user_id: str = ""
+    is_premium: bool = False
 
 class UserResponse(BaseModel):
     # Kullanıcı bilgilerini dönerken kullanılan şema

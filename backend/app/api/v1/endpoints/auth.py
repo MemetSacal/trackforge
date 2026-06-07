@@ -68,6 +68,7 @@ async def get_me(
         "email": user.email,
         "full_name": user.full_name,
         "created_at": user.created_at,
+        "is_premium": user.is_premium,
     }
 
 """

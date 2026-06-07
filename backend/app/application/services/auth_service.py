@@ -49,14 +49,15 @@ class AuthService:
         return self._generate_tokens(user)
 
     def _generate_tokens(self, user: User) -> dict:
-        # Access ve refresh token üretir
+        # access ve refresh token üretir
         access_token = create_access_token({"sub": user.id})
         refresh_token = create_refresh_token({"sub": user.id})
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
-            "user_id": user.id,  # ← YENİ
+            "user_id": user.id,
+            "is_premium": getattr(user, 'is_premium', False),
         }
 
     async def refresh(self, refresh_token: str) -> dict:
