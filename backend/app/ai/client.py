@@ -15,7 +15,7 @@ CLAUDE_MODEL = "claude-sonnet-4-5"
 # Token limitleri
 MAX_TOKENS_SUMMARY = 1500      # Haftalık özet için
 MAX_TOKENS_WORKOUT = 4000      # Antrenman planı için
-MAX_TOKENS_MEAL = 1200         # Diyet tavsiyesi için
+MAX_TOKENS_MEAL = 3000         # Diyet tavsiyesi için
 MAX_TOKENS_RECIPE = 1000       # Tarif önerisi için
 
 

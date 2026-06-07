@@ -177,7 +177,13 @@ class _RecipeScreenState extends ConsumerState<RecipeScreen> {
             child: TextField(
               controller: _ingredientController,
               style: TextStyle(color: text),
-              decoration: const InputDecoration(labelText: 'Malzeme ekle...', prefixIcon: Icon(Icons.add_circle_outline)),
+              decoration: InputDecoration(
+                labelText: 'Malzeme ekle...',
+                prefixIcon: GestureDetector(
+                  onTap: _addIngredient,
+                  child: const Icon(Icons.add_circle_outline),
+                ),
+              ),
               onSubmitted: (_) => _addIngredient(),
             ),
           ),
@@ -226,7 +232,7 @@ class _RecipeScreenState extends ConsumerState<RecipeScreen> {
               elevation: 0,
             ),
             child: Text(
-              _ingredients.isEmpty ? 'Malzeme yok, devam et →' : 'Devam Et →',
+              _ingredients.isEmpty ? 'Eklemek istediğim malzeme yok, devam et →' : 'Devam Et →',
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
           ),

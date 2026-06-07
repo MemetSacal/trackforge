@@ -1,38 +1,43 @@
 from datetime import datetime
 from typing import Optional, List
-
 from pydantic import BaseModel, Field
 
-
-# Desteklenen hedef değerleri
 VALID_GOALS = [
     "weight_loss", "maintain_weight", "gain_weight", "muscle_gain",
     "change_diet", "meal_planning", "stress_management", "stay_active"
 ]
 
-# Desteklenen diyet tercihleri
 VALID_DIET_PREFERENCES = ["normal", "vegetarian", "vegan", "gluten_free"]
+
+# Günlük kalori alışkanlığı seçenekleri
+VALID_CALORIE_HABITS = [
+    "under_1500",    # 1500 altı
+    "1500_2000",     # 1500-2000
+    "2000_2500",     # 2000-2500
+    "2500_3000",     # 2500-3000
+    "over_3000",     # 3000 üzeri
+]
 
 
 class OnboardingCreateRequest(BaseModel):
-    # Adım 1 — Hedefler (max 3)
-    goals: List[str] = Field(default=[], max_length=3, description="Max 3 hedef seçilebilir")
-
-    # Adım 4 — Diyet tercihi
-    diet_preference: Optional[str] = Field(None, description="normal/vegetarian/vegan/gluten_free")
+    goals: List[str] = Field(default=[], description="Max 3 hedef")
+    diet_preference: Optional[str] = None
 
 
 class OnboardingUpdateRequest(BaseModel):
-    # Kısmi güncelleme — tüm alanlar opsiyonel
-    goals: Optional[List[str]] = Field(None, max_length=3)
+    goals: Optional[List[str]] = None
     diet_preference: Optional[str] = None
-    # is_completed ayrıca complete() endpoint'i ile set edilir
+    # ── YENİ alanlar ──
+    target_weight_kg: Optional[float] = Field(None, ge=30, le=300, description="Hedef kilo")
+    daily_calorie_habit: Optional[str] = Field(None, description="Günlük kalori alışkanlığı aralığı")
 
 
 class OnboardingCompleteRequest(BaseModel):
-    # Onboarding tamamlandı — tüm adımların verisi birlikte gönderilir
-    goals: List[str] = Field(..., max_length=3)
+    goals: List[str] = Field(..., description="Max 3 hedef")
     diet_preference: Optional[str] = None
+    # ── YENİ alanlar ──
+    target_weight_kg: Optional[float] = Field(None, ge=30, le=300)
+    daily_calorie_habit: Optional[str] = Field(None, description="under_1500 / 1500_2000 / 2000_2500 / 2500_3000 / over_3000")
 
 
 class OnboardingResponse(BaseModel):
@@ -41,24 +46,10 @@ class OnboardingResponse(BaseModel):
     is_completed: bool
     goals: List[str]
     diet_preference: Optional[str] = None
+    target_weight_kg: Optional[float] = None      # ← YENİ
+    daily_calorie_habit: Optional[str] = None      # ← YENİ
     completed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
-
-
-"""
-DOSYA AKIŞI:
-OnboardingCreateRequest → POST /onboarding (register sonrası ilk kayıt)
-OnboardingUpdateRequest → PUT /onboarding (adım adım güncelleme)
-OnboardingCompleteRequest → POST /onboarding/complete (son adımda tamamla)
-OnboardingResponse → her endpoint'in döndürdüğü yanıt
-
-Flutter akışı:
-  1. Register → POST /onboarding (boş kayıt oluştur)
-  2. Her adımda → PUT /onboarding (goals, diet_preference güncelle)
-  3. Son adımda → POST /onboarding/complete (is_completed = True)
-
-Spring Boot karşılığı: DTO sınıfları.
-"""

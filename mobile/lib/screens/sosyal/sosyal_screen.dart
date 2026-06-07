@@ -42,7 +42,11 @@ class _SosyalScreenState extends ConsumerState<SosyalScreen>
   }
 
   @override
-  void dispose() { _tabController.dispose(); _emailController.dispose(); super.dispose(); }
+  void dispose() {
+    _tabController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
 
   Future<void> _sendRequest(Color accent) async {
     if (_emailController.text.isEmpty) return;
@@ -51,10 +55,38 @@ class _SosyalScreenState extends ConsumerState<SosyalScreen>
       await ApiClient.instance.post(Endpoints.friendRequest, data: {'addressee_email': _emailController.text.trim()});
       _emailController.clear();
       ref.invalidate(friendsProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Arkadaşlık isteği gönderildi ✅')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Arkadaşlık isteği gönderildi ✅')));
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('İstek gönderilemedi')));
-    } finally { if (mounted) setState(() => _isSending = false); }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('İstek gönderilemedi')));
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  Future<void> _acceptRequest(String friendshipId) async {
+    try {
+      await ApiClient.instance.post('/social/friends/accept/$friendshipId');
+      ref.invalidate(friendsProvider);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Arkadaşlık isteği kabul edildi ✅')));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('İşlem başarısız')));
+    }
+  }
+
+  Future<void> _rejectRequest(String friendshipId) async {
+    try {
+      await ApiClient.instance.delete('/social/friends/$friendshipId');
+      ref.invalidate(friendsProvider);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('İstek reddedildi')));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('İşlem başarısız')));
+    }
   }
 
   @override
@@ -111,8 +143,11 @@ class _SosyalScreenState extends ConsumerState<SosyalScreen>
                   decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(14)),
                   child: TabBar(
                     controller: _tabController,
-                    indicator: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(10),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4)]),
+                    indicator: BoxDecoration(
+                      color: bgCard,
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4)],
+                    ),
                     indicatorSize: TabBarIndicatorSize.tab,
                     dividerColor: Colors.transparent,
                     labelColor: accent,
@@ -126,7 +161,6 @@ class _SosyalScreenState extends ConsumerState<SosyalScreen>
               ],
             ),
           ),
-
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -135,6 +169,8 @@ class _SosyalScreenState extends ConsumerState<SosyalScreen>
                   emailController: _emailController,
                   isSending: _isSending,
                   onSend: () => _sendRequest(accent),
+                  onAccept: (id) => _acceptRequest(id),
+                  onReject: (id) => _rejectRequest(id),
                   bg: bg, bgCard: bgCard, bgSoft: bgSoft, border: border,
                   text: text, textSoft: textSoft, muted: muted,
                   accent: accent, accentDim: accentDim, positive: positive,
@@ -157,13 +193,26 @@ class _FriendsTab extends ConsumerWidget {
   final TextEditingController emailController;
   final bool isSending;
   final VoidCallback onSend;
+  final void Function(String) onAccept;
+  final void Function(String) onReject;
   final Color bg, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim, positive;
 
   const _FriendsTab({
-    required this.emailController, required this.isSending, required this.onSend,
-    required this.bg, required this.bgCard, required this.bgSoft, required this.border,
-    required this.text, required this.textSoft, required this.muted,
-    required this.accent, required this.accentDim, required this.positive,
+    required this.emailController,
+    required this.isSending,
+    required this.onSend,
+    required this.onAccept,
+    required this.onReject,
+    required this.bg,
+    required this.bgCard,
+    required this.bgSoft,
+    required this.border,
+    required this.text,
+    required this.textSoft,
+    required this.muted,
+    required this.accent,
+    required this.accentDim,
+    required this.positive,
   });
 
   @override
@@ -175,6 +224,7 @@ class _FriendsTab extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Arkadaş Ekle ──
           Container(
             decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
             padding: const EdgeInsets.all(16),
@@ -187,7 +237,10 @@ class _FriendsTab extends ConsumerWidget {
                   controller: emailController,
                   keyboardType: TextInputType.emailAddress,
                   style: TextStyle(color: text),
-                  decoration: const InputDecoration(labelText: 'E-posta adresi', prefixIcon: Icon(Icons.email_outlined)),
+                  decoration: const InputDecoration(
+                    labelText: 'E-posta adresi',
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -203,6 +256,8 @@ class _FriendsTab extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 12),
+
+          // ── Arkadaşlarım ──
           Container(
             decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
             padding: const EdgeInsets.all(16),
@@ -215,23 +270,27 @@ class _FriendsTab extends ConsumerWidget {
                   loading: () => Center(child: CircularProgressIndicator(color: accent)),
                   error: (_, __) => Center(child: Text('Veri yüklenemedi', style: TextStyle(color: text))),
                   data: (friends) {
-                    if (friends.isEmpty) return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      child: Column(children: [
-                        const Text('👥', style: TextStyle(fontSize: 36)),
-                        const SizedBox(height: 8),
-                        Text('Henüz arkadaş yok', style: TextStyle(fontSize: 14, color: text)),
-                        const SizedBox(height: 4),
-                        Text('E-posta ile arkadaş ekle', style: TextStyle(fontSize: 12, color: muted)),
-                      ]),
-                    );
+                    if (friends.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        child: Column(children: [
+                          const Text('👥', style: TextStyle(fontSize: 36)),
+                          const SizedBox(height: 8),
+                          Text('Henüz arkadaş yok', style: TextStyle(fontSize: 14, color: text)),
+                          const SizedBox(height: 4),
+                          Text('E-posta ile arkadaş ekle', style: TextStyle(fontSize: 12, color: muted)),
+                        ]),
+                      );
+                    }
                     return Column(
                       children: friends.asMap().entries.map((e) {
-                        final f = e.value;
-                        final name = (f['full_name'] ?? f['username'] ?? 'Kullanıcı').toString();
-                        final status = f['status'] as String? ?? '';
-                        final xp = f['xp'] ?? f['total_xp'] ?? 0;
-                        final initials = name.length >= 2 ? name.substring(0, 2).toUpperCase() : name.substring(0, 1).toUpperCase();
+                        final f        = e.value;
+                        final name     = (f['full_name'] ?? f['username'] ?? 'Kullanıcı').toString();
+                        final status   = f['status'] as String? ?? '';
+                        final xp       = f['xp'] ?? f['total_xp'] ?? 0;
+                        final initials = name.length >= 2
+                            ? name.substring(0, 2).toUpperCase()
+                            : name.substring(0, 1).toUpperCase();
                         final isPending = status == 'pending';
 
                         return Container(
@@ -246,12 +305,37 @@ class _FriendsTab extends ConsumerWidget {
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: text)),
-                                  Text(isPending ? 'İstek bekliyor...' : '$xp puan', style: TextStyle(fontSize: 11, color: muted)),
-                                ]),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: text)),
+                                    Text(
+                                      isPending ? 'İstek bekliyor...' : '$xp puan',
+                                      style: TextStyle(fontSize: 11, color: muted),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              Icon(isPending ? Icons.schedule : Icons.chevron_right, size: 18, color: muted),
+                              if (isPending) ...[
+                                GestureDetector(
+                                  onTap: () => onAccept(f['id'] as String),
+                                  child: Container(
+                                    width: 32, height: 32,
+                                    decoration: BoxDecoration(color: positive.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                                    child: Icon(Icons.check, size: 18, color: positive),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                GestureDetector(
+                                  onTap: () => onReject(f['id'] as String),
+                                  child: Container(
+                                    width: 32, height: 32,
+                                    decoration: BoxDecoration(color: Colors.red.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                                    child: const Icon(Icons.close, size: 18, color: Colors.red),
+                                  ),
+                                ),
+                              ] else
+                                Icon(Icons.chevron_right, size: 18, color: muted),
                             ],
                           ),
                         );
@@ -272,9 +356,15 @@ class _LeaderboardTab extends ConsumerWidget {
   final Color bg, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim;
 
   const _LeaderboardTab({
-    required this.bg, required this.bgCard, required this.bgSoft, required this.border,
-    required this.text, required this.textSoft, required this.muted,
-    required this.accent, required this.accentDim,
+    required this.bg,
+    required this.bgCard,
+    required this.bgSoft,
+    required this.border,
+    required this.text,
+    required this.textSoft,
+    required this.muted,
+    required this.accent,
+    required this.accentDim,
   });
 
   @override
@@ -285,15 +375,17 @@ class _LeaderboardTab extends ConsumerWidget {
       loading: () => Center(child: CircularProgressIndicator(color: accent)),
       error: (_, __) => Center(child: Text('Veri yüklenemedi', style: TextStyle(color: text))),
       data: (entries) {
-        if (entries.isEmpty) return Center(
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            const Text('🏆', style: TextStyle(fontSize: 48)),
-            const SizedBox(height: 16),
-            Text('Liderlik tablosu boş', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: text)),
-            const SizedBox(height: 4),
-            Text('Arkadaş ekle ve yarışmaya başla', style: TextStyle(fontSize: 12, color: muted)),
-          ]),
-        );
+        if (entries.isEmpty) {
+          return Center(
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Text('🏆', style: TextStyle(fontSize: 48)),
+              const SizedBox(height: 16),
+              Text('Liderlik tablosu boş', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: text)),
+              const SizedBox(height: 4),
+              Text('Arkadaş ekle ve yarışmaya başla', style: TextStyle(fontSize: 12, color: muted)),
+            ]),
+          );
+        }
 
         const medals = ['🥇', '🥈', '🥉'];
 

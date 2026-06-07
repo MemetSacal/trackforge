@@ -47,8 +47,7 @@ class _AlisverisScreenState extends ConsumerState<AlisverisScreen> {
 
   Future<void> _toggle(Map<String, dynamic> item) async {
     try {
-      await ApiClient.instance.put('${Endpoints.shopping}/${item['id']}',
-          data: {'is_completed': !(item['is_completed'] as bool? ?? false)});
+      await ApiClient.instance.patch('${Endpoints.shopping}/${item['id']}/toggle');
       ref.invalidate(shoppingListProvider);
     } catch (_) {}
   }
@@ -234,9 +233,14 @@ class _AlisverisScreenState extends ConsumerState<AlisverisScreen> {
                                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                           Text(
                                             qty != '1' ? '$name (x$qty)' : name,
-                                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
                                               color: isDone ? muted : text,
-                                              decoration: isDone ? TextDecoration.lineThrough : null),
+                                              decoration: isDone ? TextDecoration.lineThrough : null,
+                                              decorationColor: muted,          // ← Çizgi rengi açıkça belirtildi
+                                              decorationThickness: 2.0,        // ← Çizgi kalınlığı artırıldı (default ~1.0)
+                                            ),
                                           ),
                                           if (cat != null) Text(cat, style: TextStyle(fontSize: 11, color: muted)),
                                         ]),

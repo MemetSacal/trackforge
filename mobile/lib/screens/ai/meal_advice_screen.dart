@@ -8,6 +8,17 @@ import '../../core/utils/date_utils.dart';
 import '../../app.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'ai_helpers.dart';
+import '../../core/utils/rate_limiter.dart';
+import 'dart:convert';
+import '../../core/auth/token_manager.dart';
+
+// ── Preferences provider (TDEE için) ────────────────────
+final preferencesProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+  try {
+    final response = await ApiClient.instance.get(Endpoints.preferences);
+    return Map<String, dynamic>.from(response.data);
+  } catch (_) { return null; }
+});
 
 class MealAdviceScreen extends ConsumerStatefulWidget {
   const MealAdviceScreen({super.key});
@@ -18,9 +29,10 @@ class MealAdviceScreen extends ConsumerStatefulWidget {
 class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
   String _goal = 'weight_loss';
   int _mealsPerDay = 3;
-  Map<String, dynamic>? _rawData; // ham JSON
+  Map<String, dynamic>? _rawData;
   bool _isLoading = false;
   String? _error;
+  bool _limitReached = false;
 
   final _goals = [
     {'key': 'weight_loss', 'label': '⚡ Kilo Vermek'},
@@ -42,19 +54,54 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
     'fat_g':     'Yağ',
   };
 
-  Future<void> _getAdvice() async {
-    setState(() { _isLoading = true; _error = null; _rawData = null; });
+  // ── Preferences'tan TDEE hesapla ────────────────────
+  // Backend aynı formülü kullanıyor ama biz burada da hesaplıyoruz
+  // çünkü meal_advice endpoint'ine calorie_target göndermemiz lazım
+  int? _calculateTdeeFromPrefs(Map<String, dynamic>? prefs) {
+    if (prefs == null) return null;
+    final height = (prefs['height_cm'] as num?)?.toDouble();
+    final age    = prefs['age'] as int?;
+    final gender = prefs['gender'] as String?;
+    if (height == null || age == null || gender == null) return null;
+
+    // Kilo yoksa hesap yapılamaz — null dön, fallback kullanılır
+    // (Kilo meal_compliance'da ölçümden çekiliyor, burada yok)
+    // Bu yüzden fitness_goal'a göre makul bir default kullanıyoruz
+    // Gerçek kilo olmadan tam TDEE hesabı yapılamaz
+    return null;
+  }
+
+  // ── Hedefe göre kalori hedefi belirle ───────────────
+  // Eğer preferences'ta fitness_goal varsa onu kullan,
+  // yoksa UI'daki seçime göre belirle
+  int _getCalorieTarget(Map<String, dynamic>? prefs) {
+    final fitnessGoal = prefs?['fitness_goal'] as String? ?? _goal;
+    switch (fitnessGoal) {
+      case 'weight_loss': return 1500;
+      case 'muscle_gain': return 2500;
+      case 'maintenance': return 2000;
+      default:            return 1800;
+    }
+  }
+
+   Future<void> _getAdvice(Map<String, dynamic>? prefs) async {
+      final canUse = await RateLimiter.canUseMealAdvice();
+      if (!canUse) {
+        setState(() => _limitReached = true);
+        return;
+      }
+      setState(() { _isLoading = true; _error = null; _rawData = null; _limitReached = false; });
     try {
+      final calorieTarget = _getCalorieTarget(prefs);
       final response = await ApiClient.instance.post(Endpoints.aiMealAdvice, data: {
-        'calorie_target': _goal == 'weight_loss' ? 1500
-            : _goal == 'muscle_gain' ? 2500
-            : _goal == 'maintenance' ? 2000 : 1800,
+        'calorie_target': calorieTarget,
       });
       final data = Map<String, dynamic>.from(response.data);
-      // Listeleri mutable kopyaya al (kullanıcı düzenleyebilsin)
       data['recommended_foods'] = List<String>.from(data['recommended_foods'] ?? []);
       data['foods_to_avoid']    = List<String>.from(data['foods_to_avoid']    ?? []);
+
       setState(() => _rawData = data);
+      await RateLimiter.recordMealAdviceUse();
     } catch (_) {
       setState(() => _error = 'Tavsiye alınırken hata oluştu.');
     } finally {
@@ -62,11 +109,9 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
     }
   }
 
-  // ── Kaydet öncesi düzenleme dialog'u ──────────────────
   Future<void> _showSaveDialog(Map<String, dynamic> data, Color accent, Color bg, Color bgCard, Color border, Color text, Color muted, Color danger) async {
-    // Düzenlenebilir kopya
-    final recommended = List<String>.from(data['recommended_foods'] ?? []);
-    final avoid       = List<String>.from(data['foods_to_avoid']    ?? []);
+    final recommended   = List<String>.from(data['recommended_foods'] ?? []);
+    final avoid         = List<String>.from(data['foods_to_avoid']    ?? []);
     final addRecommCtrl = TextEditingController();
     final addAvoidCtrl  = TextEditingController();
 
@@ -82,7 +127,6 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
           maxChildSize: 0.95,
           builder: (_, scrollCtrl) => Column(
             children: [
-              // Handle
               Container(
                 margin: const EdgeInsets.only(top: 12),
                 width: 40, height: 4,
@@ -105,7 +149,6 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
                   controller: scrollCtrl,
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
                   children: [
-                    // ── Önerilen Besinler ──
                     Text('✅ Önerilen Besinler', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
                     const SizedBox(height: 8),
                     Wrap(
@@ -120,7 +163,7 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
                             border: Border.all(color: accent.withOpacity(0.4)),
                           ),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Text(e.value, style: TextStyle(fontSize: 13, color: text)),
+                            Flexible(child: Text(e.value, style: TextStyle(fontSize: 13, color: text), overflow: TextOverflow.ellipsis)),
                             const SizedBox(width: 4),
                             Icon(Icons.close, size: 14, color: muted),
                           ]),
@@ -156,8 +199,6 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
                       ),
                     ]),
                     const SizedBox(height: 20),
-
-                    // ── Kaçınılacak Besinler ──
                     Text('❌ Kaçınılacak Besinler', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
                     const SizedBox(height: 8),
                     Wrap(
@@ -172,7 +213,7 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
                             border: Border.all(color: danger.withOpacity(0.4)),
                           ),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Text(e.value, style: TextStyle(fontSize: 13, color: text)),
+                            Flexible(child: Text(e.value, style: TextStyle(fontSize: 13, color: text), overflow: TextOverflow.ellipsis)),
                             const SizedBox(width: 4),
                             Icon(Icons.close, size: 14, color: muted),
                           ]),
@@ -217,7 +258,6 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
     );
 
     if (saved == true) {
-      // Güncellenmiş listeleri data'ya yaz
       data['recommended_foods'] = recommended;
       data['foods_to_avoid']    = avoid;
       await _saveAdvice(data);
@@ -246,30 +286,35 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
         buf.writeln('**$label:** $v\n');
       });
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('last_meal_advice', buf.toString().trim());
-    await prefs.setString('last_meal_advice_date', TFDateUtils.today());
-    // Besin listelerini ayrıca sakla (diyet_tab'da grid için)
-    await prefs.setStringList('last_recommended_foods', List<String>.from(data['recommended_foods'] ?? []));
-    await prefs.setStringList('last_foods_to_avoid',    List<String>.from(data['foods_to_avoid']    ?? []));
-
+    final prefs  = await SharedPreferences.getInstance();
+      final userId = await TokenManager.getCurrentUserId() ?? 'guest'; // ← YENİ
+      await prefs.setString('last_meal_advice_$userId', buf.toString().trim());
+      await prefs.setString('last_meal_advice_date_$userId', TFDateUtils.today());
+      await prefs.setStringList('last_recommended_foods_$userId', List<String>.from(data['recommended_foods'] ?? []));
+      await prefs.setStringList('last_foods_to_avoid_$userId',    List<String>.from(data['foods_to_avoid']    ?? []));
+      if (data['weekly_plan'] != null) {
+        await prefs.setString('last_weekly_meal_plan_$userId', jsonEncode(data['weekly_plan']));
+      }
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Diyet planı kaydedildi ✅')));
-    setState(() => _rawData = null); // form'a geri dön
+    setState(() => _rawData = null);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark   = ref.watch(themeModeProvider) == ThemeMode.dark;
-    final bg       = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
-    final bgCard   = isDark ? const Color(0xFF141620) : Colors.white;
-    final bgSoft   = isDark ? const Color(0xFF0F1016) : const Color(0xFFE8EBF2);
-    final border   = isDark ? const Color(0x12FFFFFF) : const Color(0x12000000);
-    final text     = isDark ? const Color(0xFFF0EEF8) : const Color(0xFF111318);
-    final textSoft = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
-    final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
-    final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
-    final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
-    final danger   = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
+    final isDark    = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final bg        = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
+    final bgCard    = isDark ? const Color(0xFF141620) : Colors.white;
+    final bgSoft    = isDark ? const Color(0xFF0F1016) : const Color(0xFFE8EBF2);
+    final border    = isDark ? const Color(0x12FFFFFF) : const Color(0x12000000);
+    final text      = isDark ? const Color(0xFFF0EEF8) : const Color(0xFF111318);
+    final textSoft  = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
+    final muted     = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
+    final accent    = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
+    final accentDim = isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
+    final danger    = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
+
+    // Preferences'ı yükle
+    final prefsAsync = ref.watch(preferencesProvider);
 
     return Scaffold(
       backgroundColor: bg,
@@ -277,25 +322,29 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
         children: [
           aiHeader(context, ref, isDark, bg, bgCard, border, text, textSoft, muted, accent, 'Diyet Tavsiyesi'),
           Expanded(
-            child: _isLoading
-                ? aiLoadingState(accent, text, '🥗 Beslenme planı hazırlanıyor...')
-                : _error != null
-                    ? aiErrorState(_error!, danger, accent, _getAdvice)
-                    : _rawData != null
-                        ? _buildResult(_rawData!, bg, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim, danger)
-                        : _buildForm(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim),
+            child: prefsAsync.when(
+              loading: () => Center(child: CircularProgressIndicator(color: accent)),
+              error:   (_, __) => _buildContent(null, bg, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim, danger),
+              data:    (prefs) => _buildContent(prefs, bg, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim, danger),
+            ),
           ),
         ],
       ),
     );
   }
 
-  // ── SONUÇ EKRANI ────────────────────────────────────
-  Widget _buildResult(Map<String, dynamic> data, Color bg, Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim, Color danger) {
+  Widget _buildContent(Map<String, dynamic>? prefs, Color bg, Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim, Color danger) {
+    if (_limitReached) return _buildLimitCard(accentDim, accent, border, text);
+    if (_isLoading) return aiLoadingState(accent, text, '🥗 Beslenme planı hazırlanıyor...');
+    if (_error != null) return aiErrorState(_error!, danger, accent, () => _getAdvice(prefs));
+    if (_rawData != null) return _buildResult(_rawData!, prefs, bg, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim, danger);
+    return _buildForm(prefs, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim);
+  }
+
+  Widget _buildResult(Map<String, dynamic> data, Map<String, dynamic>? prefs, Color bg, Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim, Color danger) {
     final recommended = List<String>.from(data['recommended_foods'] ?? []);
     final avoid       = List<String>.from(data['foods_to_avoid']    ?? []);
 
-    // Markdown metin oluştur (sadece özet + makro + öğünler)
     final buf = StringBuffer();
     buf.writeln('## 🗓 Bugünkü Diyet Listeniz\n');
     if (data['summary'] != null)
@@ -323,7 +372,6 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header kart
           Container(
             decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
             padding: const EdgeInsets.all(16),
@@ -334,8 +382,6 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
             ]),
           ),
           const SizedBox(height: 12),
-
-          // Özet + makro + öğünler (markdown)
           Container(
             decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
             padding: const EdgeInsets.all(16),
@@ -352,8 +398,6 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
             ),
           ),
           const SizedBox(height: 12),
-
-          // ── Önerilen Besinler Grid ──
           if (recommended.isNotEmpty) ...[
             Container(
               decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
@@ -369,8 +413,6 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
             ),
             const SizedBox(height: 12),
           ],
-
-          // ── Kaçınılacak Besinler Grid ──
           if (avoid.isNotEmpty) ...[
             Container(
               decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
@@ -386,8 +428,6 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
             ),
             const SizedBox(height: 12),
           ],
-
-          // Butonlar
           SizedBox(
             width: double.infinity,
             height: 52,
@@ -409,11 +449,9 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
     );
   }
 
-  // ── 3 kolonlu besin grid'i ────────────────────────────
   Widget _foodGrid(List<String> foods, Color color, Color bgColor, Color borderColor, Color text) {
     return Wrap(
-      spacing: 6,
-      runSpacing: 6,
+      spacing: 6, runSpacing: 6,
       children: foods.map((f) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
@@ -426,13 +464,37 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
     );
   }
 
-  // ── FORM EKRANI ──────────────────────────────────────
-  Widget _buildForm(Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim) {
+  Widget _buildForm(Map<String, dynamic>? prefs, Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim) {
+    // Profildeki fitness_goal varsa UI'daki seçimi ona set et
+    final profileGoal = prefs?['fitness_goal'] as String?;
+    if (profileGoal != null && _goals.any((g) => g['key'] == profileGoal)) {
+      _goal = profileGoal;
+    }
+
+    final calorieTarget = _getCalorieTarget(prefs);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Profil özeti (preferences yüklendiyse göster)
+          if (prefs != null) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12), border: Border.all(color: accent.withOpacity(0.3))),
+              child: Row(children: [
+                Icon(Icons.person_outline, color: accent, size: 16),
+                const SizedBox(width: 8),
+                Expanded(child: Text(
+                  'Profil bilgilerine göre kalori hedefin: $calorieTarget kcal',
+                  style: TextStyle(fontSize: 12, color: text, fontWeight: FontWeight.w500),
+                )),
+              ]),
+            ),
+            const SizedBox(height: 12),
+          ],
+
           Text('Beslenme hedefiniz?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
           const SizedBox(height: 12),
           ..._goals.map((g) {
@@ -463,19 +525,35 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
             data: SliderTheme.of(context).copyWith(activeTrackColor: accent, thumbColor: accent, inactiveTrackColor: accent.withOpacity(0.2)),
             child: Slider(value: _mealsPerDay.toDouble(), min: 2, max: 6, divisions: 4, label: '$_mealsPerDay', onChanged: (v) => setState(() => _mealsPerDay = v.toInt())),
           ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12), border: Border.all(color: accent.withOpacity(0.3))),
-            child: Row(children: [
-              Icon(Icons.info_outline, color: accent, size: 16),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Profil bilgilerin tavsiyeye dahil edilir.', style: TextStyle(fontSize: 12, color: textSoft))),
-            ]),
-          ),
           const SizedBox(height: 20),
-          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _getAdvice, child: const Text('🥗  Tavsiye Al'))),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => _getAdvice(prefs),
+              child: const Text('🥗  Tavsiye Al'),
+            ),
+          ),
         ],
+      ),
+    );
+}
+
+  Widget _buildLimitCard(Color accentDim, Color accent, Color border, Color text) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('⏳', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 16),
+            Text('Haftalık Limit', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent)),
+            const SizedBox(height: 8),
+            Text('Bu haftaki diyet tavsiyesi hakkını kullandın.\nYeni hafta başında tekrar kullanılabilir.',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: text, height: 1.5)),
+          ]),
+        ),
       ),
     );
   }

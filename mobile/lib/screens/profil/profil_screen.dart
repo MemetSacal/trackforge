@@ -2,10 +2,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/auth/token_manager.dart';
 import '../../app.dart';
+import '../takip/olcum_tab.dart';      // measurementsProvider
+import '../steps/steps_screen.dart';   // todayStepsProvider
+import '../alisveris/alisveris_screen.dart'; // shoppingListProvider
+import '../../core/utils/rate_limiter.dart';
 
 final profileUserProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final response = await ApiClient.instance.get(Endpoints.me);
@@ -177,15 +182,14 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
               .toList(),
           'workout_location': _workoutLocation,
           'diet_preference': _dietPreference,
+           if (_aiNameController.text.isNotEmpty) 'ai_name': _aiNameController.text,
         };
       }
 
       await ApiClient.instance.put(Endpoints.preferences, data: payload);
-      // Provider'ı invalidate et ki taze veri gelsin
+      _prefsLoaded = false; // ← setState dışında, invalidate'ten önce
       ref.invalidate(profilePrefsProvider);
-      // Bir sonraki build'de yeniden doldurmak için flag'i sıfırla
       setState(() {
-        _prefsLoaded = false;
         _isEditing = false;
       });
       if (mounted) {
@@ -223,9 +227,24 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
       ),
     );
     if (confirm == true) {
-      await TokenManager.clearTokens();
-      if (mounted) context.go('/login');
-    }
+      await RateLimiter.clearUserLimits();
+          await _clearUserPrefsCache();
+          await TokenManager.clearTokens();
+          ref.invalidate(measurementsProvider);
+          ref.invalidate(todayStepsProvider);
+          ref.invalidate(shoppingListProvider);
+          ref.invalidate(profileUserProvider);
+          ref.invalidate(profilePrefsProvider);
+          if (mounted) context.go('/login');
+        }
+      }
+  Future<void> _clearUserPrefsCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('last_meal_advice');
+    await prefs.remove('last_meal_advice_date');
+    await prefs.remove('last_recommended_foods');
+    await prefs.remove('last_foods_to_avoid');
+    await prefs.remove('last_weekly_meal_plan');
   }
 
   @override
@@ -621,7 +640,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
           const SizedBox(height: 10),
           _field(_aiNameController, 'AI Koç İsmi',
               Icons.smart_toy_outlined, text,
-              hint: 'TrackForge AI'),
+              hint: 'TrackForge AI', isText: true),
           const SizedBox(height: 14),
           Text('Cinsiyet',
               style: TextStyle(
@@ -985,6 +1004,14 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                 text,
                 hint: 'Virgülle ayırın: brokoli, ıspanak',
               ),
+              const SizedBox(height: 10),
+              _field(
+                _aiNameController,
+                'AI Koç İsmi',
+                Icons.smart_toy_outlined,
+                text,
+                hint: 'TrackForge AI', isText: true,
+              ),
               const SizedBox(height: 14),
               Text('Antrenman Lokasyonu',
                   style: TextStyle(
@@ -1054,12 +1081,14 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
 
   Widget _field(
       TextEditingController c, String label, IconData icon, Color text,
-      {bool isInt = false, String? hint}) {
+      {bool isInt = false, bool isText = false, String? hint}) {
     return TextField(
       controller: c,
-      keyboardType: isInt
-          ? TextInputType.number
-          : const TextInputType.numberWithOptions(decimal: true),
+      keyboardType: isText
+          ? TextInputType.text                              // ← metin
+          : isInt
+              ? TextInputType.number                        // ← tam sayı
+              : const TextInputType.numberWithOptions(decimal: true), // ← ondalık
       style: TextStyle(color: text),
       decoration: InputDecoration(
           labelText: label, prefixIcon: Icon(icon), hintText: hint),

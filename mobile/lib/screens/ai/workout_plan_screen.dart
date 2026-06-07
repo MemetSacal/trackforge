@@ -6,7 +6,8 @@ import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
 import '../egzersiz/seans_detay_screen.dart';
-import 'ai_helpers.dart'; // import eklendi
+import 'ai_helpers.dart';
+import '../../core/utils/rate_limiter.dart';
 
 class WorkoutPlanScreen extends ConsumerStatefulWidget {
   const WorkoutPlanScreen({super.key});
@@ -26,6 +27,7 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
   bool _isLoading         = false;
   bool _isCreatingSession = false;
   String? _error;
+  bool _limitReached      = false;
 
   final _goals = [
     {'key': 'muscle_gain',     'label': '💪 Kas Kazanmak'},
@@ -47,7 +49,12 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
   };
 
   Future<void> _generate() async {
-    setState(() { _isLoading = true; _error = null; _planTitle = null; _weeklyNotes = null; _schedule = []; });
+      final canUse = await RateLimiter.canUseWorkoutPlan();
+      if (!canUse) {
+        setState(() => _limitReached = true);
+        return;
+      }
+      setState(() { _isLoading = true; _error = null; _planTitle = null; _weeklyNotes = null; _schedule = []; _limitReached = false; });
     try {
       final response = await ApiClient.instance.post(Endpoints.aiWorkoutPlan, data: {
         'workout_location': _location, 'fitness_goal': _goal,
@@ -55,6 +62,7 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
       });
       final raw = response.data['weekly_schedule'];
       if (raw is List) _schedule = raw.map((d) => Map<String, dynamic>.from(d)).toList();
+      await RateLimiter.recordWorkoutPlanUse();
       setState(() {
         _planTitle   = response.data['plan_title']    as String? ?? '';
         _weeklyNotes = response.data['weekly_notes']  as String? ?? '';
@@ -131,11 +139,13 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
         children: [
           aiHeader(context, ref, isDark, bg, bgCard, border, text, textSoft, muted, accent, 'Antrenman Planı'),
           Expanded(
-            child: _isLoading
-                ? aiLoadingState(accent, text, '💪 Antrenman planı hazırlanıyor...')
-                : _error != null
-                    ? aiErrorState(_error!, danger, accent, _generate)
-                    : hasPlan
+            child: _limitReached
+                            ? _buildLimitCard(accentDim, accent, border, text)
+                            : _isLoading
+                            ? aiLoadingState(accent, text, '💪 Antrenman planı hazırlanıyor...')
+                            : _error != null
+                                ? aiErrorState(_error!, danger, accent, _generate)
+                                : hasPlan
                         ? _planResult(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim)
                         : _planForm(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim),
           ),
@@ -299,6 +309,25 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
       ]),
     );
   }
+  Widget _buildLimitCard(Color accentDim, Color accent, Color border, Color text) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
+            padding: const EdgeInsets.all(24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('⏳', style: TextStyle(fontSize: 48)),
+              const SizedBox(height: 16),
+              Text('Haftalık Limit', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent)),
+              const SizedBox(height: 8),
+              Text('Bu haftaki antrenman planı hakkını kullandın.\nYeni hafta başında tekrar kullanılabilir.',
+                  textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: text, height: 1.5)),
+            ]),
+          ),
+        ),
+      );
+    }
 
   Widget _chip2(String label, Color bg, Color border, Color text) =>
     Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

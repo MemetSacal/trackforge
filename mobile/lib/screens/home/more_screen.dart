@@ -1,9 +1,11 @@
 // ── more_screen.dart ────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../app.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
+import '../home/dashboard_screen.dart'; // notificationsProvider için
 import '../raporlar/raporlar_screen.dart';
 import '../sosyal/sosyal_screen.dart';
 import '../alisveris/alisveris_screen.dart';
@@ -22,6 +24,90 @@ final _genderProvider = FutureProvider.autoDispose<String>((ref) async {
 
 class MoreScreen extends ConsumerWidget {
   const MoreScreen({super.key});
+
+  void _showNotifications(BuildContext context, WidgetRef ref, bool isDark,
+      Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: bgCard,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Consumer(
+        builder: (ctx, ref, _) {
+          final notifsAsync = ref.watch(notificationsProvider);
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: border, borderRadius: BorderRadius.circular(99)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('🔔 Bildirimler', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: text)),
+                    GestureDetector(
+                      onTap: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.remove('in_app_notifications');
+                        ref.invalidate(notificationsProvider);
+                      },
+                      child: Text('Temizle', style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                height: 300,
+                child: notifsAsync.when(
+                  loading: () => Center(child: CircularProgressIndicator(color: accent)),
+                  error:   (_, __) => Center(child: Text('Yüklenemedi', style: TextStyle(color: text))),
+                  data: (notifs) {
+                    if (notifs.isEmpty) {
+                      return Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        const Text('🔕', style: TextStyle(fontSize: 40)),
+                        const SizedBox(height: 12),
+                        Text('Henüz bildirim yok', style: TextStyle(fontSize: 14, color: text)),
+                        const SizedBox(height: 4),
+                        Text('Hatırlatıcılar burada görünecek', style: TextStyle(fontSize: 12, color: muted)),
+                      ]);
+                    }
+                    return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      itemCount: notifs.length,
+                      itemBuilder: (ctx, i) {
+                        final n = notifs[i];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(14), border: Border.all(color: border)),
+                          child: Row(children: [
+                            const Text('🔔', style: TextStyle(fontSize: 20)),
+                            const SizedBox(width: 10),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(n['title'] as String, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: text)),
+                              const SizedBox(height: 2),
+                              Text(n['body'] as String, style: TextStyle(fontSize: 11, color: textSoft)),
+                              if ((n['time'] as String).isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(n['time'] as String, style: TextStyle(fontSize: 10, color: muted)),
+                              ],
+                            ])),
+                          ]),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -79,7 +165,6 @@ class MoreScreen extends ConsumerWidget {
       backgroundColor: bg,
       body: CustomScrollView(
         slivers: [
-          // ── HEADER ────────────────────────────────
           SliverToBoxAdapter(
             child: Container(
               color: bg,
@@ -103,12 +188,19 @@ class MoreScreen extends ConsumerWidget {
                       child: Icon(isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round, size: 15, color: textSoft),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _showNotifications(context, ref, isDark, bgCard, bgSoft, border, text, textSoft, muted, accent),
+                    child: Container(
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
+                      child: Icon(Icons.notifications_none_rounded, size: 15, color: textSoft),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-
-          // ── İÇERİK ────────────────────────────────
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
             sliver: SliverList(
@@ -118,10 +210,8 @@ class MoreScreen extends ConsumerWidget {
                   children: [
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8, top: 4),
-                      child: Text(
-                        section['title'] as String,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted, letterSpacing: 0.5),
-                      ),
+                      child: Text(section['title'] as String,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted, letterSpacing: 0.5)),
                     ),
                     ...(section['items'] as List<_Item>).map((item) => GestureDetector(
                       onTap: item.onTap,
@@ -133,23 +223,15 @@ class MoreScreen extends ConsumerWidget {
                           children: [
                             Container(
                               width: 44, height: 44,
-                              decoration: BoxDecoration(
-                                color: item.color.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
+                              decoration: BoxDecoration(color: item.color.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
                               child: Center(child: Text(item.emoji, style: const TextStyle(fontSize: 22))),
                             ),
                             const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(item.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
-                                  const SizedBox(height: 2),
-                                  Text(item.desc, style: TextStyle(fontSize: 11, color: muted)),
-                                ],
-                              ),
-                            ),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(item.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                              const SizedBox(height: 2),
+                              Text(item.desc, style: TextStyle(fontSize: 11, color: muted)),
+                            ])),
                             Icon(Icons.chevron_right, size: 16, color: muted),
                           ],
                         ),

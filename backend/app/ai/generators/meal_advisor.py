@@ -58,7 +58,7 @@ async def generate_meal_advice(
         )
 
     prompt = f"""
-Sen bir diyetisyen asistanısın. Kullanıcının sağlık profiline göre kişiselleştirilmiş diyet tavsiyesi ver.
+Sen bir diyetisyen asistanısın. Kullanıcının sağlık profiline göre kişiselleştirilmiş 7 günlük haftalık diyet planı oluştur.
 
 ÖNEMLİ: Bu tıbbi tavsiye değil, genel beslenme önerisidir.
 
@@ -72,7 +72,7 @@ Kullanıcı profili:
 {physical_text}
 {blood_text}
 
-SADECE JSON formatında yanıt ver:
+SADECE JSON formatında yanıt ver, başka hiçbir şey yazma:
 
 {{
   "summary": "kısa özet (2 cümle)",
@@ -84,17 +84,60 @@ SADECE JSON formatında yanıt ver:
   }},
   "recommended_foods": ["yiyecek1", "yiyecek2"],
   "foods_to_avoid": ["yiyecek1", "yiyecek2"],
+  "weekly_plan": {{
+    "pazartesi": {{
+      "breakfast": "kahvaltı önerisi",
+      "lunch": "öğle yemeği önerisi",
+      "dinner": "akşam yemeği önerisi",
+      "snack": "ara öğün önerisi"
+    }},
+    "salı": {{
+      "breakfast": "kahvaltı önerisi",
+      "lunch": "öğle yemeği önerisi",
+      "dinner": "akşam yemeği önerisi",
+      "snack": "ara öğün önerisi"
+    }},
+    "çarşamba": {{
+      "breakfast": "kahvaltı önerisi",
+      "lunch": "öğle yemeği önerisi",
+      "dinner": "akşam yemeği önerisi",
+      "snack": "ara öğün önerisi"
+    }},
+    "perşembe": {{
+      "breakfast": "kahvaltı önerisi",
+      "lunch": "öğle yemeği önerisi",
+      "dinner": "akşam yemeği önerisi",
+      "snack": "ara öğün önerisi"
+    }},
+    "cuma": {{
+      "breakfast": "kahvaltı önerisi",
+      "lunch": "öğle yemeği önerisi",
+      "dinner": "akşam yemeği önerisi",
+      "snack": "ara öğün önerisi"
+    }},
+    "cumartesi": {{
+      "breakfast": "kahvaltı önerisi",
+      "lunch": "öğle yemeği önerisi",
+      "dinner": "akşam yemeği önerisi",
+      "snack": "ara öğün önerisi"
+    }},
+    "pazar": {{
+      "breakfast": "kahvaltı önerisi",
+      "lunch": "öğle yemeği önerisi",
+      "dinner": "akşam yemeği önerisi",
+      "snack": "ara öğün önerisi"
+    }}
+  }},
   "meal_suggestions": {{
-    "breakfast": "kahvaltı önerisi",
-    "lunch": "öğle önerisi",
-    "dinner": "akşam önerisi",
-    "snack": "ara öğün önerisi"
+    "breakfast": "bugünkü kahvaltı önerisi",
+    "lunch": "bugünkü öğle önerisi",
+    "dinner": "bugünkü akşam önerisi",
+    "snack": "bugünkü ara öğün önerisi"
   }},
   "warnings": ["varsa önemli uyarılar"]
 }}
 """
 
-    # ✅ Senkron Claude çağrısını ayrı thread'de çalıştır
     def _call():
         return client.messages.create(
             model=CLAUDE_MODEL,
@@ -110,4 +153,16 @@ SADECE JSON formatında yanıt ver:
     elif "```" in response_text:
         response_text = response_text.split("```")[1].split("```")[0].strip()
 
-    return json.loads(response_text)
+    result = json.loads(response_text)
+
+    # weekly_plan'dan bugünün gününü meal_suggestions'a set et (fallback)
+    if "weekly_plan" in result and result["weekly_plan"]:
+        days_tr = ["pazartesi", "salı", "çarşamba", "perşembe", "cuma", "cumartesi", "pazar"]
+        from datetime import datetime
+        today_idx = datetime.now().weekday()  # 0=Pazartesi
+        today_key = days_tr[today_idx]
+        today_meals = result["weekly_plan"].get(today_key, {})
+        if today_meals:
+            result["meal_suggestions"] = today_meals
+
+    return result

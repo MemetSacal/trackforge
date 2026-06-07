@@ -44,6 +44,10 @@ class UserPreferenceModel(Base):
     # Hedef ve antrenman
     workout_location: Mapped[str] = mapped_column(String, nullable=True)
     fitness_goal: Mapped[str] = mapped_column(String, nullable=True)
+    diet_preference: Mapped[str] = mapped_column(String, nullable=True)  # balanced/vegan/vegetarian vb.
+    ai_name: Mapped[str] = mapped_column(String(100), nullable=True, default="TrackForge AI")
+    target_weight_kg: Mapped[float] = mapped_column(Float, nullable=True)  # Hedef kilo
+    daily_calorie_habit: Mapped[str] = mapped_column(String, nullable=True)  # under_1500 / 1500_2000 vb.
 
     # Zaman damgaları
     created_at: Mapped[datetime] = mapped_column(

@@ -207,7 +207,7 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                           children: [
                             Text('Çalışan Kaslar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
                             const SizedBox(height: 12),
-                            BodyMapWidget(highlightedMuscles: allMuscles, height: 260),
+                            BodyMapWidget(highlightedMuscles: allMuscles, height: 320),
                           ],
                         ),
                       ),

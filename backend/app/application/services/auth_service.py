@@ -55,7 +55,8 @@ class AuthService:
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
-            "token_type": "bearer"
+            "token_type": "bearer",
+            "user_id": user.id,  # ← YENİ
         }
 
     async def refresh(self, refresh_token: str) -> dict:

@@ -5,7 +5,7 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 
-final todayWaterProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+final todayWaterProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
     final response = await ApiClient.instance.get('${Endpoints.water}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(response.data);
@@ -68,15 +68,15 @@ class _SuTabState extends ConsumerState<SuTab> {
       loading: () => Center(child: CircularProgressIndicator(color: accent)),
       error:   (_, __) => Center(child: Text('Veri yüklenemedi', style: TextStyle(color: text))),
       data: (waterLog) {
-        final current = (waterLog?['amount_ml'] as num?)?.toInt() ?? 0;
-        final target  = (waterLog?['target_ml'] as num?)?.toInt() ?? 2000;
+        final current  = (waterLog?['amount_ml'] as num?)?.toInt() ?? 0;
+        final target   = (waterLog?['target_ml'] as num?)?.toInt() ?? 2000;
         final progress = (current / target).clamp(0.0, 1.0);
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           child: Column(
             children: [
-              // ── BÜYÜK SU KARTI ────────────────────────
+              // ── BÜYÜK SU KARTI ──────────────────────
               Container(
                 decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                 padding: const EdgeInsets.all(20),
@@ -104,7 +104,7 @@ class _SuTabState extends ConsumerState<SuTab> {
               ),
               const SizedBox(height: 12),
 
-              // ── BUGÜNKÜ GİRİŞLER (mock görsel) ────────
+              // ── BUGÜNKÜ GİRİŞLER ────────────────────
               if (waterLog != null) ...[
                 Container(
                   decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
@@ -114,11 +114,14 @@ class _SuTabState extends ConsumerState<SuTab> {
                     children: [
                       Text('Bugünkü Eklemeler', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
                       const SizedBox(height: 12),
-                      // Su bar görselleştirme
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: List.generate(5, (i) {
-                          final h = i < (current / (target / 5)).floor() ? 1.0 : (i == (current / (target / 5)).floor() ? (current % (target / 5)) / (target / 5) : 0.05);
+                          final h = i < (current / (target / 5)).floor()
+                              ? 1.0
+                              : (i == (current / (target / 5)).floor()
+                                  ? (current % (target / 5)) / (target / 5)
+                                  : 0.05);
                           return Expanded(
                             child: Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -143,7 +146,7 @@ class _SuTabState extends ConsumerState<SuTab> {
                 const SizedBox(height: 12),
               ],
 
-              // ── HIZLI EKLE ────────────────────────────
+              // ── HIZLI EKLE ──────────────────────────
               Container(
                 decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                 padding: const EdgeInsets.all(16),
@@ -178,22 +181,31 @@ class _SuTabState extends ConsumerState<SuTab> {
                       }).toList(),
                     ),
                     const SizedBox(height: 14),
+
+                    // ── FIX: Row içinde infinite width hatası giderildi ──
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: TextField(
                             controller: _amountController,
                             keyboardType: TextInputType.number,
                             style: TextStyle(color: text),
-                            decoration: const InputDecoration(labelText: 'Miktar (ml)', prefixIcon: Icon(Icons.water_drop_outlined)),
+                            decoration: const InputDecoration(
+                              labelText: 'Miktar (ml)',
+                              prefixIcon: Icon(Icons.water_drop_outlined),
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         SizedBox(
                           width: 80,
                           height: 52,
                           child: ElevatedButton(
                             onPressed: _isLoading ? null : () => _addWater(current, waterLog, target),
+                            style: ElevatedButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                            ),
                             child: _isLoading
                                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
                                 : const Text('Ekle'),

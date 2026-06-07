@@ -63,14 +63,11 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.3
   flutter_native_splash: ^2.4.3
 
-
-
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/body_front.jpg
-    - assets/images/body_back.jpg
     - assets/images/app_icon.png
+    - assets/images/muscle_front_and_back.svg
 
 flutter_launcher_icons:
   android: true
@@ -83,8 +80,12 @@ flutter_launcher_icons:
 flutter_native_splash:
   color: "#0d0d0d"
   image: assets/images/app_icon.png
-  color_dark: "#0d0d0d"
   image_dark: assets/images/app_icon.png
+  color_dark: "#0d0d0d"
+  fullscreen: true
+  android_gravity: center
+  ios_content_mode: center
   android_12:
     color: "#0d0d0d"
     image: assets/images/app_icon.png
+    icon_background_color: "#0d0d0d"

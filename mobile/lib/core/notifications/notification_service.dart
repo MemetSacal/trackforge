@@ -35,7 +35,7 @@ class NotificationService {
     tz.initializeTimeZones();
     tz.setLocalLocation(tz.getLocation('Europe/Istanbul'));
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -69,7 +69,7 @@ class NotificationService {
       channelDescription: channelDesc,
       importance: importance,
       priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
+      icon: '@drawable/ic_notification',
     );
   }
 
@@ -276,6 +276,63 @@ class NotificationService {
     final sleepHour = prefs.getInt(_keySleepHour) ?? 22;
     final sleepMin  = prefs.getInt(_keySleepMin)  ?? 30;
     await scheduleSleepReminder(hour: sleepHour, minute: sleepMin);
+
+    // Bugün için in-app bildirim önizlemesi kaydet
+    await _seedTodayNotifications(prefs, workoutHour, workoutMin, sleepHour, sleepMin);
+  }
+
+  // ── In-app bildirim kaydı ────────────────────────────
+  static Future<void> saveInAppNotification(String title, String body) async {
+    final prefs = await SharedPreferences.getInstance();
+    final now   = DateTime.now();
+    final time  = '${now.hour.toString().padLeft(2, "0")}:${now.minute.toString().padLeft(2, "0")}';
+    final entry = '$title||$body||$time';
+    final list  = prefs.getStringList('in_app_notifications') ?? [];
+    list.insert(0, entry);
+    if (list.length > 50) list.removeRange(50, list.length);
+    await prefs.setStringList('in_app_notifications', list);
+  }
+
+  // ── Bugünkü bildirimleri in-app listeye ekle ─────────
+  static Future<void> _seedTodayNotifications(
+    SharedPreferences prefs,
+    int workoutHour, int workoutMin,
+    int sleepHour, int sleepMin,
+  ) async {
+    final today    = DateTime.now();
+    final todayKey = 'notif_seeded_${today.year}_${today.month}_${today.day}';
+    if (prefs.getBool(todayKey) ?? false) return; // bugün zaten kaydedildi
+
+    final toSave = <String>[];
+
+    if (prefs.getBool(_keyWaterEnabled) ?? true)
+      toSave.add('💧 Su İçme Vakti||Bugün yeterli su içiyor musun? Hedefine ulaşmak için şimdi bir bardak iç!||09:00');
+
+    if (prefs.getBool(_keyMealEnabled) ?? true) {
+      toSave.add('🍽️ Öğün Hatırlatıcısı||Öğle yemeğini yedin mi? Kalori takibini unutma!||12:00');
+      toSave.add('🍽️ Öğün Hatırlatıcısı||Akşam yemeği vakti. Bugünkü kalorini kaydetmeyi unutma!||19:00');
+    }
+
+    if (prefs.getBool(_keyWorkoutEnabled) ?? true)
+      toSave.add('🏋️ Antrenman Zamanı!||Bugün antrenman günün. Hazır mısın? Hadi başlayalım!||${workoutHour.toString().padLeft(2, "0")}:${workoutMin.toString().padLeft(2, "0")}');
+
+    if (prefs.getBool(_keySleepEnabled) ?? true)
+      toSave.add('😴 Uyku Vakti Yaklaşıyor||Kaliteli uyku sağlığın için kritik. Ekranları kapat, uykuya hazırlan!||${sleepHour.toString().padLeft(2, "0")}:${sleepMin.toString().padLeft(2, "0")}');
+
+    if (prefs.getBool(_keyStepsEnabled) ?? true)
+      toSave.add('👟 Adım Hedefin!||Günün bitmeden adım hedefini kontrol et. Biraz yürüyüş yapabilirsin!||20:00');
+
+    if (prefs.getBool(_keyStreakEnabled) ?? true)
+      toSave.add('🔥 Serinizi Koruyun!||Bugün henüz veri girmediniz. Serinizi kırmamak için hemen giriş yapın!||21:00');
+
+    if (today.weekday == DateTime.monday && (prefs.getBool(_keyWeeklyEnabled) ?? true))
+      toSave.add('📊 Haftalık AI Raporu Hazır!||Bu haftanın analizi seni bekliyor. AI Koç ne diyor?||09:00');
+
+    final existing = prefs.getStringList('in_app_notifications') ?? [];
+    final combined = [...toSave, ...existing];
+    if (combined.length > 50) combined.removeRange(50, combined.length);
+    await prefs.setStringList('in_app_notifications', combined);
+    await prefs.setBool(todayKey, true);
   }
 
   static Future<void> cancelAll() async => _plugin.cancelAll();

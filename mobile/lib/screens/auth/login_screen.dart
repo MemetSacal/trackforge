@@ -36,6 +36,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await TokenManager.saveTokens(
         accessToken: response.data['access_token'],
         refreshToken: response.data['refresh_token'],
+        userId:       response.data['user_id'] ?? '',
       );
       if (!mounted) return;
       context.go('/home');

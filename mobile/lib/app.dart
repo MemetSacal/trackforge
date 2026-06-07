@@ -123,25 +123,48 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              '⚡ TrackForge',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).primaryColor,
+    Widget build(BuildContext context) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF0C0D10),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset(
+                'assets/images/app_icon.png',
+                width: 120,
+                height: 120,
               ),
-            ),
-            const SizedBox(height: 24),
-            const CircularProgressIndicator(),
-          ],
+              const SizedBox(height: 24),
+              const Text(
+                'TrackForge',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFFFB020),
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'AI-Powered Health & Fitness',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF8A88A8),
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              const SizedBox(height: 48),
+              const SizedBox(
+                width: 24, height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFFFFB020),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-  }
+      );
+    }
 }

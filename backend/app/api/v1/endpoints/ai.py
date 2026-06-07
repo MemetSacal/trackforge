@@ -24,6 +24,10 @@ from backend.app.ai.generators.meal_advisor import generate_meal_advice
 from backend.app.ai.generators.recipe_generator import generate_recipe
 from backend.app.ai.generators.cycle_advisor import generate_cycle_advice
 from backend.app.application.schemas.ai import CycleAdviceRequest, CycleAdviceResponse
+from backend.app.ai.generators.calorie_bank_advisor import generate_calorie_bank_advice
+from backend.app.infrastructure.repositories.meal_compliance_repository import MealComplianceRepository
+from backend.app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
+from datetime import date as date_module
 
 router = APIRouter()
 
@@ -270,6 +274,89 @@ async def get_cycle_advice(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Döngü tavsiyesi oluşturulamadı: {str(e)}")
 
+# YENİ endpoint:
+@router.post("/calorie-bank-advice")
+async def get_calorie_bank_advice(
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bugünkü kalori bankası durumunu analiz edip kişisel tavsiye üret."""
+    try:
+        today = date_module.today()
+
+        # Kullanıcı tercihleri
+        pref_repo = UserPreferenceRepository(db)
+        prefs = await pref_repo.get_by_user_id(current_user)
+
+        # Son ölçümden kilo
+        result = await db.execute(
+            select(MeasurementModel)
+            .where(MeasurementModel.user_id == current_user)
+            .order_by(MeasurementModel.date.desc())
+            .limit(1)
+        )
+        last_measurement = result.scalar_one_or_none()
+        weight_kg = last_measurement.weight_kg if last_measurement else None
+
+        # Bugünkü meal_compliance
+        from backend.app.infrastructure.repositories.meal_compliance_repository import MealComplianceRepository
+        from backend.app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
+        mc_result = await db.execute(
+            select(MealComplianceModel)
+            .where(
+                MealComplianceModel.user_id == current_user,
+                MealComplianceModel.date == today,
+            )
+        )
+        mc = mc_result.scalar_one_or_none()
+
+        # Bugünkü egzersiz kalorisi
+        ex_result = await db.execute(
+            select(ExerciseSessionModel)
+            .where(
+                ExerciseSessionModel.user_id == current_user,
+                ExerciseSessionModel.date == today,
+            )
+        )
+        sessions = ex_result.scalars().all()
+        calories_burned = sum(
+            s.calories_burned for s in sessions if s.calories_burned is not None
+        )
+
+        # Geçmiş kilo verme hızı (son 4 haftalık ölçümlerden)
+        from backend.app.infrastructure.db.models.measurement_model import MeasurementModel as MM
+        hist_result = await db.execute(
+            select(MM)
+            .where(MM.user_id == current_user)
+            .order_by(MM.date.desc())
+            .limit(8)
+        )
+        measurements = hist_result.scalars().all()
+        avg_weekly_loss = None
+        if len(measurements) >= 2:
+            first = measurements[-1]
+            last = measurements[0]
+            weeks = max((last.date - first.date).days / 7, 1)
+            if first.weight_kg and last.weight_kg:
+                avg_weekly_loss = abs(first.weight_kg - last.weight_kg) / weeks
+
+        advice = await generate_calorie_bank_advice(
+            fitness_goal=prefs.fitness_goal if prefs else "maintenance",
+            daily_target=mc.calories_target if mc and mc.calories_target else 2000,
+            calories_consumed=mc.calories_consumed if mc and mc.calories_consumed else 0,
+            calories_burned=calories_burned,
+            weekly_bank=mc.weekly_bank_balance if mc and mc.weekly_bank_balance else 0,
+            age=prefs.age if prefs else None,
+            gender=prefs.gender if prefs else None,
+            weight_kg=weight_kg,
+            target_weight_kg=prefs.target_weight_kg if prefs and hasattr(prefs, 'target_weight_kg') else None,
+            daily_calorie_habit=prefs.daily_calorie_habit if prefs and hasattr(prefs, 'daily_calorie_habit') else None,
+            avg_weekly_loss_kg=avg_weekly_loss,
+        )
+        return advice
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kalori bankası tavsiyesi oluşturulamadı: {str(e)}")
 
 """
 DOSYA AKIŞI:

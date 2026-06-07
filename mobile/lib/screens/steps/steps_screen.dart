@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ← YENİ
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
@@ -28,40 +29,108 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
   bool _isLoading = false;
 
   // ── Pedometer ──────────────────────────────────────────
-  StreamSubscription<StepCount>? _stepSub;
+  StreamSubscription<StepCount>?    _stepSub;
   StreamSubscription<PedestrianStatus>? _statusSub;
   int  _liveSteps     = 0;
   bool _isPedActive   = false;
   bool _isWalking     = false;
-  int  _sessionStart  = 0; // boot'tan itibaren adım, oturum başlangıcı
+
+  // Persist için kullanılan alanlar
+  // _sessionStart  → cihaz boot'undan itibaren toplam adım sayısı
+  //                  (pedometer her boot'ta sıfırlanır, bunu saklarız)
+  // _savedToday    → bugün için daha önce persist ettiğimiz adım sayısı
+  //                  (uygulama kapanıp açılınca buradan devam ederiz)
+  int  _sessionStart  = 0;
+  int  _savedToday    = 0;
   bool _sessionActive = false;
+  int  _lastRawSteps    = 0;     // son pedometer raw değeri
+  int  _pendingSteps    = 0;     // birikmiş ama henüz onaylanmamış adımlar
+  DateTime? _lastStepTime;       // son adım zamanı
+  static const int _minStepDelta    = 3;    // tek seferde en az 3 adım artışı kabul et
+  static const int _minIntervalMs   = 400;  // adımlar arası minimum 400ms
+
+  // SharedPreferences key'leri
+  // 'ped_session_start' → pedometer'dan okunan başlangıç değeri
+  // 'ped_saved_date'    → hangi gün için kayıt tutulduğu (YYYY-MM-DD)
+  // 'ped_saved_steps'   → o gün için kaydedilen toplam adım
+  static const _kStart = 'ped_session_start';
+  static const _kDate  = 'ped_saved_date';
+  static const _kSteps = 'ped_saved_steps';
 
   @override
   void initState() {
     super.initState();
-    _requestAndStart();
+    _loadAndStart(); // Önce persist'ten yükle, sonra pedometer'ı başlat
   }
 
-  Future<void> _requestAndStart() async {
-    // Android 10+ için izin gerekiyor
+  // ── PERSIST'TEN YÜKLE ─────────────────────────────────
+  // Uygulama açılırken SharedPreferences'tan bugünkü adım verisini çeker.
+  // Eğer kayıt başka bir güne aitse sıfırlar (yeni gün = sıfırdan başla).
+  Future<void> _loadAndStart() async {
+    final prefs   = await SharedPreferences.getInstance();
+    final today   = TFDateUtils.today(); // "YYYY-MM-DD"
+    final savedDate = prefs.getString(_kDate);
+
+    if (savedDate == today) {
+      // Bugün için kayıt var — kaldığı yerden devam et
+      _savedToday   = prefs.getInt(_kSteps) ?? 0;
+      _sessionStart = prefs.getInt(_kStart) ?? 0;
+      setState(() => _liveSteps = _savedToday);
+    } else {
+      // Yeni gün — her şeyi sıfırla
+      await prefs.setString(_kDate,  today);
+      await prefs.setInt(_kSteps, 0);
+      await prefs.setInt(_kStart, 0);
+      _savedToday   = 0;
+      _sessionStart = 0;
+    }
+
+    // İzin al ve pedometer'ı başlat
     final status = await Permission.activityRecognition.request();
     if (status.isGranted) _startPedometer();
   }
 
+  // ── PEDOMETER BAŞLAT ──────────────────────────────────
   void _startPedometer() {
     _stepSub = Pedometer.stepCountStream.listen(
-      (event) {
+      (event) async {
         if (!_sessionActive) {
-          // İlk event — oturum başlangıcını kaydet
-          _sessionStart  = event.steps;
+          if (_sessionStart == 0) {
+            _sessionStart = event.steps;
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setInt(_kStart, _sessionStart);
+          }
+          _lastRawSteps  = event.steps;
           _sessionActive = true;
+          setState(() => _isPedActive = true);
+          return;
         }
-        setState(() {
-          _liveSteps   = event.steps - _sessionStart;
-          _isPedActive = true;
-        });
-        // Adım sayısını controller'a yaz
-        _stepsController.text = _liveSteps.toString();
+
+        final now      = DateTime.now();
+        final rawDelta = event.steps - _lastRawSteps;
+
+        // ── Threshold kontrolleri ──
+        // 1. Çok az artış → titreşim/gürültü, yoksay
+        if (rawDelta < _minStepDelta) return;
+
+        // 2. Çok hızlı geldi → fiziksel olarak imkânsız, yoksay
+        if (_lastStepTime != null) {
+          final elapsed = now.difference(_lastStepTime!).inMilliseconds;
+          if (elapsed < _minIntervalMs) return;
+        }
+
+        // Geçti — gerçek adım olarak kabul et
+        _lastRawSteps = event.steps;
+        _lastStepTime = now;
+
+        final thisSession = event.steps - _sessionStart;
+        final total       = (_savedToday + thisSession).clamp(0, 100000);
+
+        setState(() => _liveSteps = total);
+        _stepsController.text = total.toString();
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt(_kSteps, total);
       },
       onError: (_) => setState(() => _isPedActive = false),
     );
@@ -81,6 +150,7 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
     super.dispose();
   }
 
+  // ── KAYDET / GÜNCELLE ─────────────────────────────────
   Future<void> _save(Map<String, dynamic>? existing) async {
     final stepsText = _stepsController.text.trim();
     if (stepsText.isEmpty) {
@@ -123,8 +193,11 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
     }
   }
 
+  // build() metodu tamamen aynı kalıyor — hiçbir şeye dokunmana gerek yok
   @override
   Widget build(BuildContext context) {
+    // ... (mevcut build kodu değişmiyor)
+    // Buraya mevcut build() metodunu kopyalayıp yapıştır
     final isDark    = ref.watch(themeModeProvider) == ThemeMode.dark;
     final bg        = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
     final bgCard    = isDark ? const Color(0xFF141620) : Colors.white;
@@ -143,7 +216,6 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
       backgroundColor: bg,
       body: Column(
         children: [
-          // ── HEADER ──────────────────────────────────
           Container(
             color: bg,
             padding: const EdgeInsets.fromLTRB(16, 56, 16, 14),
@@ -162,7 +234,6 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                   Text('TRACKFORGE', style: TextStyle(fontSize: 9, letterSpacing: 3, color: muted, fontWeight: FontWeight.w600)),
                   Text('Adım Sayar', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: text, letterSpacing: -0.5)),
                 ])),
-                // Canlı durum badge
                 if (_isPedActive)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -188,18 +259,15 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
               ],
             ),
           ),
-
           Expanded(
             child: stepsAsync.when(
               loading: () => Center(child: CircularProgressIndicator(color: accent)),
               error:   (_, __) => Center(child: Text('Veri yüklenemedi', style: TextStyle(color: text))),
               data: (stepsData) {
-                // Kayıtlı veri varsa goal'u doldur
                 final savedSteps = (stepsData?['step_count'] as num?)?.toInt() ?? 0;
                 final goal       = (stepsData?['goal']       as num?)?.toInt() ?? 10000;
                 if (stepsData != null) _goalController.text = goal.toString();
 
-                // Gösterilecek adım: canlı pedometer varsa onu göster, yoksa kaydedileni
                 final displaySteps = _isPedActive ? _liveSteps : savedSteps;
                 final progress     = goal > 0 ? (displaySteps / goal).clamp(0.0, 1.0) : 0.0;
                 final distance     = (displaySteps * 0.000762).toStringAsFixed(2);
@@ -209,8 +277,6 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                   child: Column(
                     children: [
-
-                      // ── BÜYÜK PROGRESS KARTI ──────────
                       Container(
                         decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(22), border: Border.all(color: border)),
                         padding: const EdgeInsets.all(24),
@@ -228,14 +294,8 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                                   ),
                                 ),
                                 Column(children: [
-                                  Text(
-                                    _isPedActive && _isWalking ? '🚶' : '👟',
-                                    style: const TextStyle(fontSize: 32),
-                                  ),
-                                  Text(
-                                    '$displaySteps',
-                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: accent),
-                                  ),
+                                  Text(_isPedActive && _isWalking ? '🚶' : '👟', style: const TextStyle(fontSize: 32)),
+                                  Text('$displaySteps', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: accent)),
                                   Text('adım', style: TextStyle(fontSize: 12, color: muted)),
                                 ]),
                               ],
@@ -254,15 +314,13 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                                 const SizedBox(width: 8),
                                 Expanded(child: _StatChip('🔥 $calories kcal', 'Kalori', bgSoft, border, text, muted)),
                                 const SizedBox(width: 8),
-                                Expanded(child: _StatChip('🎯 $goal', 'Hedef',          bgSoft, border, text, muted)),
+                                Expanded(child: _StatChip('🎯 $goal', 'Hedef', bgSoft, border, text, muted)),
                               ],
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 12),
-
-                      // ── PEDOMETER DURUM KARTI ─────────
                       Container(
                         decoration: BoxDecoration(
                           color: _isPedActive ? positive.withOpacity(0.08) : bgCard,
@@ -271,11 +329,7 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         child: Row(children: [
-                          Icon(
-                            _isPedActive ? Icons.sensors : Icons.sensors_off,
-                            color: _isPedActive ? positive : muted,
-                            size: 20,
-                          ),
+                          Icon(_isPedActive ? Icons.sensors : Icons.sensors_off, color: _isPedActive ? positive : muted, size: 20),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
@@ -288,23 +342,16 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                         ]),
                       ),
                       const SizedBox(height: 12),
-
-                      // ── FORM ──────────────────────────
                       Container(
                         decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              stepsData != null ? 'Güncelle' : 'Adım Gir',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text),
-                            ),
+                            Text(stepsData != null ? 'Güncelle' : 'Adım Gir', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
                             const SizedBox(height: 6),
                             Text(
-                              _isPedActive
-                                  ? 'Pedometer aktif — adımlar otomatik dolduruluyor'
-                                  : 'Manuel olarak adım sayısı girebilirsin',
+                              _isPedActive ? 'Pedometer aktif — adımlar otomatik dolduruluyor' : 'Manuel olarak adım sayısı girebilirsin',
                               style: TextStyle(fontSize: 11, color: muted),
                             ),
                             const SizedBox(height: 14),
@@ -312,13 +359,11 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                               controller: _stepsController,
                               keyboardType: TextInputType.number,
                               style: TextStyle(color: text),
-                              readOnly: _isPedActive, // pedometer aktifse readonly
+                              readOnly: _isPedActive,
                               decoration: InputDecoration(
                                 labelText: 'Adım sayısı',
                                 prefixIcon: const Icon(Icons.directions_walk),
-                                suffixIcon: _isPedActive
-                                    ? Icon(Icons.lock_outline, size: 16, color: muted)
-                                    : null,
+                                suffixIcon: _isPedActive ? Icon(Icons.lock_outline, size: 16, color: muted) : null,
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -326,10 +371,7 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                               controller: _goalController,
                               keyboardType: TextInputType.number,
                               style: TextStyle(color: text),
-                              decoration: const InputDecoration(
-                                labelText: 'Günlük hedef',
-                                prefixIcon: Icon(Icons.flag_outlined),
-                              ),
+                              decoration: const InputDecoration(labelText: 'Günlük hedef', prefixIcon: Icon(Icons.flag_outlined)),
                             ),
                             const SizedBox(height: 16),
                             SizedBox(

@@ -5,7 +5,7 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 
-final measurementsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final measurementsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   try {
     final response = await ApiClient.instance.get(
       Endpoints.measurements,
@@ -94,13 +94,12 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
     return null;
   }
 
-  Future<void> _save() async {
+  Future<void> _save({Map<String, dynamic>? existing}) async {
     final err = _validate();
     if (err != null) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err))); return; }
     setState(() => _isLoading = true);
     try {
-      await ApiClient.instance.post(Endpoints.measurements, data: {
-        'date': TFDateUtils.today(),
+      final data = {
         'weight_kg':      double.tryParse(_weightController.text),
         'body_fat_pct':   double.tryParse(_bodyFatController.text),
         'muscle_mass_kg': double.tryParse(_muscleMassController.text),
@@ -109,12 +108,27 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
         'hip_cm':         double.tryParse(_hipController.text),
         'arm_cm':         double.tryParse(_armController.text),
         'leg_cm':         double.tryParse(_legController.text),
-      });
+      };
+      if (existing != null) {
+        // ── Bugün kayıt var → güncelle ──
+        await ApiClient.instance.put(
+          '${Endpoints.measurements}/${existing['id']}',
+          data: data,
+        );
+      } else {
+        // ── Bugün kayıt yok → yeni ekle ──
+        await ApiClient.instance.post(Endpoints.measurements, data: {
+          'date': TFDateUtils.today(),
+          ...data,
+        });
+      }
       setState(() => _showForm = false);
       ref.invalidate(measurementsProvider);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ölçüm kaydedildi ✅')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(existing != null ? 'Ölçüm güncellendi ✅' : 'Ölçüm kaydedildi ✅')));
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kayıt sırasında hata oluştu')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kayıt sırasında hata oluştu')));
     } finally { if (mounted) setState(() => _isLoading = false); }
   }
 
@@ -297,7 +311,7 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _isLoading ? null : _save,
+                          onPressed: _isLoading ? null : () => _save(existing: latest),
                           child: _isLoading
                               ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
                               : const Text('Kaydet'),

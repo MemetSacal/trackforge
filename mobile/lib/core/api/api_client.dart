@@ -115,11 +115,12 @@ class _AuthInterceptor extends Interceptor {
     );
 
     if (response.statusCode == 200) {
-      // Yeni token'ları kaydet
-      await TokenManager.saveTokens(
-        accessToken: response.data['access_token'],
-        refreshToken: response.data['refresh_token'],
-      );
+     final currentUserId = await TokenManager.getCurrentUserId() ?? '';
+     await TokenManager.saveTokens(
+       accessToken:  response.data['access_token'],
+       refreshToken: response.data['refresh_token'],
+       userId:       currentUserId, // refresh'te user_id değişmez, mevcut id korunur
+     );
       return true;
     }
 

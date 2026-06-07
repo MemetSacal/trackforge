@@ -8,7 +8,11 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/auth/token_manager.dart';
 import '../../app.dart';
-import 'ai_helpers.dart'; // import eklendi
+import 'ai_helpers.dart';
+import '../profil/profil_screen.dart';
+import '../../core/utils/rate_limiter.dart';
+import '../takip/diyet_tab.dart';
+import '../../core/utils/date_utils.dart';
 
 class CalorieVisionScreen extends ConsumerStatefulWidget {
   const CalorieVisionScreen({super.key});
@@ -21,9 +25,22 @@ class _CalorieVisionScreenState extends ConsumerState<CalorieVisionScreen> {
   Map<String, dynamic>? _result;
   bool _isLoading = false;
   String? _error;
+  bool _limitReached = false;
+  int  _visionUsed   = 0;
   final _picker = ImagePicker();
 
-  Future<void> _pick(ImageSource source) async {
+  @override
+    void initState() {
+      super.initState();
+      _loadVisionCount();
+    }
+
+    Future<void> _loadVisionCount() async {
+      final used = await RateLimiter.getVisionUsedToday();
+      if (mounted) setState(() => _visionUsed = used);
+    }
+
+    Future<void> _pick(ImageSource source) async {
     try {
       final picked = await _picker.pickImage(source: source, maxWidth: 1024, maxHeight: 1024, imageQuality: 85);
       if (picked == null) return;
@@ -34,15 +51,85 @@ class _CalorieVisionScreenState extends ConsumerState<CalorieVisionScreen> {
   }
 
   Future<void> _analyze() async {
-    if (_imageBytes == null) return;
-    setState(() { _isLoading = true; _error = null; _result = null; });
+      if (_imageBytes == null) return;
+      final canUse = await RateLimiter.canUseVision();
+      if (!canUse) {
+        setState(() => _limitReached = true);
+        return;
+      }
+      setState(() { _isLoading = true; _error = null; _result = null; _limitReached = false; });
     try {
       final formData = FormData.fromMap({'file': MultipartFile.fromBytes(_imageBytes!, filename: 'food.jpg', contentType: DioMediaType('image', 'jpeg'))});
       final token = await TokenManager.getAccessToken();
       final response = await ApiClient.instance.post(Endpoints.aiCalorieFromPhoto, data: formData, options: Options(headers: {'Authorization': 'Bearer $token'}));
+      await RateLimiter.recordVisionUse();
+      final used = await RateLimiter.getVisionUsedToday();
       setState(() => _result = Map<String, dynamic>.from(response.data));
     } catch (_) { setState(() => _error = 'Analiz sırasında hata oluştu.'); }
     finally { if (mounted) setState(() => _isLoading = false); }
+  }
+
+  // YENİ — vision kalorisini diyet tabına ekle:
+  Future<void> _addCaloriesToDiet(int calories) async {
+    try {
+      // Bugünkü meal_compliance kaydını çek
+      final response = await ApiClient.instance.get(
+        '${Endpoints.mealCompliance}/date/${TFDateUtils.today()}',
+      );
+      final existing = Map<String, dynamic>.from(response.data);
+      final currentCalories = (existing['calories_consumed'] as num?)?.toDouble() ?? 0;
+      final newCalories = currentCalories + calories;
+
+      await ApiClient.instance.put(
+        '${Endpoints.mealCompliance}/${existing['id']}',
+        data: {'calories_consumed': newCalories},
+      );
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$calories kcal diyet planına eklendi ✅')),
+      );
+    } catch (_) {
+      // Bugün kayıt yoksa POST ile yeni oluştur
+      try {
+        await ApiClient.instance.post(Endpoints.mealCompliance, data: {
+          'date':               TFDateUtils.today(),
+          'calories_consumed':  calories.toDouble(),
+          'complied':           true,
+        });
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$calories kcal diyet planına eklendi ✅')),
+        );
+      } catch (_) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Diyet planına eklenemedi')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showAddToDietDialog(int calories, Color accent, Color bg, Color bgCard, Color border, Color text, Color muted) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: bgCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Diyet Planına Ekle', style: TextStyle(color: text, fontWeight: FontWeight.w800)),
+        content: Text(
+          '$calories kcal bugünkü kalori tüketimine eklensin mi?',
+          style: TextStyle(color: muted, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Hayır', style: TextStyle(color: muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Evet, Ekle', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) await _addCaloriesToDiet(calories);
   }
 
   @override
@@ -58,6 +145,7 @@ class _CalorieVisionScreenState extends ConsumerState<CalorieVisionScreen> {
     final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
     final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
     final danger   = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
+    final aiName = ref.watch(profilePrefsProvider).value?['ai_name'] as String? ?? 'TrackForge AI';
 
     return Scaffold(
       backgroundColor: bg,
@@ -66,13 +154,41 @@ class _CalorieVisionScreenState extends ConsumerState<CalorieVisionScreen> {
           aiHeader(context, ref, isDark, bg, bgCard, border, text, textSoft, muted, accent, 'Fotoğraftan Kalori'),
           Expanded(
             child: _isLoading
-                ? aiLoadingState(accent, text, '📸 Claude yemeği analiz ediyor...')
+                ? aiLoadingState(accent, text, '📸 $aiName yemeği analiz ediyor...')
                 : SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                     child: Column(
-                      children: [
-                        // Fotoğraf alanı
-                        GestureDetector(
+                                          children: [
+                                            // Vision kullanım sayacı
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                              decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12), border: Border.all(color: accent.withOpacity(0.3))),
+                                              child: Row(children: [
+                                                Icon(Icons.camera_alt_outlined, size: 14, color: accent),
+                                                const SizedBox(width: 8),
+                                                Text('Bugün: $_visionUsed/${RateLimiter.visionDailyLimit} kullanım',
+                                                    style: TextStyle(fontSize: 12, color: text, fontWeight: FontWeight.w500)),
+                                              ]),
+                                            ),
+                                            const SizedBox(height: 10),
+
+                                            if (_limitReached) ...[
+                                              Container(
+                                                decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
+                                                padding: const EdgeInsets.all(20),
+                                                child: Column(children: [
+                                                  const Text('⏳', style: TextStyle(fontSize: 40)),
+                                                  const SizedBox(height: 12),
+                                                  Text('Günlük Limit', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: accent)),
+                                                  const SizedBox(height: 8),
+                                                  Text('Bugünlük ${RateLimiter.visionDailyLimit} kullanım hakkını doldurdun.\nYarın tekrar kullanılabilir.',
+                                                      textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: text, height: 1.5)),
+                                                ]),
+                                              ),
+                                            ] else ...[
+
+                                            // Fotoğraf alanı
+                                            GestureDetector(
                           onTap: () => _pick(ImageSource.gallery),
                           child: Container(
                             width: double.infinity, height: 220,
@@ -160,11 +276,23 @@ class _CalorieVisionScreenState extends ConsumerState<CalorieVisionScreen> {
                                 Text('Makrolar', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
                                 const SizedBox(height: 10),
                                 Wrap(spacing: 8, runSpacing: 8,
-                                  children: Map<String, dynamic>.from(_result!['macros']).entries.map((e) =>
-                                    Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  children: Map<String, dynamic>.from(_result!['macros']).entries.map((e) {
+                                    const macroLabels = {
+                                      'protein_g':      'Protein',
+                                      'carbs_g':        'Karbonhidrat',
+                                      'fat_g':          'Yağ',
+                                      'fiber_g':        'Lif',
+                                      'sugar_g':        'Şeker',
+                                      'saturated_fat_g':'Doymuş Yağ',
+                                    };
+                                    final label = macroLabels[e.key] ?? e.key;
+                                    final unit  = e.key.endsWith('_g') ? 'g' : '';
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                       decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(99), border: Border.all(color: border)),
-                                      child: Text('${e.key}: ${e.value}', style: TextStyle(fontSize: 12, color: text)))
-                                  ).toList(),
+                                      child: Text('$label: ${e.value}$unit', style: TextStyle(fontSize: 12, color: text)),
+                                    );
+                                  }).toList(),
                                 ),
                               ]),
                             ),
@@ -176,12 +304,33 @@ class _CalorieVisionScreenState extends ConsumerState<CalorieVisionScreen> {
                               child: Text('📊 Güven: ${_result!['confidence']}', style: TextStyle(fontSize: 11, color: muted))),
 
                           const SizedBox(height: 12),
+                          if (_result!['total_calories'] != null) ...[
+                            SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: ElevatedButton(
+                                onPressed: () => _showAddToDietDialog(
+                                  (_result!['total_calories'] as num).toInt(),
+                                  accent, bg, bgCard, border, text, muted,
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: accent,
+                                  foregroundColor: Colors.black,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  elevation: 0,
+                                ),
+                                child: const Text('➕  Diyet Planına Ekle', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
                           aiOutlineBtn('Yeni Fotoğraf', Icons.refresh, accent, border,
                             () => setState(() { _result = null; _imageBytes = null; })),
                         ],
                       ],
-                    ),
+                    ],
                   ),
+                ),
           ),
         ],
       ),

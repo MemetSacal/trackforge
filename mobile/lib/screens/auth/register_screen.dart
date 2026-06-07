@@ -50,6 +50,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       await TokenManager.saveTokens(
         accessToken:  loginResponse.data['access_token'],
         refreshToken: loginResponse.data['refresh_token'],
+        userId:       loginResponse.data['user_id'] ?? '',
       );
       if (!mounted) return;
       context.go('/onboarding');

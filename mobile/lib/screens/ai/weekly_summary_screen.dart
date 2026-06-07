@@ -6,7 +6,9 @@ import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'ai_helpers.dart'; // import eklendi
+import 'ai_helpers.dart';
+import '../profil/profil_screen.dart';
+import '../../core/utils/rate_limiter.dart';
 
 class WeeklySummaryScreen extends ConsumerStatefulWidget {
   const WeeklySummaryScreen({super.key});
@@ -18,18 +20,30 @@ class _WeeklySummaryScreenState extends ConsumerState<WeeklySummaryScreen> {
   String? _summary;
   bool _isLoading = false;
   String? _error;
+  bool _limitReached = false;
+  String _limitText = '';
 
   @override
   void initState() { super.initState(); _fetch(); }
 
   Future<void> _fetch() async {
-    setState(() { _isLoading = true; _error = null; });
-    try {
-      final response = await ApiClient.instance.post(Endpoints.aiWeeklySummary, data: {'reference_date': TFDateUtils.today()});
-      setState(() => _summary = response.data['summary'] as String?);
-    } catch (_) { setState(() => _error = 'Özet alınırken hata oluştu. Tekrar dene.'); }
-    finally { if (mounted) setState(() => _isLoading = false); }
-  }
+      // Limit kontrolü
+      final canUse = await RateLimiter.canUseWeeklyAnalysis();
+      if (!canUse) {
+        setState(() {
+          _limitReached = true;
+          _limitText    = 'Bu haftaki haftalık analiz hakkını kullandın. Yeni hafta başında tekrar kullanılabilir.';
+        });
+        return;
+      }
+      setState(() { _isLoading = true; _error = null; _limitReached = false; });
+      try {
+        final response = await ApiClient.instance.post(Endpoints.aiWeeklySummary, data: {'reference_date': TFDateUtils.today()});
+        await RateLimiter.recordWeeklyAnalysisUse();
+        setState(() => _summary = response.data['summary'] as String?);
+      } catch (_) { setState(() => _error = 'Özet alınırken hata oluştu. Tekrar dene.'); }
+      finally { if (mounted) setState(() => _isLoading = false); }
+    }
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +57,7 @@ class _WeeklySummaryScreenState extends ConsumerState<WeeklySummaryScreen> {
     final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
     final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
     final danger   = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
+    final aiName = ref.watch(profilePrefsProvider).value?['ai_name'] as String? ?? 'TrackForge AI';
 
     return Scaffold(
       backgroundColor: bg,
@@ -50,9 +65,11 @@ class _WeeklySummaryScreenState extends ConsumerState<WeeklySummaryScreen> {
         children: [
           aiHeader(context, ref, isDark, bg, bgCard, border, text, textSoft, muted, accent, 'Haftalık AI Özeti'),
           Expanded(
-            child: _isLoading
-                ? aiLoadingState(accent, text, '🤖 Claude verilerini analiz ediyor...')
-                : _error != null
+            child: _limitReached
+                            ? _buildLimitCard(accent, accentDim, border, text, muted)
+                            : _isLoading
+                            ? aiLoadingState(accent, text, '🤖 $aiName verilerini analiz ediyor...')
+                            : _error != null
                     ? aiErrorState(_error!, danger, accent, () => _fetch())
                     : _summary != null
                         ? SingleChildScrollView(
@@ -99,6 +116,25 @@ class _WeeklySummaryScreenState extends ConsumerState<WeeklySummaryScreen> {
                         : const SizedBox(),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLimitCard(Color accent, Color accentDim, Color border, Color text, Color muted) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('⏳', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 16),
+            Text('Haftalık Limit', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent)),
+            const SizedBox(height: 8),
+            Text(_limitText, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: text, height: 1.5)),
+          ]),
+        ),
       ),
     );
   }

@@ -228,7 +228,7 @@ class _WeeklyTab extends ConsumerWidget {
                       crossAxisCount: 2,
                       mainAxisSpacing: 8,
                       crossAxisSpacing: 8,
-                      childAspectRatio: 2.2,
+                      childAspectRatio: 1.8,
                       children: stats.map((s) => Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(14)),
@@ -236,11 +236,13 @@ class _WeeklyTab extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(s[0] as String, style: TextStyle(fontSize: 10, color: muted)),
+                            Text(s[0] as String, style: TextStyle(fontSize: 10, color: muted, overflow: TextOverflow.ellipsis)),
                             const SizedBox(height: 2),
-                            Text(s[1] as String, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: text)),
+                            Text(s[1] as String, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: text, overflow: TextOverflow.ellipsis)),
                             Text((s[2] as bool) ? '✔ hedefte' : '⚠ düşük',
-                              style: TextStyle(fontSize: 10, color: (s[2] as bool) ? positive : warning)),
+                              style: TextStyle(fontSize: 10, color: (s[2] as bool) ? positive : warning,
+                              overflow: TextOverflow.ellipsis)),
+
                           ],
                         ),
                       )).toList(),
