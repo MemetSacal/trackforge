@@ -54,6 +54,7 @@ class RateLimiter {
   }
 
   static Future<bool> canUseVision() async {
+    if (await TokenManager.isPremium()) return true;
     final used = await getVisionUsedToday();
     return used < visionDailyLimit;
   }
@@ -69,6 +70,7 @@ class RateLimiter {
   static const String _weeklyFeature = 'weekly_analysis';
 
   static Future<bool> canUseWeeklyAnalysis() async {
+    if (await TokenManager.isPremium()) return true;
     final prefs = await SharedPreferences.getInstance();
     return !(prefs.getBool(await _weekKey(_weeklyFeature)) ?? false);
   }
@@ -82,6 +84,7 @@ class RateLimiter {
   static const String _mealFeature = 'meal_advice';
 
   static Future<bool> canUseMealAdvice() async {
+    if (await TokenManager.isPremium()) return true;
     final prefs = await SharedPreferences.getInstance();
     return !(prefs.getBool(await _weekKey(_mealFeature)) ?? false);
   }
@@ -95,6 +98,7 @@ class RateLimiter {
   static const String _workoutFeature = 'workout_plan';
 
   static Future<bool> canUseWorkoutPlan() async {
+    if (await TokenManager.isPremium()) return true;
     final prefs = await SharedPreferences.getInstance();
     return !(prefs.getBool(await _weekKey(_workoutFeature)) ?? false);
   }

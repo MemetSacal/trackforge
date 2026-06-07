@@ -464,7 +464,7 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                   child: OutlinedButton.icon(
                     onPressed: () => setState(() => _showForm = true),
                     icon: Icon(Icons.add, color: accent),
-                    label: Text('+ Ölçüm Ekle', style: TextStyle(color: accent)),
+                    label: Text('Ölçüm Ekle', style: TextStyle(color: accent)),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       side: BorderSide(color: accent),

@@ -240,11 +240,12 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
       }
   Future<void> _clearUserPrefsCache() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('last_meal_advice');
-    await prefs.remove('last_meal_advice_date');
-    await prefs.remove('last_recommended_foods');
-    await prefs.remove('last_foods_to_avoid');
-    await prefs.remove('last_weekly_meal_plan');
+    final userId = await TokenManager.getCurrentUserId() ?? 'guest';
+    await prefs.remove('last_meal_advice_$userId');
+    await prefs.remove('last_meal_advice_date_$userId');
+    await prefs.remove('last_recommended_foods_$userId');
+    await prefs.remove('last_foods_to_avoid_$userId');
+    await prefs.remove('last_weekly_meal_plan_$userId');
   }
 
   @override

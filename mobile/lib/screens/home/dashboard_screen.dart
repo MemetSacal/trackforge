@@ -309,6 +309,16 @@ class _CalorieBankNote extends ConsumerWidget {
   final _Theme t;
   final Map<String, dynamic> meal;
   const _CalorieBankNote({required this.t, required this.meal});
+  void _showBankAdvice(BuildContext context, WidgetRef ref, _Theme t) async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: t.bgCard,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => _BankAdviceSheet(t: t),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -384,6 +394,24 @@ class _CalorieBankNote extends ConsumerWidget {
               const SizedBox(height: 8),
               Text(bankMessage, style: TextStyle(fontSize: 11, color: t.textSoft, height: 1.4)),
             ],
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: () => _showBankAdvice(context, ref, t),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: t.accent.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: t.accent.withOpacity(0.4)),
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.auto_awesome, size: 14, color: t.accent),
+                  const SizedBox(width: 6),
+                  Text('AI Kalori Analizi Al', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.accent)),
+                ]),
+              ),
+            ),
           ],
         ),
       ),
@@ -911,6 +939,95 @@ class _QuickActions extends ConsumerWidget {
               ]),
             )).toList(),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BankAdviceSheet extends StatefulWidget {
+  final _Theme t;
+  const _BankAdviceSheet({required this.t});
+  @override
+  State<_BankAdviceSheet> createState() => _BankAdviceSheetState();
+}
+
+class _BankAdviceSheetState extends State<_BankAdviceSheet> {
+  Map<String, dynamic>? _advice;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final response = await ApiClient.instance.post(Endpoints.aiCalorieBankAdvice, data: {});
+      setState(() {
+        _advice    = Map<String, dynamic>.from(response.data);
+        _isLoading = false;
+      });
+    } catch (_) {
+      setState(() { _error = 'Analiz alınamadı'; _isLoading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.t;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(child: Container(width: 40, height: 4,
+            decoration: BoxDecoration(color: t.border, borderRadius: BorderRadius.circular(99)))),
+          const SizedBox(height: 16),
+          Text('🤖 AI Kalori Analizi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: t.text)),
+          const SizedBox(height: 16),
+          if (_isLoading)
+            Center(child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: CircularProgressIndicator(color: t.accent),
+            ))
+          else if (_error != null)
+            Text(_error!, style: TextStyle(color: t.danger))
+          else if (_advice != null) ...[
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: t.accentDim, borderRadius: BorderRadius.circular(14), border: Border.all(color: t.accent)),
+              child: Text(_advice!['short_message'] as String? ?? '',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.accent)),
+            ),
+            const SizedBox(height: 12),
+            if (_advice!['detailed_advice'] != null)
+              Text(_advice!['detailed_advice'] as String,
+                style: TextStyle(fontSize: 13, color: t.text, height: 1.5)),
+            const SizedBox(height: 12),
+            if (_advice!['tomorrow_suggestion'] != null) ...[
+              Text('Yarın için öneri:', style: TextStyle(fontSize: 12, color: t.textMuted, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text(_advice!['tomorrow_suggestion'] as String,
+                style: TextStyle(fontSize: 13, color: t.text, height: 1.4)),
+            ],
+            if ((_advice!['telafi_options'] as List?)?.isNotEmpty == true) ...[
+              const SizedBox(height: 12),
+              Text('Telafi seçenekleri:', style: TextStyle(fontSize: 12, color: t.textMuted, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              ...(_advice!['telafi_options'] as List).map((o) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(children: [
+                  Icon(Icons.check_circle_outline, size: 14, color: t.accent),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(o.toString(), style: TextStyle(fontSize: 12, color: t.text))),
+                ]),
+              )),
+            ],
+          ],
         ],
       ),
     );

@@ -37,6 +37,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         accessToken: response.data['access_token'],
         refreshToken: response.data['refresh_token'],
         userId:       response.data['user_id'] ?? '',
+        isPremium:    response.data['is_premium'] ?? false,
       );
       if (!mounted) return;
       context.go('/home');
