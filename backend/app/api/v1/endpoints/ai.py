@@ -28,6 +28,7 @@ from backend.app.ai.generators.calorie_bank_advisor import generate_calorie_bank
 from backend.app.infrastructure.repositories.meal_compliance_repository import MealComplianceRepository
 from backend.app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
 from datetime import date as date_module
+from backend.app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
 
 router = APIRouter()
 
@@ -298,9 +299,7 @@ async def get_calorie_bank_advice(
         last_measurement = result.scalar_one_or_none()
         weight_kg = last_measurement.weight_kg if last_measurement else None
 
-        # Bugünkü meal_compliance
-        from backend.app.infrastructure.repositories.meal_compliance_repository import MealComplianceRepository
-        from backend.app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
+
         mc_result = await db.execute(
             select(MealComplianceModel)
             .where(
