@@ -247,6 +247,58 @@ class ReportService:
             exercise=exercise,
         )
 
+    async def get_weekly_logs(self, user_id: str, reference_date: date) -> dict:
+        week_start, week_end = self._get_week_range(reference_date)
+
+        # Ölçümler
+        meas_result = await self.db.execute(
+            select(MeasurementModel)
+            .where(and_(MeasurementModel.user_id == user_id,
+                        MeasurementModel.date >= week_start,
+                        MeasurementModel.date <= week_end))
+            .order_by(MeasurementModel.date.asc())
+        )
+        measurements = [
+            {'date': str(m.date), 'weight_kg': m.weight_kg,
+             'body_fat_pct': m.body_fat_pct, 'muscle_mass_kg': m.muscle_mass_kg}
+            for m in meas_result.scalars().all()
+        ]
+
+        # Su logları
+        water_result = await self.db.execute(
+            select(WaterLogModel)
+            .where(and_(WaterLogModel.user_id == user_id,
+                        WaterLogModel.date >= week_start,
+                        WaterLogModel.date <= week_end))
+            .order_by(WaterLogModel.date.asc())
+        )
+        water_logs = [
+            {'date': str(w.date), 'amount_ml': w.amount_ml, 'target_ml': w.target_ml}
+            for w in water_result.scalars().all()
+        ]
+
+        # Uyku logları
+        sleep_result = await self.db.execute(
+            select(SleepLogModel)
+            .where(and_(SleepLogModel.user_id == user_id,
+                        SleepLogModel.date >= week_start,
+                        SleepLogModel.date <= week_end))
+            .order_by(SleepLogModel.date.asc())
+        )
+        sleep_logs = [
+            {'date': str(s.date), 'duration_hours': s.duration_hours,
+             'quality_score': s.quality_score}
+            for s in sleep_result.scalars().all()
+        ]
+
+        return {
+            'week_start': str(week_start),
+            'week_end': str(week_end),
+            'measurements': measurements,
+            'water_logs': water_logs,
+            'sleep_logs': sleep_logs,
+        }
+
 
 """
 DOSYA AKIŞI:

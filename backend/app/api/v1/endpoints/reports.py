@@ -48,6 +48,17 @@ async def get_monthly_report(
     """
     return await service.get_monthly_report(current_user, year, month)
 
+@router.get("/weekly/logs")
+async def get_weekly_logs(
+    reference_date: date = Query(default=None, description="Haftadaki herhangi bir gün"),
+    current_user: str = Depends(get_current_user),
+    service: ReportService = Depends(get_report_service),
+):
+    if reference_date is None:
+        reference_date = date.today()
+    return await service.get_weekly_logs(current_user, reference_date)
+
+
 
 """
 DOSYA AKIŞI:

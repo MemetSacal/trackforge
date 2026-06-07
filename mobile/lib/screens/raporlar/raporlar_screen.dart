@@ -15,6 +15,18 @@ final weeklyReportDetailProvider = FutureProvider<Map<String, dynamic>>((ref) as
   return Map<String, dynamic>.from(response.data);
 });
 
+final weeklyLogsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  try {
+    final response = await ApiClient.instance.get(
+      '${Endpoints.reportsWeekly}/logs',
+      queryParameters: {'reference_date': TFDateUtils.today()},
+    );
+    return Map<String, dynamic>.from(response.data);
+  } catch (_) {
+    return {};
+  }
+});
+
 final monthlyReportProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final now = DateTime.now();
   final response = await ApiClient.instance.get(
@@ -189,11 +201,15 @@ class _WeeklyTab extends ConsumerWidget {
         ]),
       ),
       data: (data) {
+        final logs = ref.watch(weeklyLogsProvider).value ?? {};
         final water    = data['water']    != null ? Map<String, dynamic>.from(data['water'])    : <String, dynamic>{};
         final sleep    = data['sleep']    != null ? Map<String, dynamic>.from(data['sleep'])    : <String, dynamic>{};
         final exercise = data['exercise'] != null ? Map<String, dynamic>.from(data['exercise']) : <String, dynamic>{};
         final meas     = data['measurements'] != null ? Map<String, dynamic>.from(data['measurements']) : <String, dynamic>{};
         final meal     = data['meal_compliance'] != null ? Map<String, dynamic>.from(data['meal_compliance']) : <String, dynamic>{};
+        final measLogs  = logs['measurements'] as List? ?? [];
+        final waterLogs = logs['water_logs']   as List? ?? [];
+        final sleepLogs = logs['sleep_logs']   as List? ?? [];
 
         final now = DateTime.now();
         final weekStart = now.subtract(Duration(days: now.weekday - 1));
@@ -265,23 +281,21 @@ class _WeeklyTab extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              if (data['measurements'] is List && (data['measurements'] as List).isNotEmpty) ...[
-                _ChartCard(title: '⚖️ Kilo Trendi', bgCard: bgCard, border: border, text: text,
-                  child: _WeightChart(measurements: data['measurements'] as List, accent: accent, bgSoft: bgSoft)),
-                const SizedBox(height: 12),
-              ],
-              if (data['water_logs'] is List && (data['water_logs'] as List).isNotEmpty) ...[
-                _ChartCard(title: '💧 Su Tüketimi', bgCard: bgCard, border: border, text: text,
-                  child: _WaterChart(waterLogs: data['water_logs'] as List, accent: accent)),
-                const SizedBox(height: 12),
-              ],
-              if (data['sleep_logs'] is List && (data['sleep_logs'] as List).isNotEmpty) ...[
-                _ChartCard(title: '😴 Uyku Süresi', bgCard: bgCard, border: border, text: text,
-                  child: _SleepChart(sleepLogs: data['sleep_logs'] as List, accent: accent, bgSoft: bgSoft)),
-              ],
-              if ((data['measurements'] is! List || (data['measurements'] as List).isEmpty) &&
-                  (data['water_logs'] is! List || (data['water_logs'] as List).isEmpty) &&
-                  (data['sleep_logs'] is! List || (data['sleep_logs'] as List).isEmpty))
+              if (measLogs.isNotEmpty) ...[
+                              _ChartCard(title: '⚖️ Kilo Trendi', bgCard: bgCard, border: border, text: text,
+                                child: _WeightChart(measurements: measLogs, accent: accent, bgSoft: bgSoft)),
+                              const SizedBox(height: 12),
+                            ],
+                            if (waterLogs.isNotEmpty) ...[
+                              _ChartCard(title: '💧 Su Tüketimi', bgCard: bgCard, border: border, text: text,
+                                child: _WaterChart(waterLogs: waterLogs, accent: accent)),
+                              const SizedBox(height: 12),
+                            ],
+                            if (sleepLogs.isNotEmpty) ...[
+                              _ChartCard(title: '😴 Uyku Süresi', bgCard: bgCard, border: border, text: text,
+                                child: _SleepChart(sleepLogs: sleepLogs, accent: accent, bgSoft: bgSoft)),
+                            ],
+                            if (measLogs.isEmpty && waterLogs.isEmpty && sleepLogs.isEmpty)
                 Container(
                   decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                   padding: const EdgeInsets.symmetric(vertical: 40),
