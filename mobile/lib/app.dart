@@ -9,6 +9,7 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
+import 'screens/splash/splash_screen.dart';
 
 // ── THEME PROVIDER ────────────────────────────────────────
 // ThemeMode state'ini tutan provider.
@@ -94,77 +95,4 @@ class TrackForgeApp extends ConsumerWidget {
       routerConfig: _router,
     );
   }
-}
-
-// ── SPLASH SCREEN ─────────────────────────────────────────
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
-
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen> {
-  @override
-  void initState() {
-    super.initState();
-    _checkAuth();
-  }
-
-  Future<void> _checkAuth() async {
-    await Future.delayed(const Duration(milliseconds: 1500));
-    if (!mounted) return;
-    final isLoggedIn = await TokenManager.isLoggedIn();
-    if (isLoggedIn) {
-      context.go('/home');
-    } else {
-      context.go('/login');
-    }
-  }
-
-  @override
-    Widget build(BuildContext context) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF0C0D10),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                'assets/images/app_icon.png',
-                width: 120,
-                height: 120,
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'TrackForge',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFFFFB020),
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'AI-Powered Health & Fitness',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF8A88A8),
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-              const SizedBox(height: 48),
-              const SizedBox(
-                width: 24, height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Color(0xFFFFB020),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
 }

@@ -186,7 +186,9 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
         };
       }
 
-      await ApiClient.instance.put(Endpoints.preferences, data: payload);
+      final resp = await ApiClient.instance.put(Endpoints.preferences, data: payload);
+      debugPrint('PROFIL SAVE: $payload');
+      debugPrint('PROFIL RESP: ${resp.data}');
       _prefsLoaded = false; // ← setState dışında, invalidate'ten önce
       ref.invalidate(profilePrefsProvider);
       setState(() {

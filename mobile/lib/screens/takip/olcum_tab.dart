@@ -269,7 +269,7 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
     if (err != null) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err))); return; }
     setState(() => _isLoading = true);
     try {
-      final data = {
+      final rawData = {
         'weight_kg':      double.tryParse(_weightController.text),
         'body_fat_pct':   double.tryParse(_bodyFatController.text),
         'muscle_mass_kg': double.tryParse(_muscleMassController.text),
@@ -279,6 +279,8 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
         'arm_cm':         double.tryParse(_armController.text),
         'leg_cm':         double.tryParse(_legController.text),
       };
+      // null alanları payload'dan çıkar — backend mevcut değeri korusun
+      final data = Map.fromEntries(rawData.entries.where((e) => e.value != null));
       if (existing != null) {
         await ApiClient.instance.put('${Endpoints.measurements}/${existing['id']}', data: data);
       } else {
@@ -361,7 +363,20 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                         Text('Vücut Ölçüleri', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
                         GestureDetector(
-                          onTap: () => setState(() => _showForm = !_showForm),
+                          onTap: () {
+                            if (!_showForm && latest != null) {
+                              // Mevcut değerleri forma doldur
+                              _weightController.text     = latest['weight_kg']?.toString() ?? '';
+                              _bodyFatController.text    = latest['body_fat_pct']?.toString() ?? '';
+                              _muscleMassController.text = latest['muscle_mass_kg']?.toString() ?? '';
+                              _waistController.text      = latest['waist_cm']?.toString() ?? '';
+                              _chestController.text      = latest['chest_cm']?.toString() ?? '';
+                              _hipController.text        = latest['hip_cm']?.toString() ?? '';
+                              _armController.text        = latest['arm_cm']?.toString() ?? '';
+                              _legController.text        = latest['leg_cm']?.toString() ?? '';
+                            }
+                            setState(() => _showForm = !_showForm);
+                          },
                           child: Text(_showForm ? 'Kapat' : 'Ekle', style: TextStyle(fontSize: 13, color: accent, fontWeight: FontWeight.w600)),
                         ),
                       ]),

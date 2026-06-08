@@ -14,6 +14,7 @@ class User:
     full_name: str
     created_at: datetime
     updated_at: datetime
+    is_premium: bool = False
 
 """
 id UUID olarak üretiliyor ve str(uuid.uuid4()) ile stringe çevriliyor — "796258c6-8f96-4a2f-..." formatında.

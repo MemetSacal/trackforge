@@ -29,10 +29,21 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
   bool _initialized = false;
   String? _savedAdvice;
   String? _savedAdviceDate;
-  bool _showAdvice = false;
+  bool _showAdvice      = false;
+  bool _showWeeklyPlan  = false; // haftalık plan aç/kapat
   List<String> _recommendedFoods = [];
   List<String> _avoidFoods       = [];
   Map<String, dynamic>? _weeklyPlan;
+
+  // Gün sırası ve Türkçe etiketler
+  static const _dayKeys    = ['pazartesi','salı','çarşamba','perşembe','cuma','cumartesi','pazar'];
+  static const _dayLabels  = ['Pzt','Sal','Çar','Per','Cum','Cmt','Paz'];
+  static const _mealLabels = {
+    'breakfast': '🌅 Kahvaltı',
+    'lunch':     '☀️ Öğle',
+    'dinner':    '🌙 Akşam',
+    'snack':     '🍎 Ara Öğün',
+  };
 
   @override
   void initState() { super.initState(); _loadAdvice(); }
@@ -44,9 +55,7 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
     Map<String, dynamic>? weeklyPlan;
     final weeklyRaw = prefs.getString('last_weekly_meal_plan_$userId');
     if (weeklyRaw != null) {
-      try {
-        weeklyPlan = Map<String, dynamic>.from(jsonDecode(weeklyRaw));
-      } catch (_) {}
+      try { weeklyPlan = Map<String, dynamic>.from(jsonDecode(weeklyRaw)); } catch (_) {}
     }
 
     setState(() {
@@ -119,6 +128,7 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
     final danger    = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
 
     final mealAsync = ref.watch(todayMealProvider);
+    final todayKey  = _dayKeys[DateTime.now().weekday - 1];
 
     return mealAsync.when(
       loading: () => Center(child: CircularProgressIndicator(color: accent)),
@@ -138,10 +148,6 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
         final bankMessage = mealLog?['bank_message'] as String?;
         final progress    = target > 0 ? (consumed / target).clamp(0.0, 1.0) : 0.0;
         final isOverTarget = consumed > target && target > 0;
-
-        final days = ['pazartesi', 'salı', 'çarşamba', 'perşembe', 'cuma', 'cumartesi', 'pazar'];
-        final todayKey = days[DateTime.now().weekday - 1];
-        final todayLabel = todayKey[0].toUpperCase() + todayKey.substring(1);
 
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
@@ -168,10 +174,7 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                           if (todayMax != null)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: accent.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(99),
-                              ),
+                              decoration: BoxDecoration(color: accent.withOpacity(0.15), borderRadius: BorderRadius.circular(99)),
                               child: Text('Maks: ${todayMax.toInt()} kcal', style: TextStyle(fontSize: 10, color: accent, fontWeight: FontWeight.w700)),
                             ),
                         ],
@@ -186,10 +189,7 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                           ),
                           Padding(
                             padding: const EdgeInsets.only(bottom: 6, left: 4),
-                            child: Text(
-                              '/ ${target.toInt()} kcal',
-                              style: TextStyle(fontSize: 14, color: textSoft, fontWeight: FontWeight.w600),
-                            ),
+                            child: Text('/ ${target.toInt()} kcal', style: TextStyle(fontSize: 14, color: textSoft, fontWeight: FontWeight.w600)),
                           ),
                         ],
                       ),
@@ -220,10 +220,7 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                         const SizedBox(height: 12),
                         Container(
                           padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: accent.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
+                          decoration: BoxDecoration(color: accent.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
                           child: Text(bankMessage, style: TextStyle(fontSize: 12, color: text, height: 1.4)),
                         ),
                       ],
@@ -266,6 +263,7 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
 
               // ── AI DİYET PLANI ────────────────────────
               if (_savedAdvice != null) ...[
+                // ── Başlık satırı ──
                 GestureDetector(
                   onTap: () => setState(() => _showAdvice = !_showAdvice),
                   child: Container(
@@ -288,64 +286,91 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                     ),
                   ),
                 ),
+
                 if (_showAdvice) ...[
                   const SizedBox(height: 8),
 
-                  // ── Bugünün Menüsü ──────────────────
+                  // ── BUGÜNÜN MENÜSÜ ──────────────────
                   if (_weeklyPlan != null) Builder(
                     builder: (ctx) {
                       final todayMeals = _weeklyPlan![todayKey] as Map?;
-                      const mealLabels = {
-                        'breakfast': '🌅 Kahvaltı',
-                        'lunch':     '☀️ Öğle',
-                        'dinner':    '🌙 Akşam',
-                        'snack':     '🍎 Ara Öğün',
-                      };
                       if (todayMeals == null) return const SizedBox.shrink();
-                      return Column(
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              color: bgCard,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: accent.withOpacity(0.4)),
-                            ),
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '🗓 Bugünün Menüsü — $todayLabel',
-                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: accent),
-                                ),
-                                const SizedBox(height: 12),
-                                ...mealLabels.entries.map((entry) {
-                                  final meal = todayMeals[entry.key] as String?;
-                                  if (meal == null) return const SizedBox.shrink();
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        SizedBox(
-                                          width: 80,
-                                          child: Text(entry.value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: muted)),
-                                        ),
-                                        Expanded(child: Text(meal, style: TextStyle(fontSize: 12, color: text, height: 1.4))),
-                                      ],
-                                    ),
-                                  );
-                                }),
-                              ],
-                            ),
+                      final todayLabel = _dayLabels[DateTime.now().weekday - 1];
+                      return Column(children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: bgCard,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: accent.withOpacity(0.4)),
                           ),
-                          const SizedBox(height: 8),
-                        ],
-                      );
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('🗓 Bugünün Menüsü — $todayLabel', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: accent)),
+                              const SizedBox(height: 12),
+                              ..._mealLabels.entries.map((entry) {
+                                final meal = todayMeals[entry.key] as String?;
+                                if (meal == null) return const SizedBox.shrink();
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      SizedBox(width: 80, child: Text(entry.value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: muted))),
+                                      Expanded(child: Text(meal, style: TextStyle(fontSize: 12, color: text, height: 1.4))),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ]);
                     },
                   ),
 
-                  // ── Genel Özet (Markdown) ──────────
+                  // ── HAFTALIK PLAN (7 gün) ──────────
+                  if (_weeklyPlan != null) ...[
+                    GestureDetector(
+                      onTap: () => setState(() => _showWeeklyPlan = !_showWeeklyPlan),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                        child: Row(
+                          children: [
+                            const Text('📅', style: TextStyle(fontSize: 20)),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text('Haftalık Plan', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text))),
+                            Icon(_showWeeklyPlan ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: accent),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_showWeeklyPlan) ...[
+                      const SizedBox(height: 8),
+                      // Gün sekmeleri
+                      _WeeklyPlanView(
+                        weeklyPlan: _weeklyPlan!,
+                        dayKeys: _dayKeys,
+                        dayLabels: _dayLabels,
+                        mealLabels: _mealLabels,
+                        todayIndex: DateTime.now().weekday - 1,
+                        bgCard: bgCard,
+                        bgSoft: bgSoft,
+                        border: border,
+                        text: text,
+                        textSoft: textSoft,
+                        muted: muted,
+                        accent: accent,
+                        accentDim: accentDim,
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                  ],
+
+                  // ── GENEL ÖZET (Markdown) ──────────
                   Container(
                     decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                     padding: const EdgeInsets.all(16),
@@ -486,6 +511,137 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
           ),
         );
       },
+    );
+  }
+}
+
+// ── Haftalık Plan Widget ──────────────────────────────────
+class _WeeklyPlanView extends StatefulWidget {
+  final Map<String, dynamic> weeklyPlan;
+  final List<String> dayKeys;
+  final List<String> dayLabels;
+  final Map<String, String> mealLabels;
+  final int todayIndex;
+  final Color bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim;
+
+  const _WeeklyPlanView({
+    required this.weeklyPlan,
+    required this.dayKeys,
+    required this.dayLabels,
+    required this.mealLabels,
+    required this.todayIndex,
+    required this.bgCard,
+    required this.bgSoft,
+    required this.border,
+    required this.text,
+    required this.textSoft,
+    required this.muted,
+    required this.accent,
+    required this.accentDim,
+  });
+
+  @override
+  State<_WeeklyPlanView> createState() => _WeeklyPlanViewState();
+}
+
+class _WeeklyPlanViewState extends State<_WeeklyPlanView> {
+  late int _selectedDay;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDay = widget.todayIndex;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // ── Gün seçici ──
+        Container(
+          decoration: BoxDecoration(color: widget.bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: widget.border)),
+          padding: const EdgeInsets.all(8),
+          child: Row(
+            children: List.generate(7, (i) {
+              final isToday = i == widget.todayIndex;
+              final isSel   = i == _selectedDay;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedDay = i),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSel ? widget.accentDim : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: isSel ? widget.accent : Colors.transparent),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          widget.dayLabels[i],
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: isSel ? FontWeight.w800 : FontWeight.w500,
+                            color: isSel ? widget.accent : widget.muted,
+                          ),
+                        ),
+                        if (isToday) ...[
+                          const SizedBox(height: 2),
+                          Container(width: 4, height: 4, decoration: BoxDecoration(shape: BoxShape.circle, color: widget.accent)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // ── Seçili günün menüsü ──
+        Builder(builder: (ctx) {
+          final dayKey  = widget.dayKeys[_selectedDay];
+          final dayData = widget.weeklyPlan[dayKey];
+          if (dayData == null) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: widget.bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: widget.border)),
+              child: Center(child: Text('Bu gün için plan yok', style: TextStyle(fontSize: 13, color: widget.muted))),
+            );
+          }
+          final meals = Map<String, dynamic>.from(dayData);
+          return Container(
+            decoration: BoxDecoration(color: widget.bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: widget.border)),
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${widget.dayLabels[_selectedDay]} Menüsü',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: widget.accent),
+                ),
+                const SizedBox(height: 12),
+                ...widget.mealLabels.entries.map((entry) {
+                  final meal = meals[entry.key] as String?;
+                  if (meal == null) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(width: 80, child: Text(entry.value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: widget.muted))),
+                        Expanded(child: Text(meal, style: TextStyle(fontSize: 12, color: widget.text, height: 1.4))),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          );
+        }),
+      ],
     );
   }
 }

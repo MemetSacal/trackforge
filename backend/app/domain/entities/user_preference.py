@@ -27,10 +27,13 @@ class UserPreference:
     # Hedef ve antrenman
     workout_location: Optional[str] = None
     fitness_goal: Optional[str] = None
+    diet_preference: Optional[str] = None
+    ai_name: Optional[str] = None
+    target_weight_kg: Optional[float] = None
+    daily_calorie_habit: Optional[str] = None
 
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
 
 """
 DOSYA AKIŞI:

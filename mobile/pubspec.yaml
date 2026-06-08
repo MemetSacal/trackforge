@@ -68,6 +68,7 @@ flutter:
   assets:
     - assets/images/app_icon.png
     - assets/images/muscle_front_and_back.svg
+    - assets/images/splash_bg.png
 
 flutter_launcher_icons:
   android: true
