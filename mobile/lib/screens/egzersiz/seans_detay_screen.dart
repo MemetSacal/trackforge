@@ -1,11 +1,12 @@
 // ── seans_detay_screen.dart ─────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../app.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../widgets/body_map/body_map_widget.dart';
+import 'egzersiz_screen.dart'; // extractMuscleGroups + _normalizeMuscle
 
 final sessionExercisesProvider =
     FutureProvider.family<List<Map<String, dynamic>>, String>((ref, sessionId) async {
@@ -48,9 +49,9 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
     try {
       await ApiClient.instance.post('${Endpoints.exerciseSessions}/$_sessionId/exercises', data: {
         'exercise_name': _nameController.text.trim(),
-        'sets':       int.tryParse(_setsController.text),
-        'reps':       int.tryParse(_repsController.text),
-        'weight_kg':  double.tryParse(_weightController.text),
+        'sets':      int.tryParse(_setsController.text),
+        'reps':      int.tryParse(_repsController.text),
+        'weight_kg': double.tryParse(_weightController.text),
       });
       _nameController.clear(); _setsController.clear();
       _repsController.clear(); _weightController.clear();
@@ -96,15 +97,13 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
             TextField(controller: _nameController, style: TextStyle(color: text),
               decoration: const InputDecoration(labelText: 'Egzersiz Adı *', prefixIcon: Icon(Icons.fitness_center), hintText: 'Bench Press, Squat...')),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: TextField(controller: _setsController,   keyboardType: TextInputType.number, style: TextStyle(color: text), decoration: const InputDecoration(labelText: 'Set'))),
-                const SizedBox(width: 10),
-                Expanded(child: TextField(controller: _repsController,   keyboardType: TextInputType.number, style: TextStyle(color: text), decoration: const InputDecoration(labelText: 'Tekrar'))),
-                const SizedBox(width: 10),
-                Expanded(child: TextField(controller: _weightController, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: TextStyle(color: text), decoration: const InputDecoration(labelText: 'Kg'))),
-              ],
-            ),
+            Row(children: [
+              Expanded(child: TextField(controller: _setsController,   keyboardType: TextInputType.number, style: TextStyle(color: text), decoration: const InputDecoration(labelText: 'Set'))),
+              const SizedBox(width: 10),
+              Expanded(child: TextField(controller: _repsController,   keyboardType: TextInputType.number, style: TextStyle(color: text), decoration: const InputDecoration(labelText: 'Tekrar'))),
+              const SizedBox(width: 10),
+              Expanded(child: TextField(controller: _weightController, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: TextStyle(color: text), decoration: const InputDecoration(labelText: 'Kg'))),
+            ]),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
@@ -123,17 +122,17 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark   = ref.watch(themeModeProvider) == ThemeMode.dark;
-    final bg       = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
-    final bgCard   = isDark ? const Color(0xFF141620) : Colors.white;
-    final bgSoft   = isDark ? const Color(0xFF0F1016) : const Color(0xFFE8EBF2);
-    final border   = isDark ? const Color(0x12FFFFFF) : const Color(0x12000000);
-    final text     = isDark ? const Color(0xFFF0EEF8) : const Color(0xFF111318);
-    final textSoft = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
-    final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
-    final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
-    final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
-    final danger   = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
+    final isDark    = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final bg        = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
+    final bgCard    = isDark ? const Color(0xFF141620) : Colors.white;
+    final bgSoft    = isDark ? const Color(0xFF0F1016) : const Color(0xFFE8EBF2);
+    final border    = isDark ? const Color(0x12FFFFFF) : const Color(0x12000000);
+    final text      = isDark ? const Color(0xFFF0EEF8) : const Color(0xFF111318);
+    final textSoft  = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
+    final muted     = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
+    final accent    = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
+    final accentDim = isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
+    final danger    = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
 
     final exercisesAsync = ref.watch(sessionExercisesProvider(_sessionId));
     final duration = widget.session['duration_minutes'] as int? ?? 0;
@@ -152,32 +151,23 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
               children: [
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
-                  child: Container(
-                    width: 36, height: 36,
+                  child: Container(width: 36, height: 36,
                     decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
-                    child: Icon(Icons.arrow_back_ios_new_rounded, size: 15, color: textSoft),
-                  ),
+                    child: Icon(Icons.arrow_back_ios_new_rounded, size: 15, color: textSoft)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('TRACKFORGE', style: TextStyle(fontSize: 9, letterSpacing: 3, color: muted, fontWeight: FontWeight.w600)),
-                      Text(
-                        '$duration dk · $date${calories != null ? ' · $calories kcal' : ''}',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: text, letterSpacing: -0.3),
-                      ),
-                    ],
-                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('TRACKFORGE', style: TextStyle(fontSize: 9, letterSpacing: 3, color: muted, fontWeight: FontWeight.w600)),
+                    Text('$duration dk · $date${calories != null ? ' · $calories kcal' : ''}',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: text, letterSpacing: -0.3)),
+                  ]),
                 ),
                 GestureDetector(
                   onTap: () => ref.read(themeModeProvider.notifier).toggle(),
-                  child: Container(
-                    width: 36, height: 36,
+                  child: Container(width: 36, height: 36,
                     decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
-                    child: Icon(isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round, size: 15, color: textSoft),
-                  ),
+                    child: Icon(isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round, size: 15, color: textSoft)),
                 ),
               ],
             ),
@@ -189,48 +179,125 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
               loading: () => Center(child: CircularProgressIndicator(color: accent)),
               error:   (_, __) => Center(child: Text('Veri yüklenemedi', style: TextStyle(color: text))),
               data: (exercises) {
-                final allMuscles = exercises
-                    .expand((e) => getMusclesForExercise(e['exercise_name'] as String? ?? ''))
-                    .toSet().toList();
+                // Kas grubu dağılımı
+                final muscleCounts = extractMuscleGroups(exercises);
+                final sorted = muscleCounts.entries.toList()
+                  ..sort((a, b) => b.value.compareTo(a.value));
+                final totalCount = sorted.fold(0, (s, e) => s + e.value);
+
+                const barColors = [
+                  Color(0xFFFFB020), Color(0xFF22D3EE), Color(0xFF34D399),
+                  Color(0xFFA78BFA), Color(0xFFFF5555), Color(0xFFFF6B2B),
+                  Color(0xFFF472B6), Color(0xFF60A5FA),
+                ];
 
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                   children: [
 
-                    // Vücut haritası
-                    if (allMuscles.isNotEmpty) ...[
+                    // ── Kas grubu grafiği ──────────────
+                    if (sorted.isNotEmpty) ...[
                       Container(
                         decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Çalışan Kaslar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
-                            const SizedBox(height: 12),
-                            BodyMapWidget(highlightedMuscles: allMuscles, height: 320),
+                            Text('Bu Antrenman Çalışan Kaslar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+                            Text('egzersiz sayısına göre', style: TextStyle(fontSize: 11, color: muted)),
+                            const SizedBox(height: 16),
+
+                            // Bar chart
+                            SizedBox(
+                              height: 160,
+                              child: BarChart(
+                                BarChartData(
+                                  alignment: BarChartAlignment.spaceAround,
+                                  maxY: (sorted.first.value * 1.4).toDouble(),
+                                  barTouchData: BarTouchData(enabled: false),
+                                  titlesData: FlTitlesData(
+                                    leftTitles:   const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                    rightTitles:  const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                    topTitles:    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                    bottomTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        getTitlesWidget: (val, meta) {
+                                          final i = val.toInt();
+                                          if (i < 0 || i >= sorted.length) return const SizedBox.shrink();
+                                          final label = sorted[i].key;
+                                          final short = label.length > 5 ? label.substring(0, 5) : label;
+                                          return Padding(
+                                            padding: const EdgeInsets.only(top: 4),
+                                            child: Text(short, style: TextStyle(fontSize: 9, color: muted)),
+                                          );
+                                        },
+                                        reservedSize: 22,
+                                      ),
+                                    ),
+                                  ),
+                                  gridData: FlGridData(
+                                    show: true,
+                                    getDrawingHorizontalLine: (_) => FlLine(color: border, strokeWidth: 1),
+                                    drawVerticalLine: false,
+                                  ),
+                                  borderData: FlBorderData(show: false),
+                                  barGroups: sorted.asMap().entries.map((e) {
+                                    final color = barColors[e.key % barColors.length];
+                                    return BarChartGroupData(
+                                      x: e.key,
+                                      barRods: [
+                                        BarChartRodData(
+                                          toY: e.value.value.toDouble(),
+                                          color: color,
+                                          width: 20,
+                                          borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                                        ),
+                                      ],
+                                    );
+                                  }).toList(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+
+                            // Oran listesi
+                            ...sorted.asMap().entries.map((e) {
+                              final color  = barColors[e.key % barColors.length];
+                              final muscle = e.value.key;
+                              final count  = e.value.value;
+                              final pct    = totalCount > 0 ? count / totalCount : 0.0;
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(children: [
+                                  Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text(muscle, style: TextStyle(fontSize: 12, color: text, fontWeight: FontWeight.w600))),
+                                  Text('%${(pct * 100).toInt()}', style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w700)),
+                                ]),
+                              );
+                            }),
                           ],
                         ),
                       ),
                       const SizedBox(height: 12),
                     ],
 
-                    // Boş durum
+                    // ── Boş durum ──────────────────────
                     if (exercises.isEmpty)
                       Container(
                         decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                         padding: const EdgeInsets.symmetric(vertical: 40),
-                        child: Column(
-                          children: [
-                            const Text('💪', style: TextStyle(fontSize: 48)),
-                            const SizedBox(height: 12),
-                            Text('Henüz egzersiz yok', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: text)),
-                            const SizedBox(height: 4),
-                            Text('Aşağıdan ekle', style: TextStyle(fontSize: 12, color: muted)),
-                          ],
-                        ),
+                        child: Column(children: [
+                          const Text('💪', style: TextStyle(fontSize: 48)),
+                          const SizedBox(height: 12),
+                          Text('Henüz egzersiz yok', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: text)),
+                          const SizedBox(height: 4),
+                          Text('Aşağıdan ekle', style: TextStyle(fontSize: 12, color: muted)),
+                        ]),
                       ),
 
-                    // Egzersiz kartları
+                    // ── Egzersiz kartları ──────────────
                     ...exercises.asMap().entries.map((e) {
                       final ex     = e.value;
                       final name   = ex['exercise_name'] as String? ?? '';
@@ -251,23 +318,20 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    [if (sets != null) '$sets set', if (reps != null) '$reps tekrar', if (weight != null) '$weight kg'].join(' · '),
-                                    style: TextStyle(fontSize: 11, color: muted),
-                                  ),
-                                ],
-                              ),
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                                const SizedBox(height: 2),
+                                Text(
+                                  [if (sets != null) '$sets set', if (reps != null) '$reps tekrar', if (weight != null) '$weight kg'].join(' · '),
+                                  style: TextStyle(fontSize: 11, color: muted),
+                                ),
+                              ]),
                             ),
                             GestureDetector(
                               onTap: () => _openYouTube(name),
                               child: Container(
                                 width: 32, height: 32,
-                                decoration: BoxDecoration(color: const Color(0x1AFF0000), borderRadius: BorderRadius.circular(8)),
+                                decoration: const BoxDecoration(color: Color(0x1AFF0000), borderRadius: BorderRadius.all(Radius.circular(8))),
                                 child: const Icon(Icons.play_circle_outline, size: 18, color: Colors.red),
                               ),
                             ),
@@ -286,18 +350,12 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                     }),
 
                     const SizedBox(height: 12),
-
-                    // Egzersiz ekle butonu
                     GestureDetector(
                       onTap: () => _showAddSheet(context, bgCard, border, text, accent),
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        decoration: BoxDecoration(
-                          color: accentDim,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: accent),
-                        ),
+                        decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(16), border: Border.all(color: accent)),
                         child: Center(child: Text('+ Egzersiz Ekle', style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 14))),
                       ),
                     ),

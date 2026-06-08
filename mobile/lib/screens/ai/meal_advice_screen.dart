@@ -291,17 +291,61 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen> {
             ]),
           ),
           const SizedBox(height: 20),
-        ],
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: () => _getAdvice(prefs),
-            child: const Text('🥗  Tavsiye Al'),
-          ),
-        ),
-      ]),
-    );
-  }
+                  ],
+
+                  // ── Ne yapacağını anlat ──
+                  Container(
+                    decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('AI Diyet Tavsiyesi neler içerir?', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                        const SizedBox(height: 12),
+                        ...[
+                          ['🗓', '7 günlük haftalık menü', 'Her gün kahvaltı, öğle, akşam ve ara öğün önerisi'],
+                          ['⚖️', 'Kişisel makro hedefleri', 'Protein, karbonhidrat ve yağ dengesi'],
+                          ['✅', 'Önerilen besinler listesi', 'Hedefine uygun yiyecekler'],
+                          ['❌', 'Kaçınılacak besinler', 'Seni hedefinden uzaklaştırabilecek yiyecekler'],
+                          ['💾', 'Diyet sekmesine kayıt', 'Haftalık plan her gün Diyet sekmesinde görünür'],
+                        ].map((r) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(r[0], style: const TextStyle(fontSize: 18)),
+                            const SizedBox(width: 12),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(r[1], style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: text)),
+                              Text(r[2], style: TextStyle(fontSize: 11, color: muted, height: 1.4)),
+                            ])),
+                          ]),
+                        )),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Limit bilgisi ──
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
+                    child: Row(children: [
+                      Icon(Icons.info_outline, size: 14, color: muted),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text('Free planda haftada 1 kez kullanılabilir', style: TextStyle(fontSize: 11, color: muted))),
+                    ]),
+                  ),
+                  const SizedBox(height: 20),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => _getAdvice(prefs),
+                      child: const Text('🥗  Tavsiye Al'),
+                    ),
+                  ),
+                ]),
+              );
+            }
 
   Widget _buildResult(Map<String, dynamic> data, Map<String, dynamic>? prefs, Color bg, Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim, Color danger) {
     final recommended = List<String>.from(data['recommended_foods'] ?? []);

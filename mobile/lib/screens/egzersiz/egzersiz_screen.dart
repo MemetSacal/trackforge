@@ -2,13 +2,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
-import '../home/dashboard_screen.dart'; // notificationsProvider için
+import '../home/dashboard_screen.dart';
 import 'seans_detay_screen.dart';
-import '../../widgets/body_map/body_map_widget.dart';
 
 final sessionsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   try {
@@ -51,6 +51,42 @@ class _EC {
   static const lDanger   = Color(0xFFDC2626);
 }
 
+// Egzersiz adından kas gruplarını çıkar
+Map<String, int> extractMuscleGroups(List<Map<String, dynamic>> exercises) {
+  final counts = <String, int>{};
+  for (final ex in exercises) {
+    final raw = ex['muscle_groups'];
+    List<String> groups = [];
+    if (raw is List) {
+      groups = raw.map((e) => e.toString()).toList();
+    } else if (raw is String && raw.isNotEmpty) {
+      groups = [raw];
+    }
+    for (final g in groups) {
+      final key = _normalizeMuscle(g);
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+String _normalizeMuscle(String raw) {
+  final lower = raw.toLowerCase().trim();
+  if (lower.contains('chest') || lower.contains('göğüs'))       return 'Göğüs';
+  if (lower.contains('back') || lower.contains('sırt'))         return 'Sırt';
+  if (lower.contains('shoulder') || lower.contains('omuz'))     return 'Omuz';
+  if (lower.contains('bicep') || lower.contains('biceps'))      return 'Biceps';
+  if (lower.contains('tricep') || lower.contains('triceps'))    return 'Triceps';
+  if (lower.contains('leg') || lower.contains('quad') ||
+      lower.contains('hamstring') || lower.contains('bacak'))   return 'Bacak';
+  if (lower.contains('glute') || lower.contains('kalça'))       return 'Kalça';
+  if (lower.contains('abs') || lower.contains('core') ||
+      lower.contains('karın'))                                   return 'Karın';
+  if (lower.contains('calf') || lower.contains('baldır'))       return 'Baldır';
+  if (lower.contains('trap') || lower.contains('tuzak'))        return 'Trapez';
+  return raw.isNotEmpty ? raw[0].toUpperCase() + raw.substring(1) : 'Diğer';
+}
+
 class EgzersizScreen extends ConsumerStatefulWidget {
   const EgzersizScreen({super.key});
   @override
@@ -84,11 +120,8 @@ class _EgzersizScreenState extends ConsumerState<EgzersizScreen> {
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40, height: 4,
-                decoration: BoxDecoration(color: border, borderRadius: BorderRadius.circular(99)),
-              ),
+              Container(margin: const EdgeInsets.only(top: 12), width: 40, height: 4,
+                decoration: BoxDecoration(color: border, borderRadius: BorderRadius.circular(99))),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: Row(
@@ -267,17 +300,17 @@ class _EgzersizScreenState extends ConsumerState<EgzersizScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark   = ref.watch(themeModeProvider) == ThemeMode.dark;
-    final bg       = isDark ? _EC.bg        : _EC.lBg;
-    final bgCard   = isDark ? _EC.bgCard    : _EC.lBgCard;
-    final bgSoft   = isDark ? _EC.bgSoft    : _EC.lBgSoft;
-    final border   = isDark ? _EC.border    : _EC.lBorder;
-    final text     = isDark ? _EC.text      : _EC.lText;
-    final textSoft = isDark ? _EC.textSoft  : _EC.lTextSoft;
-    final muted    = isDark ? _EC.textMuted : _EC.lTextMuted;
-    final accent   = isDark ? _EC.accent    : _EC.lAccent;
-    final accentDim= isDark ? _EC.accentDim : _EC.lAccentDim;
-    final danger   = isDark ? _EC.danger    : _EC.lDanger;
+    final isDark    = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final bg        = isDark ? _EC.bg        : _EC.lBg;
+    final bgCard    = isDark ? _EC.bgCard    : _EC.lBgCard;
+    final bgSoft    = isDark ? _EC.bgSoft    : _EC.lBgSoft;
+    final border    = isDark ? _EC.border    : _EC.lBorder;
+    final text      = isDark ? _EC.text      : _EC.lText;
+    final textSoft  = isDark ? _EC.textSoft  : _EC.lTextSoft;
+    final muted     = isDark ? _EC.textMuted : _EC.lTextMuted;
+    final accent    = isDark ? _EC.accent    : _EC.lAccent;
+    final accentDim = isDark ? _EC.accentDim : _EC.lAccentDim;
+    final danger    = isDark ? _EC.danger    : _EC.lDanger;
 
     final sessionsAsync = ref.watch(sessionsProvider);
 
@@ -298,20 +331,16 @@ class _EgzersizScreenState extends ConsumerState<EgzersizScreen> {
                     Expanded(child: Text('Egzersiz', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: text, letterSpacing: -0.5))),
                     GestureDetector(
                       onTap: () => ref.read(themeModeProvider.notifier).toggle(),
-                      child: Container(
-                        width: 36, height: 36,
+                      child: Container(width: 36, height: 36,
                         decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
-                        child: Icon(isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round, size: 15, color: textSoft),
-                      ),
+                        child: Icon(isDark ? Icons.wb_sunny_outlined : Icons.nightlight_round, size: 15, color: textSoft)),
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
                       onTap: () => _showNotifications(context, isDark, bgCard, bgSoft, border, text, textSoft, muted, accent),
-                      child: Container(
-                        width: 36, height: 36,
+                      child: Container(width: 36, height: 36,
                         decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
-                        child: Icon(Icons.notifications_none_rounded, size: 15, color: textSoft),
-                      ),
+                        child: Icon(Icons.notifications_none_rounded, size: 15, color: textSoft)),
                     ),
                   ],
                 ),
@@ -336,18 +365,14 @@ class _EgzersizScreenState extends ConsumerState<EgzersizScreen> {
                     sessionsAsync: sessionsAsync,
                     bg: bg, bgCard: bgCard, bgSoft: bgSoft,
                     border: border, text: text, textSoft: textSoft,
-                    muted: muted, accent: accent, accentDim: accentDim,
-                    danger: danger,
+                    muted: muted, accent: accent, accentDim: accentDim, danger: danger,
                     onNewSession: () => _showNewSessionSheet(context, isDark, accent, bgCard, border, text, textSoft),
                     onSessionTap: (session) => Navigator.push(context,
                         MaterialPageRoute(builder: (_) => SeansDetayScreen(session: session)))
                         .then((_) => ref.invalidate(sessionsProvider)),
                     onSessionDelete: (session) => _confirmDelete(
-                      context,
-                      session['id'] as String,
-                      session['notes'] as String? ?? 'Antrenman',
-                      isDark,
-                    ),
+                      context, session['id'] as String,
+                      session['notes'] as String? ?? 'Antrenman', isDark),
                   )
                 : _KasGruplariTab(
                     sessionsAsync: sessionsAsync,
@@ -390,6 +415,7 @@ class _TabBtn extends StatelessWidget {
   }
 }
 
+// ── Seanslar Tab ─────────────────────────────────────────
 class _SeanslarTab extends StatelessWidget {
   final AsyncValue<List<Map<String, dynamic>>> sessionsAsync;
   final Color bg, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim, danger;
@@ -414,7 +440,7 @@ class _SeanslarTab extends StatelessWidget {
       loading: () => Center(child: CircularProgressIndicator(color: accent)),
       error:   (_, __) => Center(child: Text('Veri yüklenemedi', style: TextStyle(color: text))),
       data: (sessions) {
-        final reversed     = sessions.reversed.toList();
+        final reversed      = sessions.reversed.toList();
         final sessionColors = [accent, _EC.cyan, _EC.positive, _EC.purple];
 
         return ListView(
@@ -486,7 +512,8 @@ class _SeanslarTab extends StatelessWidget {
   }
 }
 
-class _KasGruplariTab extends StatefulWidget {
+// ── Kas Grupları Tab ─────────────────────────────────────
+class _KasGruplariTab extends StatelessWidget {
   final AsyncValue<List<Map<String, dynamic>>> sessionsAsync;
   final Color bg, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim;
 
@@ -497,97 +524,198 @@ class _KasGruplariTab extends StatefulWidget {
     required this.accentDim,
   });
 
-  @override
-  State<_KasGruplariTab> createState() => _KasGruplariTabState();
-}
-
-class _KasGruplariTabState extends State<_KasGruplariTab> {
-  String? _selectedGroup;
-
-  static const _groupMuscles = {
-    'Göğüs': ['chest'],
-    'Sırt':  ['back', 'lower_back', 'traps'],
-    'Bacak': ['quad', 'hamstring', 'glutes', 'calf'],
-    'Omuz':  ['front_shoulder', 'side_shoulder', 'rear_shoulder'],
-    'Kol':   ['biceps', 'triceps'],
-    'Karın': ['abs'],
-  };
-
-  static const _groupColors = {
-    'Göğüs': _EC.accent,
-    'Sırt':  _EC.cyan,
-    'Bacak': _EC.positive,
-    'Omuz':  _EC.purple,
-    'Kol':   _EC.accent,
-    'Karın': Color(0xFFFF5555),
-  };
+  static const _barColors = [
+    Color(0xFFFFB020), Color(0xFF22D3EE), Color(0xFF34D399),
+    Color(0xFFA78BFA), Color(0xFFFF5555), Color(0xFFFF6B2B),
+    Color(0xFFF472B6), Color(0xFF60A5FA), Color(0xFFFBBF24),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    final highlighted = _selectedGroup != null ? _groupMuscles[_selectedGroup!] ?? [] : <String>[];
+    return sessionsAsync.when(
+      loading: () => Center(child: CircularProgressIndicator(color: accent)),
+      error:   (_, __) => Center(child: Text('Veri yüklenemedi', style: TextStyle(color: text))),
+      data: (sessions) {
+        // Tüm seansların egzersizlerini topla
+        final allExercises = sessions.expand((s) {
+          final exs = s['exercises'] as List?;
+          return exs?.map((e) => Map<String, dynamic>.from(e)) ?? [];
+        }).toList();
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-      children: [
-        Container(
-          decoration: BoxDecoration(color: widget.bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: widget.border)),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Kas Grubu Anatomisi', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: widget.text)),
-                  if (_selectedGroup != null)
-                    GestureDetector(
-                      onTap: () => setState(() => _selectedGroup = null),
-                      child: Text('Temizle', style: TextStyle(fontSize: 12, color: widget.accent, fontWeight: FontWeight.w600)),
-                    ),
-                ],
+        final muscleCounts = extractMuscleGroups(allExercises);
+        final sorted = muscleCounts.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+
+        final totalSessions = sessions.length;
+        final totalExercises = allExercises.length;
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+          children: [
+
+            // ── Özet kartlar ──
+            Row(children: [
+              Expanded(child: _StatMini(label: 'Toplam Seans', value: '$totalSessions', icon: '🏋️', bgCard: bgCard, border: border, text: text, muted: muted, accent: accent)),
+              const SizedBox(width: 10),
+              Expanded(child: _StatMini(label: 'Toplam Egzersiz', value: '$totalExercises', icon: '💪', bgCard: bgCard, border: border, text: text, muted: muted, accent: accent)),
+            ]),
+            const SizedBox(height: 14),
+
+            if (sorted.isEmpty) ...[
+              Container(
+                decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                padding: const EdgeInsets.all(32),
+                child: Column(children: [
+                  const Text('📊', style: TextStyle(fontSize: 48)),
+                  const SizedBox(height: 12),
+                  Text('Henüz veri yok', style: TextStyle(fontSize: 16, color: text, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text('Egzersiz seansları tamamlandıkça kas grubu istatistikleri burada görünür', style: TextStyle(fontSize: 12, color: muted), textAlign: TextAlign.center),
+                ]),
               ),
-              const SizedBox(height: 14),
-              BodyMapWidget(highlightedMuscles: highlighted, height: 320),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-          childAspectRatio: 2.2,
-          children: _groupMuscles.keys.map((group) {
-            final color      = _groupColors[group] ?? widget.accent;
-            final isSelected = _selectedGroup == group;
-            return GestureDetector(
-              onTap: () => setState(() => _selectedGroup = isSelected ? null : group),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isSelected ? color.withOpacity(0.12) : widget.bgCard,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: isSelected ? color : widget.border, width: isSelected ? 1.5 : 1),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
+            ] else ...[
+
+              // ── Bar Chart ──
+              Container(
+                decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(group, style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                      color: isSelected ? color : widget.text,
-                    ))),
-                    if (isSelected) Icon(Icons.check_circle, size: 14, color: color),
+                    Text('Bu Hafta Çalışan Kaslar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+                    Text('90 günlük geçmiş · egzersiz sayısına göre', style: TextStyle(fontSize: 11, color: muted)),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      height: 200,
+                      child: BarChart(
+                        BarChartData(
+                          alignment: BarChartAlignment.spaceAround,
+                          maxY: (sorted.first.value * 1.3).toDouble(),
+                          barTouchData: BarTouchData(enabled: false),
+                          titlesData: FlTitlesData(
+                            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                            bottomTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                getTitlesWidget: (val, meta) {
+                                  final i = val.toInt();
+                                  if (i < 0 || i >= sorted.length) return const SizedBox.shrink();
+                                  final label = sorted[i].key;
+                                  final short = label.length > 5 ? label.substring(0, 5) : label;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(short, style: TextStyle(fontSize: 9, color: muted)),
+                                  );
+                                },
+                                reservedSize: 22,
+                              ),
+                            ),
+                          ),
+                          gridData: FlGridData(
+                            show: true,
+                            getDrawingHorizontalLine: (_) => FlLine(color: border, strokeWidth: 1),
+                            drawVerticalLine: false,
+                          ),
+                          borderData: FlBorderData(show: false),
+                          barGroups: sorted.asMap().entries.map((e) {
+                            final color = _barColors[e.key % _barColors.length];
+                            return BarChartGroupData(
+                              x: e.key,
+                              barRods: [
+                                BarChartRodData(
+                                  toY: e.value.value.toDouble(),
+                                  color: color,
+                                  width: 18,
+                                  borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                                ),
+                              ],
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            );
-          }).toList(),
-        ),
-      ],
+              const SizedBox(height: 14),
+
+              // ── Kas grubu listesi ──
+              Container(
+                decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Çalışma Oranları', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+                    const SizedBox(height: 14),
+                    ...sorted.asMap().entries.map((e) {
+                      final color   = _barColors[e.key % _barColors.length];
+                      final muscle  = e.value.key;
+                      final count   = e.value.value;
+                      final total   = sorted.fold(0, (sum, x) => sum + x.value);
+                      final pct     = total > 0 ? count / total : 0.0;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(children: [
+                                  Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                                  const SizedBox(width: 8),
+                                  Text(muscle, style: TextStyle(fontSize: 13, color: text, fontWeight: FontWeight.w600)),
+                                ]),
+                                Text('$count egzersiz · %${(pct * 100).toInt()}',
+                                  style: TextStyle(fontSize: 11, color: muted)),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(99),
+                              child: LinearProgressIndicator(
+                                value: pct,
+                                minHeight: 6,
+                                backgroundColor: bgSoft,
+                                color: color,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _StatMini extends StatelessWidget {
+  final String label, value, icon;
+  final Color bgCard, border, text, muted, accent;
+  const _StatMini({required this.label, required this.value, required this.icon,
+    required this.bgCard, required this.border, required this.text, required this.muted, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(16), border: Border.all(color: border)),
+      child: Row(children: [
+        Text(icon, style: const TextStyle(fontSize: 22)),
+        const SizedBox(width: 10),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: accent)),
+          Text(label, style: TextStyle(fontSize: 10, color: muted)),
+        ]),
+      ]),
     );
   }
 }

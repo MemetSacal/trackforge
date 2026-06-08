@@ -31,22 +31,26 @@ class NotificationService {
   static const String _keyWeeklyEnabled  = 'notif_weekly_enabled';
 
   static Future<void> init() async {
-    if (_initialized) return;
-    tz.initializeTimeZones();
-    tz.setLocalLocation(tz.getLocation('Europe/Istanbul'));
+      if (_initialized) return;
+      tz.initializeTimeZones();
+      tz.setLocalLocation(tz.getLocation('Europe/Istanbul'));
 
-    const androidSettings = AndroidInitializationSettings('@drawable/ic_notification');
-    const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
-    );
+      const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const iosSettings = DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
+      );
 
-    await _plugin.initialize(
-      const InitializationSettings(android: androidSettings, iOS: iosSettings),
-    );
-    _initialized = true;
-  }
+      try {
+        await _plugin.initialize(
+          const InitializationSettings(android: androidSettings, iOS: iosSettings),
+        );
+        _initialized = true;
+      } catch (e) {
+        _initialized = true;
+      }
+    }
 
   static Future<bool> requestPermission() async {
     final status = await Permission.notification.request();
