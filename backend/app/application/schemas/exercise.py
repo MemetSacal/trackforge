@@ -15,16 +15,15 @@ class SessionExerciseCreateRequest(BaseModel):
 
 
 class SessionExerciseUpdateRequest(BaseModel):
-    # Egzersiz güncelleme isteği
     exercise_name: Optional[str] = Field(None, min_length=1)
     sets: Optional[int] = Field(None, ge=1)
     reps: Optional[int] = Field(None, ge=1)
     weight_kg: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
+    completed: Optional[bool] = None
 
 
 class SessionExerciseResponse(BaseModel):
-    # API'den dönecek egzersiz verisi
     id: str
     session_id: str
     exercise_name: str
@@ -32,6 +31,7 @@ class SessionExerciseResponse(BaseModel):
     reps: Optional[int]
     weight_kg: Optional[float]
     notes: Optional[str]
+    completed: bool = False
     created_at: datetime
 
     class Config:

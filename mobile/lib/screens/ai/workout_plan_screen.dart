@@ -6,6 +6,7 @@ import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
 import '../egzersiz/seans_detay_screen.dart';
+import '../egzersiz/egzersiz_screen.dart';
 import 'ai_helpers.dart';
 import '../../core/utils/rate_limiter.dart';
 

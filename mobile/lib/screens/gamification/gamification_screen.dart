@@ -5,13 +5,6 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../app.dart';
 
-// Backend GamificationSummaryResponse yapısı:
-// {
-//   "streaks": [{"streak_type": "water", "current_streak": 3, "longest_streak": 7, ...}],
-//   "badges":  [{"badge_key": "first_workout", "badge_name": "İlk Antrenman 💪", "description": "...", "earned_at": "..."}],
-//   "level":   {"level": 1, "xp": 150, "level_title": "Beginner", "xp_to_next_level": 350, ...}
-// }
-
 final gamificationProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.gamificationSummary);
@@ -24,12 +17,10 @@ final gamificationProvider = FutureProvider.autoDispose<Map<String, dynamic>>((r
 class GamificationScreen extends ConsumerWidget {
   const GamificationScreen({super.key});
 
-  // badge_name içindeki emojiyi ayıkla — "İlk Antrenman 💪" → "💪"
   String _extractEmoji(String badgeName) {
     final runes = badgeName.runes.toList();
     for (int i = runes.length - 1; i >= 0; i--) {
       final cp = runes[i];
-      // Emoji unicode aralıkları
       if ((cp >= 0x1F300 && cp <= 0x1FAFF) ||
           (cp >= 0x2600  && cp <= 0x27BF)  ||
           (cp >= 0xFE00  && cp <= 0xFE0F)  ||
@@ -40,7 +31,6 @@ class GamificationScreen extends ConsumerWidget {
     return '🎖️';
   }
 
-  // badge_name'den emoji çıkar — "İlk Antrenman 💪" → "İlk Antrenman"
   String _extractName(String badgeName) {
     return badgeName.replaceAll(RegExp(
       r'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\s]+$',
@@ -48,7 +38,6 @@ class GamificationScreen extends ConsumerWidget {
     ), '').trim();
   }
 
-  // Streak type'ı Türkçe'ye çevir
   String _streakLabel(String type) {
     switch (type) {
       case 'water':    return '💧 Su';
@@ -58,7 +47,6 @@ class GamificationScreen extends ConsumerWidget {
     }
   }
 
-  // Seviye başlıklarını Türkçe'ye çevir
   String _levelTitle(String title) {
     switch (title) {
       case 'Beginner':  return 'Başlangıç';
@@ -96,6 +84,15 @@ class GamificationScreen extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(16, 56, 16, 16),
             child: Row(
               children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
+                    child: Icon(Icons.arrow_back_ios_new_rounded, size: 15, color: textSoft),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,45 +130,36 @@ class GamificationScreen extends ConsumerWidget {
                         const SizedBox(height: 12),
                         Text('Henüz veri yok', style: TextStyle(fontSize: 16, color: text)),
                         const SizedBox(height: 4),
-                        Text(
-                          'Aktiviteler tamamlandıkça XP ve rozetler burada görünür',
-                          style: TextStyle(fontSize: 12, color: muted),
-                          textAlign: TextAlign.center,
-                        ),
+                        Text('Aktiviteler tamamlandıkça XP ve rozetler burada görünür',
+                          style: TextStyle(fontSize: 12, color: muted), textAlign: TextAlign.center),
                       ],
                     ),
                   );
                 }
 
-                // ── Backend yapısını parse et ──
                 final levelData = data['level'] != null
                     ? Map<String, dynamic>.from(data['level'])
                     : <String, dynamic>{};
                 final badges  = (data['badges']  as List?) ?? [];
                 final streaks = (data['streaks'] as List?) ?? [];
 
-                final xp         = (levelData['xp']             as num?)?.toInt() ?? 0;
-                final levelNum   = (levelData['level']          as num?)?.toInt() ?? 1;
-                final levelTitle = levelData['level_title']     as String? ?? 'Beginner';
+                final xp         = (levelData['xp']              as num?)?.toInt() ?? 0;
+                final levelNum   = (levelData['level']            as num?)?.toInt() ?? 1;
+                final levelTitle = levelData['level_title']       as String? ?? 'Beginner';
                 final xpToNext   = (levelData['xp_to_next_level'] as num?)?.toInt() ?? 500;
 
-                // Seviye başlangıç XP'si (progress bar için)
                 const levelStarts = {1: 0, 2: 500, 3: 1500, 4: 3000, 5: 6000};
                 final levelStart  = levelStarts[levelNum] ?? 0;
-                final levelRange  = xpToNext; // service'den zaten "kalan" geliyor
-                // Mevcut seviyede ilerleme
                 final xpInLevel   = xp - levelStart;
                 final xpNeeded    = (levelStarts[levelNum + 1] ?? 9999) - levelStart;
                 final xpProgress  = xpNeeded > 0 ? (xpInLevel / xpNeeded).clamp(0.0, 1.0) : 1.0;
 
-                // Egzersiz streak'ini bul (varsa)
                 final exerciseStreak = streaks
                     .map((s) => Map<String, dynamic>.from(s))
                     .where((s) => s['streak_type'] == 'exercise')
                     .firstOrNull;
                 final streakDays = (exerciseStreak?['current_streak'] as num?)?.toInt() ?? 0;
 
-                // Sonraki seviye başlığı
                 const levelTitles = {1: 'Beginner', 2: 'Active', 3: 'Fit', 4: 'Athlete', 5: 'Champion'};
                 final nextLevelTitle = levelTitles[levelNum + 1] ?? '';
 
@@ -205,19 +193,13 @@ class GamificationScreen extends ConsumerWidget {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        _levelTitle(levelTitle),
-                                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: accent),
-                                      ),
-                                      Text(
-                                        '$xp XP',
-                                        style: TextStyle(fontSize: 14, color: text, fontWeight: FontWeight.w600),
-                                      ),
+                                      Text(_levelTitle(levelTitle),
+                                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: accent)),
+                                      Text('$xp XP',
+                                        style: TextStyle(fontSize: 14, color: text, fontWeight: FontWeight.w600)),
                                       if (nextLevelTitle.isNotEmpty)
-                                        Text(
-                                          'Sonraki: ${_levelTitle(nextLevelTitle)}',
-                                          style: TextStyle(fontSize: 11, color: textSoft),
-                                        ),
+                                        Text('Sonraki: ${_levelTitle(nextLevelTitle)}',
+                                          style: TextStyle(fontSize: 11, color: textSoft)),
                                     ],
                                   ),
                                 ),
@@ -256,11 +238,7 @@ class GamificationScreen extends ConsumerWidget {
                       // ── STREAK'LER ─────────────────────────
                       if (streaks.isNotEmpty) ...[
                         Container(
-                          decoration: BoxDecoration(
-                            color: bgCard,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: border),
-                          ),
+                          decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                           padding: const EdgeInsets.all(16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,7 +247,7 @@ class GamificationScreen extends ConsumerWidget {
                               const SizedBox(height: 12),
                               Row(
                                 children: streaks.map((s) {
-                                  final streak = Map<String, dynamic>.from(s);
+                                  final streak  = Map<String, dynamic>.from(s);
                                   final type    = streak['streak_type'] as String? ?? '';
                                   final current = (streak['current_streak'] as num?)?.toInt() ?? 0;
                                   final longest = (streak['longest_streak'] as num?)?.toInt() ?? 0;
@@ -286,10 +264,9 @@ class GamificationScreen extends ConsumerWidget {
                                         children: [
                                           Text(_streakLabel(type), style: TextStyle(fontSize: 11, color: muted)),
                                           const SizedBox(height: 4),
-                                          Text(
-                                            '$current',
-                                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: current > 0 ? accent : textSoft),
-                                          ),
+                                          Text('$current',
+                                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900,
+                                              color: current > 0 ? accent : textSoft)),
                                           Text('gün', style: TextStyle(fontSize: 10, color: muted)),
                                           const SizedBox(height: 4),
                                           Text('En uzun: $longest', style: TextStyle(fontSize: 9, color: muted)),
@@ -305,13 +282,9 @@ class GamificationScreen extends ConsumerWidget {
                         const SizedBox(height: 14),
                       ],
 
-                      // ── ROZETLER ───────────────────────────
+                      // ── KAZANILAN ROZETLER ─────────────────
                       Container(
-                        decoration: BoxDecoration(
-                          color: bgCard,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: border),
-                        ),
+                        decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,7 +296,8 @@ class GamificationScreen extends ConsumerWidget {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                   decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(99)),
-                                  child: Text('${badges.length} kazanıldı', style: TextStyle(fontSize: 11, color: accent, fontWeight: FontWeight.w600)),
+                                  child: Text('${badges.length} kazanıldı',
+                                    style: TextStyle(fontSize: 11, color: accent, fontWeight: FontWeight.w600)),
                                 ),
                               ],
                             ),
@@ -338,7 +312,8 @@ class GamificationScreen extends ConsumerWidget {
                                       const SizedBox(height: 8),
                                       Text('Henüz rozet kazanılmadı', style: TextStyle(fontSize: 13, color: muted)),
                                       const SizedBox(height: 4),
-                                      Text('Aktiviteler tamamlandıkça rozetler burada görünür', style: TextStyle(fontSize: 11, color: muted), textAlign: TextAlign.center),
+                                      Text('Aktiviteler tamamlandıkça rozetler burada görünür',
+                                        style: TextStyle(fontSize: 11, color: muted), textAlign: TextAlign.center),
                                     ],
                                   ),
                                 ),
@@ -355,7 +330,7 @@ class GamificationScreen extends ConsumerWidget {
                                 ),
                                 itemCount: badges.length,
                                 itemBuilder: (ctx, i) {
-                                  final b        = Map<String, dynamic>.from(badges[i]);
+                                  final b         = Map<String, dynamic>.from(badges[i]);
                                   final badgeName = b['badge_name'] as String? ?? 'Rozet';
                                   final desc      = b['description'] as String? ?? '';
                                   final emoji     = _extractEmoji(badgeName);
@@ -372,36 +347,40 @@ class GamificationScreen extends ConsumerWidget {
                                       children: [
                                         Text(emoji, style: const TextStyle(fontSize: 28)),
                                         const SizedBox(height: 6),
-                                        Text(
-                                          name,
+                                        Text(name,
                                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: text),
-                                          textAlign: TextAlign.center,
-                                        ),
+                                          textAlign: TextAlign.center),
                                         if (desc.isNotEmpty) ...[
                                           const SizedBox(height: 2),
-                                          Text(
-                                            desc,
+                                          Text(desc,
                                             style: TextStyle(fontSize: 9, color: muted),
                                             textAlign: TextAlign.center,
                                             maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
+                                            overflow: TextOverflow.ellipsis),
                                         ],
                                       ],
                                     ),
                                   );
                                 },
                               ),
-
-                            // ── Kilitli rozetler (henüz kazanılmamış) ──
-                            const SizedBox(height: 14),
-                            Text('Kazanılabilecek Rozetler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: textSoft)),
-                            const SizedBox(height: 10),
-                            _lockedBadges(badges, bgSoft, border, text, muted),
                           ],
                         ),
                       ),
+                      const SizedBox(height: 14),
 
+                      // ── KİLİTLİ ROZETLER ──────────────────
+                      Container(
+                        decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Kazanılabilecek Rozetler', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+                            const SizedBox(height: 12),
+                            _lockedBadges(badges, bgSoft, border, text, muted, accent, accentDim),
+                          ],
+                        ),
+                      ),
                       const SizedBox(height: 14),
 
                       // ── XP NASIL KAZANILIR ─────────────────
@@ -414,11 +393,11 @@ class GamificationScreen extends ConsumerWidget {
                             Text('XP Nasıl Kazanılır?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
                             const SizedBox(height: 12),
                             ...[
-                              ['💪', 'Antrenman Seansı', '+50 XP'],
-                              ['💧', 'Su Hedefi',        '+20 XP'],
-                              ['😴', 'Uyku Logu',        '+15 XP'],
-                              ['📊', 'Haftalık Rapor',   '+10 XP'],
-                              ['🎖️', 'Rozet Kazan',      '+100 XP'],
+                              ['💪', 'Antrenman Seansı',  '+50 XP'],
+                              ['💧', 'Su Hedefi',          '+20 XP'],
+                              ['😴', 'Uyku Logu',          '+15 XP'],
+                              ['📊', 'Haftalık Rapor',     '+10 XP'],
+                              ['🎖️', 'Rozet Kazan',        '+100 XP'],
                             ].map((r) => Container(
                               margin: const EdgeInsets.only(bottom: 8),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -450,15 +429,34 @@ class GamificationScreen extends ConsumerWidget {
     );
   }
 
-  // ── Kilitli rozetleri göster ─────────────────────────
-  Widget _lockedBadges(List earned, Color bgSoft, Color border, Color text, Color muted) {
+  Widget _lockedBadges(List earned, Color bgSoft, Color border, Color text, Color muted, Color accent, Color accentDim) {
+    // Tüm rozet tanımları — backend BADGE_DEFINITIONS ile sync
     const allBadges = {
-      'first_workout':   ('🔒', 'İlk Antrenman',      'İlk antrenman seansını tamamla'),
-      '7_day_water':     ('🔒', '7 Gün Su',           '7 gün su hedefine ulaş'),
-      '30_day_water':    ('🔒', '30 Gün Su',          '30 gün su hedefine ulaş'),
-      'weight_loss_5kg': ('🔒', '5 kg Kayıp',         '5 kg ver'),
-      'weight_loss_10kg':('🔒', '10 kg Kayıp',        '10 kg ver'),
-      'streak_warrior':  ('🔒', 'Streak Savaşçısı',   '7 gün egzersiz serisi yap'),
+      // Antrenman
+      'first_workout':      ('💪', 'İlk Antrenman',       'İlk antrenman seansını tamamla'),
+      'workout_10':         ('🏋️', '10 Antrenman',         '10 antrenman seansını tamamla'),
+      'workout_30':         ('🥇', '30 Antrenman',         '30 antrenman seansını tamamla'),
+      'streak_warrior':     ('⚔️', 'Streak Savaşçısı',    '7 gün boyunca egzersiz yap'),
+      'streak_legend':      ('🔥', 'Seri Efsanesi',        '30 gün boyunca egzersiz yap'),
+      // Su
+      '7_day_water':        ('💧', '7 Gün Su',             '7 gün su hedefine ulaş'),
+      '30_day_water':       ('🏆', '30 Gün Su',            '30 gün su hedefine ulaş'),
+      // Uyku
+      'sleep_7':            ('😴', 'Uyku Ustası',          '7 gün kaliteli uyku logu gir'),
+      // Kilo
+      'weight_loss_5kg':    ('⚡', '5 kg Kayıp',          '5 kg ver'),
+      'weight_loss_10kg':   ('🔥', '10 kg Kayıp',         '10 kg ver'),
+      'weight_loss_20kg':   ('🎯', '20 kg Kayıp',         '20 kg ver'),
+      'weight_gain_5kg':    ('📈', '5 kg Aldın',          'Hedef kilo için 5 kg kazan'),
+      // Fotoğraf
+      'first_photo':        ('📸', 'İlk Fotoğraf',        'İlerleme fotoğrafı yükle'),
+      // Sosyal
+      'first_friend':       ('🤝', 'İlk Arkadaş',         'İlk arkadaşını ekle'),
+      // AI
+      'ai_explorer':        ('🤖', 'AI Kaşifi',           'AI koç özelliğini kullan'),
+      // Özel
+      'early_bird':         ('🌅', 'Erken Kuş',           'Sabah 7\'den önce antrenman yap'),
+      'night_owl':          ('🌙', 'Gece Kuşu',           'Gece 22\'den sonra antrenman yap'),
     };
 
     final earnedKeys = earned
@@ -467,32 +465,46 @@ class GamificationScreen extends ConsumerWidget {
         .toSet();
 
     final locked = allBadges.entries.where((e) => !earnedKeys.contains(e.key)).toList();
-    if (locked.isEmpty) return const SizedBox.shrink();
+    if (locked.isEmpty) {
+      return Center(child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text('Tüm rozetleri kazandın! 🎉', style: TextStyle(fontSize: 13, color: muted)),
+      ));
+    }
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    return Column(
       children: locked.map((e) {
         final (icon, name, hint) = e.value;
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: bgSoft,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: border),
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(icon, style: TextStyle(fontSize: 14, color: muted)),
-              const SizedBox(width: 6),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: muted)),
-                  Text(hint, style: TextStyle(fontSize: 9, color: muted)),
-                ],
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: border,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(child: Text(icon, style: TextStyle(fontSize: 18, color: muted))),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: muted)),
+                    const SizedBox(height: 2),
+                    Text(hint, style: TextStyle(fontSize: 11, color: muted.withOpacity(0.7))),
+                  ],
+                ),
+              ),
+              Icon(Icons.lock_outline, size: 14, color: muted),
             ],
           ),
         );

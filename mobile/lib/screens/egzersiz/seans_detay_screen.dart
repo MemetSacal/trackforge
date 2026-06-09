@@ -6,7 +6,7 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../app.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'egzersiz_screen.dart'; // extractMuscleGroups + _normalizeMuscle
+import 'egzersiz_screen.dart';
 
 final sessionExercisesProvider =
     FutureProvider.family<List<Map<String, dynamic>>, String>((ref, sessionId) async {
@@ -31,6 +31,9 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
   final _weightController = TextEditingController();
   bool _isLoading = false;
 
+  // Lokal tamamlama state'i — API'ye gitmeden önce anlık UI güncellemesi
+  final Map<String, bool> _completedState = {};
+
   @override
   void dispose() {
     _nameController.dispose(); _setsController.dispose();
@@ -39,6 +42,24 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
   }
 
   String get _sessionId => widget.session['id'] as String;
+
+  // Egzersiz tamamlandı toggle
+  Future<void> _toggleCompleted(String exerciseId, bool current) async {
+    final newVal = !current;
+    setState(() => _completedState[exerciseId] = newVal);
+    try {
+      await ApiClient.instance.put(
+        '${Endpoints.exerciseSessions.replaceAll('/sessions', '')}/exercises/$exerciseId',
+        data: {'completed': newVal},
+      );
+      ref.invalidate(sessionExercisesProvider(_sessionId));
+    } catch (_) {
+      // Hata olursa geri al
+      setState(() => _completedState[exerciseId] = current);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Güncellenemedi')));
+    }
+  }
 
   Future<void> _addExercise(BuildContext ctx) async {
     if (_nameController.text.isEmpty) {
@@ -72,6 +93,7 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
   Future<void> _deleteExercise(String id) async {
     try {
       await ApiClient.instance.delete('/exercises/exercises/$id');
+      _completedState.remove(id);
       ref.invalidate(sessionExercisesProvider(_sessionId));
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Silme sırasında hata oluştu')));
@@ -132,6 +154,7 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
     final muted     = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
     final accent    = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
     final accentDim = isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
+    final positive  = isDark ? const Color(0xFF34D399) : const Color(0xFF059669);
     final danger    = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
 
     final exercisesAsync = ref.watch(sessionExercisesProvider(_sessionId));
@@ -179,6 +202,21 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
               loading: () => Center(child: CircularProgressIndicator(color: accent)),
               error:   (_, __) => Center(child: Text('Veri yüklenemedi', style: TextStyle(color: text))),
               data: (exercises) {
+                // Lokal state'i başlat
+                for (final ex in exercises) {
+                  final id = ex['id'] as String;
+                  _completedState.putIfAbsent(id, () => ex['completed'] as bool? ?? false);
+                }
+
+                // Tamamlama istatistikleri
+                final total     = exercises.length;
+                final completed = exercises.where((ex) {
+                  final id = ex['id'] as String;
+                  return _completedState[id] ?? (ex['completed'] as bool? ?? false);
+                }).length;
+                final progress  = total > 0 ? completed / total : 0.0;
+                final isAllDone = total > 0 && completed == total;
+
                 // Kas grubu dağılımı
                 final muscleCounts = extractMuscleGroups(exercises);
                 final sorted = muscleCounts.entries.toList()
@@ -195,6 +233,63 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                   children: [
 
+                    // ── TAMAMLANMA PROGRESS KARTI ──────
+                    if (total > 0) ...[
+                      Container(
+                        decoration: BoxDecoration(
+                          color: isAllDone ? positive.withOpacity(0.12) : accentDim,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: isAllDone ? positive : accent),
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  isAllDone ? '🏆 Antrenman Tamamlandı!' : '💪 Antrenman İlerlemesi',
+                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                                    color: isAllDone ? positive : accent),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: (isAllDone ? positive : accent).withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(99),
+                                  ),
+                                  child: Text(
+                                    '$completed/$total',
+                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
+                                      color: isAllDone ? positive : accent),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(99),
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 10,
+                                backgroundColor: (isAllDone ? positive : accent).withOpacity(0.15),
+                                color: isAllDone ? positive : accent,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              isAllDone
+                                  ? 'Tüm egzersizleri tamamladın, harika iş!'
+                                  : '%${(progress * 100).toInt()} tamamlandı · ${total - completed} egzersiz kaldı',
+                              style: TextStyle(fontSize: 11, color: isAllDone ? positive : textSoft),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
                     // ── Kas grubu grafiği ──────────────
                     if (sorted.isNotEmpty) ...[
                       Container(
@@ -206,8 +301,6 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                             Text('Bu Antrenman Çalışan Kaslar', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
                             Text('egzersiz sayısına göre', style: TextStyle(fontSize: 11, color: muted)),
                             const SizedBox(height: 16),
-
-                            // Bar chart
                             SizedBox(
                               height: 160,
                               child: BarChart(
@@ -260,8 +353,6 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                               ),
                             ),
                             const SizedBox(height: 14),
-
-                            // Oran listesi
                             ...sorted.asMap().entries.map((e) {
                               final color  = barColors[e.key % barColors.length];
                               final muscle = e.value.key;
@@ -299,27 +390,54 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
 
                     // ── Egzersiz kartları ──────────────
                     ...exercises.asMap().entries.map((e) {
-                      final ex     = e.value;
-                      final name   = ex['exercise_name'] as String? ?? '';
-                      final sets   = ex['sets']      as int?;
-                      final reps   = ex['reps']      as int?;
-                      final weight = (ex['weight_kg'] as num?)?.toDouble();
+                      final ex       = e.value;
+                      final id       = ex['id'] as String;
+                      final name     = ex['exercise_name'] as String? ?? '';
+                      final sets     = ex['sets']      as int?;
+                      final reps     = ex['reps']      as int?;
+                      final weight   = (ex['weight_kg'] as num?)?.toDouble();
+                      final isDone   = _completedState[id] ?? (ex['completed'] as bool? ?? false);
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                        decoration: BoxDecoration(
+                          color: isDone ? positive.withOpacity(0.07) : bgCard,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: isDone ? positive.withOpacity(0.4) : border),
+                        ),
                         padding: const EdgeInsets.all(16),
                         child: Row(
                           children: [
-                            Container(
-                              width: 40, height: 40,
-                              decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12)),
-                              child: Center(child: Text('${e.key + 1}', style: TextStyle(fontWeight: FontWeight.w800, color: accent))),
+                            // Tamamlama checkbox
+                            GestureDetector(
+                              onTap: () => _toggleCompleted(id, isDone),
+                              child: Container(
+                                width: 40, height: 40,
+                                decoration: BoxDecoration(
+                                  color: isDone ? positive.withOpacity(0.15) : accentDim,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: isDone ? positive : accent),
+                                ),
+                                child: Center(
+                                  child: isDone
+                                      ? Icon(Icons.check_rounded, size: 20, color: positive)
+                                      : Text('${e.key + 1}', style: TextStyle(fontWeight: FontWeight.w800, color: accent)),
+                                ),
+                              ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                                Text(
+                                  name,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: isDone ? positive : text,
+                                    decoration: isDone ? TextDecoration.lineThrough : null,
+                                    decorationColor: positive,
+                                  ),
+                                ),
                                 const SizedBox(height: 2),
                                 Text(
                                   [if (sets != null) '$sets set', if (reps != null) '$reps tekrar', if (weight != null) '$weight kg'].join(' · '),
@@ -337,7 +455,7 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                             ),
                             const SizedBox(width: 8),
                             GestureDetector(
-                              onTap: () => _deleteExercise(ex['id'] as String),
+                              onTap: () => _deleteExercise(id),
                               child: Container(
                                 width: 32, height: 32,
                                 decoration: BoxDecoration(color: danger.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),

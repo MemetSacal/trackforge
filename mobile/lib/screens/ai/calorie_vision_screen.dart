@@ -278,15 +278,24 @@ class _CalorieVisionScreenState extends ConsumerState<CalorieVisionScreen> {
                                 Wrap(spacing: 8, runSpacing: 8,
                                   children: Map<String, dynamic>.from(_result!['macros']).entries.map((e) {
                                     const macroLabels = {
-                                      'protein_g':      'Protein',
-                                      'carbs_g':        'Karbonhidrat',
-                                      'fat_g':          'Yağ',
-                                      'fiber_g':        'Lif',
-                                      'sugar_g':        'Şeker',
-                                      'saturated_fat_g':'Doymuş Yağ',
-                                    };
-                                    final label = macroLabels[e.key] ?? e.key;
-                                    final unit  = e.key.endsWith('_g') ? 'g' : '';
+                                                                          'protein_g':      'Protein',
+                                                                          'carbs_g':        'Karbonhidrat',
+                                                                          'fat_g':          'Yağ',
+                                                                          'fiber_g':        'Lif',
+                                                                          'sugar_g':        'Şeker',
+                                                                          'saturated_fat_g':'Doymuş Yağ',
+                                                                          'protein':        'Protein',
+                                                                          'carbs':          'Karbonhidrat',
+                                                                          'fat':            'Yağ',
+                                                                          'fiber':          'Lif',
+                                                                          'sugar':          'Şeker',
+                                                                          'saturated_fat':  'Doymuş Yağ',
+                                                                          'calories':       'Kalori',
+                                                                        };
+                                                                        final label = macroLabels[e.key] ?? e.key
+                                                                            .replaceAll('_g', '')
+                                                                            .replaceAll('_', ' ');
+                                                                        final unit = e.key.endsWith('_g') || macroLabels.containsKey('${e.key}_g') ? 'g' : '';
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                       decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(99), border: Border.all(color: border)),

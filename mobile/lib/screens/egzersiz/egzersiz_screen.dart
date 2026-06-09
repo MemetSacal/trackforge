@@ -219,8 +219,11 @@ class _EgzersizScreenState extends ConsumerState<EgzersizScreen> {
       final newSession = Map<String, dynamic>.from(response.data);
       _durationController.clear(); _caloriesController.clear(); _notesController.clear();
       ref.invalidate(sessionsProvider);
-      if (mounted) Navigator.pop(ctx);
-      if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => SeansDetayScreen(session: newSession)))
+       if (!mounted) return;
+           Navigator.push(
+             context,
+             MaterialPageRoute(builder: (_) => SeansDetayScreen(session: session)),
+           ).then((_) => ref.invalidate(sessionsProvider));
           .then((_) => ref.invalidate(sessionsProvider));
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Seans oluşturulurken hata oluştu')));
@@ -539,7 +542,7 @@ class _KasGruplariTab extends StatelessWidget {
         // Tüm seansların egzersizlerini topla
         final allExercises = sessions.expand((s) {
           final exs = s['exercises'] as List?;
-          return exs?.map((e) => Map<String, dynamic>.from(e)) ?? [];
+          return exs?.map((e) => Map<String, dynamic>.from(e as Map)) ?? <Map<String, dynamic>>[];
         }).toList();
 
         final muscleCounts = extractMuscleGroups(allExercises);

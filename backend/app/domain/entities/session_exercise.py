@@ -18,4 +18,5 @@ class SessionExercise:
     notes: Optional[str]                    # Egzersiz notu — "Son sette zorlandım" gibi
     created_at: datetime
 
+
     # Bkz ExerciseSession

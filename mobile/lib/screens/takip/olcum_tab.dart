@@ -20,6 +20,14 @@ final measurementsProvider = FutureProvider.autoDispose<List<Map<String, dynamic
   } catch (_) { return []; }
 });
 
+// ── Profil gender'ı oku ──────────────────────────────────
+final profileGenderProvider = FutureProvider.autoDispose<String>((ref) async {
+  try {
+    final response = await ApiClient.instance.get(Endpoints.preferences);
+    return response.data['gender'] as String? ?? 'male';
+  } catch (_) { return 'male'; }
+});
+
 class _OC {
   static const bg        = Color(0xFF0C0D10);
   static const bgCard    = Color(0xFF141620);
@@ -96,15 +104,20 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
     return result.clamp(1.0, 60.0);
   }
 
-  // ── Navy Method bottom sheet ──────────────────────────
-  void _showNavySheet(BuildContext context, Color bgCard, Color border, Color text, Color muted, Color accent, Color accentDim, Color danger) {
+  // ── Navy Method bottom sheet — cinsiyet profilden geliyor ──
+  void _showNavySheet(
+    BuildContext context,
+    String profileGender,
+    Color bgCard, Color border, Color text, Color muted,
+    Color accent, Color accentDim, Color danger,
+  ) {
     final neckCtrl   = TextEditingController();
     final waistCtrl  = TextEditingController();
     final hipCtrl    = TextEditingController();
     final heightCtrl = TextEditingController();
-    String gender    = 'male';
     String? result;
     String? error;
+    final isMale = profileGender == 'male';
 
     showModalBottomSheet(
       context: context,
@@ -125,22 +138,28 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                 Text('Yağ Oranı Hesapla', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: text)),
                 const SizedBox(height: 4),
                 Text('Navy Method — Boy + çevre ölçümleriyle tahmin', style: TextStyle(fontSize: 12, color: muted)),
+                const SizedBox(height: 4),
+                // Cinsiyet bilgisi — profilden otomatik
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(10), border: Border.all(color: accent.withOpacity(0.3))),
+                  child: Row(children: [
+                    Icon(Icons.person_outline, color: accent, size: 14),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Cinsiyet: ${isMale ? "Erkek" : "Kadın"} (profilden alındı)',
+                      style: TextStyle(fontSize: 12, color: accent),
+                    ),
+                  ]),
+                ),
                 const SizedBox(height: 16),
-
-                // Cinsiyet
-                Row(children: [
-                  _navyGenderBtn('male',   '👨 Erkek', gender, accent, accentDim, border, text, (v) => setModal(() { gender = v; result = null; })),
-                  const SizedBox(width: 8),
-                  _navyGenderBtn('female', '👩 Kadın', gender, accent, accentDim, border, text, (v) => setModal(() { gender = v; result = null; })),
-                ]),
-                const SizedBox(height: 12),
 
                 _navyField(heightCtrl, 'Boy (cm)', text, muted),
                 const SizedBox(height: 10),
                 _navyField(neckCtrl, 'Boyun çevresi (cm)', text, muted),
                 const SizedBox(height: 10),
                 _navyField(waistCtrl, 'Bel çevresi (cm) — göbek hizası', text, muted),
-                if (gender == 'female') ...[
+                if (!isMale) ...[
                   const SizedBox(height: 10),
                   _navyField(hipCtrl, 'Kalça çevresi (cm)', text, muted),
                 ],
@@ -190,11 +209,11 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                           setModal(() => error = 'Boy, boyun ve bel zorunludur');
                           return;
                         }
-                        if (gender == 'female' && hi == null) {
+                        if (!isMale && hi == null) {
                           setModal(() => error = 'Kadın için kalça ölçüsü zorunludur');
                           return;
                         }
-                        final bf = _navyBodyFat(isMale: gender == 'male', waistCm: w, neckCm: n, heightCm: h, hipCm: hi);
+                        final bf = _navyBodyFat(isMale: isMale, waistCm: w, neckCm: n, heightCm: h, hipCm: hi);
                         if (bf == null) {
                           setModal(() => error = 'Geçersiz ölçüm değerleri');
                           return;
@@ -218,25 +237,6 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       style: TextStyle(color: text),
       decoration: InputDecoration(labelText: label, hintStyle: TextStyle(color: muted)),
-    );
-  }
-
-  Widget _navyGenderBtn(String val, String label, String current, Color accent, Color accentDim, Color border, Color text, Function(String) onTap) {
-    final sel = current == val;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onTap(val),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: sel ? accentDim : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1),
-          ),
-          child: Text(label, textAlign: TextAlign.center,
-            style: TextStyle(fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text, fontSize: 13)),
-        ),
-      ),
     );
   }
 
@@ -279,7 +279,6 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
         'arm_cm':         double.tryParse(_armController.text),
         'leg_cm':         double.tryParse(_legController.text),
       };
-      // null alanları payload'dan çıkar — backend mevcut değeri korusun
       final data = Map.fromEntries(rawData.entries.where((e) => e.value != null));
       if (existing != null) {
         await ApiClient.instance.put('${Endpoints.measurements}/${existing['id']}', data: data);
@@ -299,7 +298,6 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
   @override
   Widget build(BuildContext context) {
     final isDark   = Theme.of(context).brightness == Brightness.dark;
-    final bg       = isDark ? _OC.bg        : _OC.lBg;
     final bgCard   = isDark ? _OC.bgCard    : _OC.lBgCard;
     final bgSoft   = isDark ? _OC.bgSoft    : _OC.lBgSoft;
     final border   = isDark ? _OC.border    : _OC.lBorder;
@@ -312,6 +310,8 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
     final danger   = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
 
     final measurementsAsync = ref.watch(measurementsProvider);
+    // Profil gender'ı — loading/error durumunda 'male' fallback
+    final profileGender = ref.watch(profileGenderProvider).value ?? 'male';
 
     return measurementsAsync.when(
       loading: () => Center(child: CircularProgressIndicator(color: accent)),
@@ -347,7 +347,7 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                       isPositive: weightChange != null && weightChange <= 0),
                     _MetricCard(label: 'Yağ Oranı', bgCard: bgCard, border: border, text: text, textSoft: textSoft, accent: accent, positive: positive,
                       value: latest['body_fat_pct'] != null ? '${latest['body_fat_pct']}%' : '--'),
-                    _MetricCard(label: 'Kas Kitlesi', bgCard: bgCard, border: border, text: text, textSoft: textSoft, accent: accent, positive: positive,
+                    _MetricCard(label: 'Kas Kütlesi', bgCard: bgCard, border: border, text: text, textSoft: textSoft, accent: accent, positive: positive,
                       value: latest['muscle_mass_kg'] != null ? '${latest['muscle_mass_kg']} kg' : '--'),
                     _MetricCard(label: 'Bel', bgCard: bgCard, border: border, text: text, textSoft: textSoft, accent: accent, positive: positive,
                       value: latest['waist_cm'] != null ? '${latest['waist_cm']} cm' : '--'),
@@ -365,7 +365,6 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                         GestureDetector(
                           onTap: () {
                             if (!_showForm && latest != null) {
-                              // Mevcut değerleri forma doldur
                               _weightController.text     = latest['weight_kg']?.toString() ?? '';
                               _bodyFatController.text    = latest['body_fat_pct']?.toString() ?? '';
                               _muscleMassController.text = latest['muscle_mass_kg']?.toString() ?? '';
@@ -382,10 +381,10 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                       ]),
                       const SizedBox(height: 14),
                       ...([
-                        ['Göğüs', latest['chest_cm'], 88.0],
-                        ['Kalça', latest['hip_cm'],   82.0],
-                        ['Kol',   latest['arm_cm'],   55.0],
-                        ['Bacak', latest['leg_cm'],   65.0],
+                        ['Göğüs', latest['chest_cm'],  88.0],
+                        ['Kalça', latest['hip_cm'],    82.0],
+                        ['Kol',   latest['arm_cm'],    55.0],
+                        ['Bacak', latest['leg_cm'],    65.0],
                       ].map((row) {
                         final val = (row[1] as num?)?.toDouble();
                         final pct = row[2] as double;
@@ -418,7 +417,6 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                       const SizedBox(height: 4),
                       Text('En az bir alan zorunludur', style: TextStyle(fontSize: 11, color: muted)),
                       const SizedBox(height: 16),
-                      // Kilo
                       Padding(padding: const EdgeInsets.only(bottom: 10),
                         child: TextField(controller: _weightController,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -436,7 +434,7 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                           ),
                           const SizedBox(width: 8),
                           GestureDetector(
-                            onTap: () => _showNavySheet(context, bgCard, border, text, muted, accent, accentDim, danger),
+                            onTap: () => _showNavySheet(context, profileGender, bgCard, border, text, muted, accent, accentDim, danger),
                             child: Container(
                               height: 52, width: 52,
                               decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12), border: Border.all(color: accent)),
@@ -445,7 +443,6 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                           ),
                         ]),
                       ),
-                      // Diğer alanlar
                       ...[
                         [_muscleMassController, 'Kas Kütlesi (kg)', Icons.fitness_center],
                         [_waistController,      'Bel (cm)',         Icons.straighten],

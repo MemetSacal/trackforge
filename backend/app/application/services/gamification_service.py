@@ -27,13 +27,31 @@ LEVEL_THRESHOLDS = {1: 0, 2: 500, 3: 1500, 4: 3000, 5: 6000}
 
 # Rozet tanımları
 BADGE_DEFINITIONS = {
-    "first_workout": ("İlk Antrenman 💪", "İlk antrenman seansını tamamladın!"),
-    "7_day_water": ("7 Gün Su Hedefi 💧", "7 gün boyunca su hedefine ulaştın!"),
-    "30_day_water": ("30 Gün Su Hedefi 🏆", "30 gün boyunca su hedefine ulaştın!"),
-    "weight_loss_5kg": ("5 kg Kayıp ⚡", "5 kg verdin, harika ilerliyorsun!"),
-    "weight_loss_10kg": ("10 kg Kayıp 🔥", "10 kg verdin, muhteşem!"),
-    "first_photo": ("İlk Fotoğraf 📸", "İlerleme fotoğrafını yükledin!"),
-    "streak_warrior": ("Streak Savaşçısı ⚔️", "7 gün boyunca egzersiz yaptın!"),
+    # Antrenman
+    "first_workout":      ("İlk Antrenman 💪",       "İlk antrenman seansını tamamladın!"),
+    "workout_10":         ("10 Antrenman 🏋️",         "10 antrenman seansını tamamladın!"),
+    "workout_30":         ("30 Antrenman 🥇",         "30 antrenman seansını tamamladın!"),
+    "streak_warrior":     ("Streak Savaşçısı ⚔️",    "7 gün boyunca egzersiz yaptın!"),
+    "streak_legend":      ("Seri Efsanesi 🔥",        "30 gün boyunca egzersiz yaptın!"),
+    # Su
+    "7_day_water":        ("7 Gün Su 💧",             "7 gün boyunca su hedefine ulaştın!"),
+    "30_day_water":       ("30 Gün Su 🏆",            "30 gün boyunca su hedefine ulaştın!"),
+    # Uyku
+    "sleep_7":            ("Uyku Ustası 😴",          "7 gün kaliteli uyku logu girdin!"),
+    # Kilo
+    "weight_loss_5kg":    ("5 kg Kayıp ⚡",           "5 kg verdin, harika ilerliyorsun!"),
+    "weight_loss_10kg":   ("10 kg Kayıp 🔥",          "10 kg verdin, muhteşem!"),
+    "weight_loss_20kg":   ("20 kg Kayıp 🎯",          "20 kg verdin, inanılmaz!"),
+    "weight_gain_5kg":    ("5 kg Aldın 📈",           "5 kg kas kattın!"),
+    # Fotoğraf
+    "first_photo":        ("İlk Fotoğraf 📸",         "İlerleme fotoğrafını yükledin!"),
+    # Sosyal
+    "first_friend":       ("İlk Arkadaş 🤝",         "İlk arkadaşını ekledin!"),
+    # AI
+    "ai_explorer":        ("AI Kaşifi 🤖",            "İlk kez AI koç özelliğini kullandın!"),
+    # Özel
+    "early_bird":         ("Erken Kuş 🌅",            "Sabah 7'den önce antrenman yaptın!"),
+    "night_owl":          ("Gece Kuşu 🌙",            "Gece 22'den sonra antrenman yaptın!"),
 }
 
 
@@ -126,24 +144,43 @@ class GamificationService:
         await self.db.commit()
 
     # ── Antrenman seansı oluşturuldu — streak + XP + rozet kontrol ──
-    async def on_workout_created(self, user_id: str, today: date, is_first: bool = False) -> None:
-        # Egzersiz streak'ini artır
+    async def on_workout_created(self, user_id: str, today: date, is_first: bool = False,
+                                 total_sessions: int = 1) -> None:
         streak = await self.repo.increment_streak(user_id, "exercise", today)
-
-        # XP ekle
         await self.repo.add_xp(user_id, XP_REWARDS["workout_session"])
 
-        # İlk antrenman rozeti
+        # İlk antrenman
         if is_first:
             name, desc = BADGE_DEFINITIONS["first_workout"]
             badge = await self.repo.award_badge(user_id, "first_workout", name, desc)
             if badge:
                 await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
 
-        # 7 gün egzersiz serisi
+        # 10. antrenman
+        if total_sessions >= 10:
+            name, desc = BADGE_DEFINITIONS["workout_10"]
+            badge = await self.repo.award_badge(user_id, "workout_10", name, desc)
+            if badge:
+                await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
+
+        # 30. antrenman
+        if total_sessions >= 30:
+            name, desc = BADGE_DEFINITIONS["workout_30"]
+            badge = await self.repo.award_badge(user_id, "workout_30", name, desc)
+            if badge:
+                await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
+
+        # 7 gün serisi
         if streak.current_streak >= 7:
             name, desc = BADGE_DEFINITIONS["streak_warrior"]
             badge = await self.repo.award_badge(user_id, "streak_warrior", name, desc)
+            if badge:
+                await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
+
+        # 30 gün serisi
+        if streak.current_streak >= 30:
+            name, desc = BADGE_DEFINITIONS["streak_legend"]
+            badge = await self.repo.award_badge(user_id, "streak_legend", name, desc)
             if badge:
                 await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
 
@@ -151,11 +188,14 @@ class GamificationService:
 
     # ── Uyku logu girildi — streak + XP ──
     async def on_sleep_logged(self, user_id: str, today: date, quality_score: int) -> None:
-        # Kalite skoru >= 6 ise streak artır
         if quality_score >= 6:
-            await self.repo.increment_streak(user_id, "sleep", today)
-
-        # Her uyku logu XP kazandırır
+            streak = await self.repo.increment_streak(user_id, "sleep", today)
+            # 7 gün kaliteli uyku
+            if streak.current_streak >= 7:
+                name, desc = BADGE_DEFINITIONS["sleep_7"]
+                badge = await self.repo.award_badge(user_id, "sleep_7", name, desc)
+                if badge:
+                    await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
         await self.repo.add_xp(user_id, XP_REWARDS["sleep_log"])
         await self.db.commit()
 
@@ -164,6 +204,8 @@ class GamificationService:
         self, user_id: str, initial_weight: float, current_weight: float
     ) -> None:
         loss = initial_weight - current_weight
+        gain = current_weight - initial_weight
+
         if loss >= 5:
             name, desc = BADGE_DEFINITIONS["weight_loss_5kg"]
             badge = await self.repo.award_badge(user_id, "weight_loss_5kg", name, desc)
@@ -176,12 +218,40 @@ class GamificationService:
             if badge:
                 await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
 
+        if loss >= 20:
+            name, desc = BADGE_DEFINITIONS["weight_loss_20kg"]
+            badge = await self.repo.award_badge(user_id, "weight_loss_20kg", name, desc)
+            if badge:
+                await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
+
+        if gain >= 5:
+            name, desc = BADGE_DEFINITIONS["weight_gain_5kg"]
+            badge = await self.repo.award_badge(user_id, "weight_gain_5kg", name, desc)
+            if badge:
+                await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
+
         await self.db.commit()
 
     # ── İlk fotoğraf yüklendi ──
     async def on_first_photo(self, user_id: str) -> None:
         name, desc = BADGE_DEFINITIONS["first_photo"]
         badge = await self.repo.award_badge(user_id, "first_photo", name, desc)
+        if badge:
+            await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
+        await self.db.commit()
+
+    # ── İlk arkadaş eklendi ──
+    async def on_first_friend(self, user_id: str) -> None:
+        name, desc = BADGE_DEFINITIONS["first_friend"]
+        badge = await self.repo.award_badge(user_id, "first_friend", name, desc)
+        if badge:
+            await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
+        await self.db.commit()
+
+    # ── AI özelliği ilk kez kullanıldı ──
+    async def on_ai_used(self, user_id: str) -> None:
+        name, desc = BADGE_DEFINITIONS["ai_explorer"]
+        badge = await self.repo.award_badge(user_id, "ai_explorer", name, desc)
         if badge:
             await self.repo.add_xp(user_id, XP_REWARDS["badge_earned"])
         await self.db.commit()

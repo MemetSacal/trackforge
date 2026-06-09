@@ -80,12 +80,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // Step 4 — Kalori alışkanlığı ← YENİ
   String _calorieHabit = '1500_2000';
   final _calorieHabits = [
-    {'key': 'under_1500', 'label': '1500 kcal altı',   'emoji': '🥗'},
-    {'key': '1500_2000',  'label': '1500–2000 kcal',   'emoji': '🍽️'},
-    {'key': '2000_2500',  'label': '2000–2500 kcal',   'emoji': '🍖'},
-    {'key': '2500_3000',  'label': '2500–3000 kcal',   'emoji': '🥩'},
-    {'key': 'over_3000',  'label': '3000 kcal üzeri',  'emoji': '🍔'},
-  ];
+      {'key': 'under_1500', 'label': '1500 kcal altı',    'desc': 'Çok az yiyorum, genelde tok hissetmiyorum', 'emoji': '🥗'},
+      {'key': '1500_2000',  'label': '1500–2000 kcal',    'desc': 'Ortalama, dengeli beslenirim',              'emoji': '🍽️'},
+      {'key': '2000_2500',  'label': '2000–2500 kcal',    'desc': 'Aktif biriyim, iyi iştahım var',           'emoji': '🍖'},
+      {'key': '2500_3000',  'label': '2500–3000 kcal',    'desc': 'Çok yerim veya çok spor yaparım',          'emoji': '🥩'},
+      {'key': 'over_3000',  'label': '3000 kcal üzeri',   'desc': 'Çok yüksek kalori alıyorum',               'emoji': '🍔'},
+    ];
 
   // Step 5 — AI Koç ismi
   final _aiNameController = TextEditingController(text: 'TrackForge AI');
@@ -554,12 +554,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1),
               ),
               child: Row(children: [
-                Text(h['emoji']!, style: const TextStyle(fontSize: 24)),
-                const SizedBox(width: 16),
-                Expanded(child: Text(h['label']!, style: TextStyle(
-                  fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text, fontSize: 15))),
-                if (sel) Icon(Icons.check_circle_rounded, color: accent, size: 20),
-              ]),
+                              Text(h['emoji']!, style: const TextStyle(fontSize: 24)),
+                              const SizedBox(width: 16),
+                              Expanded(child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(h['label']!, style: TextStyle(
+                                    fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text, fontSize: 15)),
+                                  const SizedBox(height: 2),
+                                  Text(h['desc']!, style: TextStyle(fontSize: 11, color: muted)),
+                                ],
+                              )),
+                              if (sel) Icon(Icons.check_circle_rounded, color: accent, size: 20),
+                            ]),
             ),
           );
         }),

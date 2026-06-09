@@ -54,6 +54,10 @@ class UserPreferenceRepository(IUserPreferenceRepository):
             age=model.age,
             gender=model.gender,
             activity_level=model.activity_level,
+            ai_name=getattr(model, 'ai_name', None),
+            diet_preference=getattr(model, 'diet_preference', None),
+            target_weight_kg=getattr(model, 'target_weight_kg', None),
+            daily_calorie_habit=getattr(model, 'daily_calorie_habit', None),
         )
 
     async def create(self, preference: UserPreference) -> UserPreference:
@@ -93,6 +97,14 @@ class UserPreferenceRepository(IUserPreferenceRepository):
         model.blood_values = preference.blood_values
         model.workout_location = preference.workout_location
         model.fitness_goal = preference.fitness_goal
+        model.height_cm = preference.height_cm
+        model.age = preference.age
+        model.gender = preference.gender
+        model.activity_level = preference.activity_level
+        model.ai_name = preference.ai_name
+        model.diet_preference = preference.diet_preference
+        model.target_weight_kg = preference.target_weight_kg
+        model.daily_calorie_habit = preference.daily_calorie_habit
         await self.db.flush()
         await self.db.refresh(model)
         return self._to_entity(model)

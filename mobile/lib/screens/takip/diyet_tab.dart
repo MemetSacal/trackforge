@@ -30,7 +30,7 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
   String? _savedAdvice;
   String? _savedAdviceDate;
   bool _showAdvice      = false;
-  bool _showWeeklyPlan  = false; // haftalık plan aç/kapat
+  bool _showWeeklyPlan  = true; // haftalık plan aç/kapat
   List<String> _recommendedFoods = [];
   List<String> _avoidFoods       = [];
   Map<String, dynamic>? _weeklyPlan;

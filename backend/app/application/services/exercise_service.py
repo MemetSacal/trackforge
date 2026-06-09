@@ -126,6 +126,12 @@ class ExerciseService:
 
         # Sadece gönderilen alanları güncelle
         existing.exercise_name = data.exercise_name if data.exercise_name is not None else existing.exercise_name
+        existing.sets = data.sets if data.sets is not None else existing.sets
+        existing.reps = data.reps if data.reps is not None else existing.reps
+        existing.weight_kg = data.weight_kg if data.weight_kg is not None else existing.weight_kg
+        existing.notes = data.notes if data.notes is not None else existing.notes
+        if data.completed is not None:
+            existing.completed = data.completed
         return await self.exercise_repository.update(existing)
 
     async def delete_exercise(self, user_id: str, exercise_id: str) -> bool:

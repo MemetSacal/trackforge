@@ -115,14 +115,16 @@ class _AuthInterceptor extends Interceptor {
     );
 
     if (response.statusCode == 200) {
-     final currentUserId = await TokenManager.getCurrentUserId() ?? '';
-     await TokenManager.saveTokens(
-       accessToken:  response.data['access_token'],
-       refreshToken: response.data['refresh_token'],
-       userId:       currentUserId, // refresh'te user_id değişmez, mevcut id korunur
-     );
-      return true;
-    }
+          final currentUserId = await TokenManager.getCurrentUserId() ?? '';
+          final currentIsPremium = await TokenManager.isPremium();
+          await TokenManager.saveTokens(
+            accessToken:  response.data['access_token'],
+            refreshToken: response.data['refresh_token'],
+            userId:       currentUserId,
+            isPremium:    currentIsPremium,
+          );
+          return true;
+        }
 
     return false;
   }

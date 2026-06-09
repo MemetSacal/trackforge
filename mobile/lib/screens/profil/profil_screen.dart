@@ -141,14 +141,15 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
       Map<String, dynamic> payload = {};
 
       if (_tab == 0) {
-        // Genel
-        payload = {
-          'height_cm': double.tryParse(_heightController.text),
-          'age': int.tryParse(_ageController.text),
-          'gender': _gender,
-          'activity_level': _activityLevel,
-          if (_aiNameController.text.isNotEmpty) 'ai_name': _aiNameController.text,
-        };
+              final h = double.tryParse(_heightController.text);
+              final a = int.tryParse(_ageController.text);
+              payload = {
+                if (h != null) 'height_cm': h,
+                if (a != null) 'age': a,
+                'gender': _gender,
+                'activity_level': _activityLevel,
+                if (_aiNameController.text.trim().isNotEmpty) 'ai_name': _aiNameController.text.trim(),
+              };
       } else if (_tab == 1) {
         // Sağlık
         payload = {

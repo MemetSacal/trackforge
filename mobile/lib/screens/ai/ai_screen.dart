@@ -148,14 +148,22 @@ class AiScreen extends ConsumerWidget {
     final coachName = ref.watch(aiCoachNameProvider).value ?? 'TrackForge AI';
 
     final features = [
-      _Feature('📊', 'Haftalık AI Özeti',  'Verilerine göre kişisel rapor',  'Hazır',   () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WeeklySummaryScreen()))),
-      _Feature('📸', 'Fotoğraftan Kalori', 'Yapay zeka ile anlık besin analizi', 'Yeni', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CalorieVisionScreen()))),
-      _Feature('🍽️', 'Diyet Tavsiyesi',   'BMR/TDEE bazlı öneri',           null,      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MealAdviceScreen()))),
-      _Feature('👨‍🍳', 'Tarif Önerici',  'Malzeme bazlı tarifler',          null,      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RecipeScreen()))),
-      _Feature('💪', 'Antrenman Planı',    'Lokasyon bazlı program',          null,      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkoutPlanScreen()))),
-      _Feature('🎯', 'Hedef Görselleştirme','DALL-E 3 ile vizyon',           'Yakında', null),
-    ];
-
+          _Feature('📊', 'Haftalık AI Özeti',  'Verilerine göre kişisel rapor',      'Hazır',   () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WeeklySummaryScreen()))),
+          _Feature('📸', 'Fotoğraftan Kalori', 'Yapay zeka ile anlık besin analizi', 'Yeni',    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CalorieVisionScreen()))),
+          _Feature('🍽️', 'Diyet Tavsiyesi',   'Haftalık 7 günlük yemek planı',      null,      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MealAdviceScreen()))),
+          _Feature('💳', 'Kalori Bankası',     'Haftalık kalori analizi ve öneri',   null,      () {
+            // Dashboard'daki _BankAdviceSheet'i burada da aç
+            showModalBottomSheet(
+              context: context,
+              backgroundColor: isDark ? const Color(0xFF141620) : Colors.white,
+              isScrollControlled: true,
+              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+              builder: (_) => _BankAdviceSheet(t: _Theme(isDark)),
+            );
+          }),
+          _Feature('👨‍🍳', 'Tarif Önerici',  'Malzeme bazlı tarifler',              null,      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RecipeScreen()))),
+          _Feature('💪', 'Antrenman Planı',    'Lokasyon bazlı program',              null,      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkoutPlanScreen()))),
+        ];
     return Scaffold(
       backgroundColor: bg,
       body: CustomScrollView(

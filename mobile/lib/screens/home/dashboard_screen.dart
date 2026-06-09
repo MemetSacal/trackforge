@@ -53,7 +53,19 @@ final dashWeeklyProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref
   return Map<String, dynamic>.from(res.data);
 });
 
-// ── Bugünkü kalori bankası verisi ───────────────────────
+// ── Son vücut ölçümü (ağırlık için) ─────────────────────
+final dashLatestMeasurementProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  try {
+    final to   = TFDateUtils.today();
+    final from = DateTime.now().subtract(const Duration(days: 90));
+    final fromStr = '${from.year}-${from.month.toString().padLeft(2,'0')}-${from.day.toString().padLeft(2,'0')}';
+    final res = await ApiClient.instance.get(Endpoints.measurements, queryParameters: {'from': fromStr, 'to': to});
+    final list = res.data as List?;
+    if (list == null || list.isEmpty) return null;
+    return Map<String, dynamic>.from(list.last);
+  } catch (_) { return null; }
+});
+
 // ── Bugünkü kalori bankası verisi ───────────────────────
 final dashMealProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
@@ -95,7 +107,6 @@ final notificationsProvider = FutureProvider.autoDispose<List<Map<String, dynami
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
-  // ── Çan bottom sheet ────────────────────────────────
   void _showNotifications(BuildContext context, WidgetRef ref, _Theme t) {
     showModalBottomSheet(
       context: context,
@@ -194,6 +205,7 @@ class DashboardScreen extends ConsumerWidget {
     final mealAsync      = ref.watch(dashMealProvider);
     final waterToday     = ref.watch(dashWaterTodayProvider).value;
     final sleepToday     = ref.watch(dashSleepTodayProvider).value;
+    final latestMeas     = ref.watch(dashLatestMeasurementProvider).value;
 
     return Scaffold(
       backgroundColor: t.bg,
@@ -207,6 +219,7 @@ class DashboardScreen extends ConsumerWidget {
           ref.invalidate(dashMealProvider);
           ref.invalidate(dashWaterTodayProvider);
           ref.invalidate(dashSleepTodayProvider);
+          ref.invalidate(dashLatestMeasurementProvider);
         },
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -242,7 +255,6 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    // ── Çan ikonu — tıklanabilir ──
                     GestureDetector(
                       onTap: () => _showNotifications(context, ref, t),
                       child: Container(
@@ -269,12 +281,8 @@ class DashboardScreen extends ConsumerWidget {
                     error: (_, __) => _HeroCard(t: t, gami: {}, weekly: {}),
                   ),
                   const SizedBox(height: 12),
-
-                  // ── Kalori Bankası Notu (YENİ) ──────────
                   mealAsync.when(
-                    data: (meal) => meal != null
-                        ? _CalorieBankNote(t: t, meal: meal)
-                        : const SizedBox.shrink(),
+                    data: (meal) => meal != null ? _CalorieBankNote(t: t, meal: meal) : const SizedBox.shrink(),
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
                   ),
@@ -283,11 +291,10 @@ class DashboardScreen extends ConsumerWidget {
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
                   ),
-
                   weeklyAsync.when(
-                    data: (w) => _StatGrid(t: t, weekly: w),
+                    data: (w) => _StatGrid(t: t, weekly: w, latestWeight: latestMeas?['weight_kg'] as double?),
                     loading: () => _shimmer(t, 160),
-                    error: (_, __) => _StatGrid(t: t, weekly: {}),
+                    error: (_, __) => _StatGrid(t: t, weekly: {}, latestWeight: null),
                   ),
                   const SizedBox(height: 12),
                   weeklyAsync.when(
@@ -325,21 +332,21 @@ class DashboardScreen extends ConsumerWidget {
   );
 }
 
-// ── KALORİ BANKASI NOTU (YENİ) ──────────────────────────
+// ── KALORİ BANKASI NOTU ──────────────────────────────────
 class _CalorieBankNote extends ConsumerWidget {
   final _Theme t;
   final Map<String, dynamic> meal;
   const _CalorieBankNote({required this.t, required this.meal});
-  void _showBankAdvice(BuildContext context, WidgetRef ref, _Theme t) async {
+
+  void _showBankAdvice(BuildContext context, _Theme t) {
     showModalBottomSheet(
       context: context,
       backgroundColor: t.bgCard,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => _BankAdviceSheet(t: t),
+      builder: (_) => _BankAdviceSheet(t: t),
     );
   }
-
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -352,7 +359,6 @@ class _CalorieBankNote extends ConsumerWidget {
 
     return GestureDetector(
       onTap: () {
-        // Diyet tabına git
         ref.read(takipTabIndexProvider.notifier).state  = 1;
         ref.read(bottomNavIndexProvider.notifier).state = 1;
       },
@@ -370,9 +376,7 @@ class _CalorieBankNote extends ConsumerWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('💳 Bugünkü Kalori Bankası', style: TextStyle(fontSize: 11, color: t.accent, fontWeight: FontWeight.w600)),
-                Row(children: [
-                  Text('Diyet Planı →', style: TextStyle(fontSize: 11, color: t.accent, fontWeight: FontWeight.w700)),
-                ]),
+                Text('Diyet Planı →', style: TextStyle(fontSize: 11, color: t.accent, fontWeight: FontWeight.w700)),
               ],
             ),
             const SizedBox(height: 8),
@@ -417,7 +421,7 @@ class _CalorieBankNote extends ConsumerWidget {
             ],
             const SizedBox(height: 10),
             GestureDetector(
-              onTap: () => _showBankAdvice(context, ref, t),
+              onTap: () => _showBankAdvice(context, t),
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 10),
@@ -522,9 +526,9 @@ class _HeroCard extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                              _buildDailyMessage(weightChange),
-                              style: TextStyle(fontSize: 12, color: heroText.withOpacity(0.82), height: 1.5),
-                            ),
+                _buildDailyMessage(weightChange),
+                style: TextStyle(fontSize: 12, color: heroText.withOpacity(0.82), height: 1.5),
+              ),
               const SizedBox(height: 14),
               ...missions.map((m) => Padding(
                 padding: const EdgeInsets.only(bottom: 5),
@@ -548,46 +552,39 @@ class _HeroCard extends StatelessWidget {
       ),
     );
   }
+
   String _buildDailyMessage(double? weightChange) {
-      final messages = <String>[];
-
-      // Su kontrolü — bugünkü veri
-      final amountMl = (waterToday?['amount_ml'] as num?)?.toDouble();
-      final targetMl = (waterToday?['target_ml'] as num?)?.toDouble() ?? 2000;
-      if (amountMl != null && amountMl < targetMl * 0.5) {
-        messages.add('💧 Bugün su içmeyi unutuyorsun!');
-      }
-
-      // Uyku kontrolü — dünkü veri
-      final sleepHours = (sleepToday?['duration_hours'] as num?)?.toDouble();
-      if (sleepHours != null && sleepHours < 6) {
-        messages.add('😴 Dün az uyudun (${sleepHours.toStringAsFixed(1)} saat).');
-      }
-
-      // Kalori kontrolü
-      final consumed = (mealToday?['calories_consumed'] as num?)?.toDouble();
-      final target   = (mealToday?['calories_target']   as num?)?.toDouble();
-      if (consumed != null && target != null && consumed > target * 1.2) {
-        messages.add('🍽️ Bugün kalori hedefini aştın.');
-      }
-
-      // Kilo trendi
-      if (weightChange != null) {
-        messages.add(weightChange < 0
-            ? 'Kilo trendin düşüyor (${weightChange.toStringAsFixed(1)} kg). Harika!'
-            : 'Kilo biraz arttı (+${weightChange.toStringAsFixed(1)} kg), dikkat et.');
-      }
-
-      if (messages.isEmpty) return 'Verilerini girerek kişisel AI analizini aktifleştir.';
-      return messages.join(' ');
+    final messages = <String>[];
+    final amountMl = (waterToday?['amount_ml'] as num?)?.toDouble();
+    final targetMl = (waterToday?['target_ml'] as num?)?.toDouble() ?? 2000;
+    if (amountMl != null && amountMl < targetMl * 0.5) {
+      messages.add('💧 Bugün su içmeyi unutuyorsun!');
     }
+    final sleepHours = (sleepToday?['duration_hours'] as num?)?.toDouble();
+    if (sleepHours != null && sleepHours < 6) {
+      messages.add('😴 Dün az uyudun (${sleepHours.toStringAsFixed(1)} saat).');
+    }
+    final consumed = (mealToday?['calories_consumed'] as num?)?.toDouble();
+    final target   = (mealToday?['calories_target']   as num?)?.toDouble();
+    if (consumed != null && target != null && consumed > target * 1.2) {
+      messages.add('🍽️ Bugün kalori hedefini aştın.');
+    }
+    if (weightChange != null) {
+      messages.add(weightChange < 0
+          ? 'Kilo trendin düşüyor (${weightChange.toStringAsFixed(1)} kg). Harika!'
+          : 'Kilo biraz arttı (+${weightChange.toStringAsFixed(1)} kg), dikkat et.');
+    }
+    if (messages.isEmpty) return 'Verilerini girerek kişisel AI analizini aktifleştir.';
+    return messages.join(' ');
+  }
 }
 
 // ── STAT GRID ───────────────────────────────────────────
 class _StatGrid extends StatelessWidget {
   final _Theme t;
   final Map<String, dynamic> weekly;
-  const _StatGrid({required this.t, required this.weekly});
+  final double? latestWeight;
+  const _StatGrid({required this.t, required this.weekly, this.latestWeight});
 
   @override
   Widget build(BuildContext context) {
@@ -596,11 +593,11 @@ class _StatGrid extends StatelessWidget {
     final exercise = weekly['exercise']     != null ? Map<String, dynamic>.from(weekly['exercise'])     : <String, dynamic>{};
     final meas     = weekly['measurements'] != null ? Map<String, dynamic>.from(weekly['measurements']) : <String, dynamic>{};
 
-    final weightKg     = (meas['weight_kg']          as num?)?.toDouble();
-    final weightChange = (meas['weight_change']       as num?)?.toDouble();
-    final avgSleep     = (sleep['avg_hours']          as num?)?.toDouble();
-    final totalSess    = (exercise['total_sessions']  as num?)?.toInt();
-    final avgWater     = (water['avg_daily_ml']       as num?)?.toDouble();
+    final weightKg     = latestWeight ?? (meas['weight_kg'] as num?)?.toDouble();
+    final weightChange = (meas['weight_change']      as num?)?.toDouble();
+    final avgSleep     = (sleep['avg_hours']         as num?)?.toDouble();
+    final totalSess    = (exercise['total_sessions'] as num?)?.toInt();
+    final avgWater     = (water['avg_daily_ml']      as num?)?.toDouble();
 
     final items = [
       _StatItem(label: 'Ağırlık',     value: weightKg  != null ? weightKg.toStringAsFixed(1) : '--', unit: 'kg',
@@ -763,24 +760,15 @@ class _WaterSleepRow extends StatelessWidget {
                   SizedBox(
                     height: 50,
                     child: CustomPaint(
-                      painter: _SleepGaugePainter(
-                        progress: sleepPct,
-                        trackColor: t.bgSoft,
-                        fillColor: t.accent,
-                      ),
+                      painter: _SleepGaugePainter(progress: sleepPct, trackColor: t.bgSoft, fillColor: t.accent),
                       child: const SizedBox.expand(),
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    avgHours > 0 ? '${avgHours.toStringAsFixed(1)} saat' : '--',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: t.text),
-                  ),
-                  Text(
-                    avgHours >= 7 ? 'iyi kalite' : 'yetersiz',
-                    style: TextStyle(fontSize: 11,
-                      color: avgHours >= 7 ? t.positive : t.danger),
-                  ),
+                  Text(avgHours > 0 ? '${avgHours.toStringAsFixed(1)} saat' : '--',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: t.text)),
+                  Text(avgHours >= 7 ? 'iyi kalite' : 'yetersiz',
+                    style: TextStyle(fontSize: 11, color: avgHours >= 7 ? t.positive : t.danger)),
                 ],
               ),
             ),
@@ -873,7 +861,7 @@ class _StreaksCard extends StatelessWidget {
   }
 }
 
-// ── DİYET UYUMU BAR CHART — gerçek veri ─────────────────
+// ── DİYET UYUMU BAR CHART ────────────────────────────────
 class _DietChartCard extends StatelessWidget {
   final _Theme t;
   final Map<String, dynamic> weekly;
@@ -881,16 +869,14 @@ class _DietChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Backend'den haftalık diyet uyumu verisi
     final diet        = weekly['meal_compliance'] != null
         ? Map<String, dynamic>.from(weekly['meal_compliance'])
         : <String, dynamic>{};
-    final avgRate     = (diet['compliance_rate'] as num?)?.toDouble();
-    final compliedDays = (diet['complied_days'] as num?)?.toInt() ?? 0;
-    final totalDays   = (diet['total_days']    as num?)?.toInt() ?? 0;
+    final avgRate      = (diet['compliance_rate'] as num?)?.toDouble();
+    final compliedDays = (diet['complied_days']   as num?)?.toInt() ?? 0;
+    final totalDays    = (diet['total_days']       as num?)?.toInt() ?? 0;
 
-    // Günlük breakdown yok — complied/total'dan temsili bar üret
-   final values = List.generate( 7, (i) {
+    final values = List.generate(7, (i) {
       if (totalDays == 0) return 0.0;
       return i < compliedDays ? 10.0 : 3.0;
     });
@@ -915,9 +901,9 @@ class _DietChartCard extends StatelessWidget {
                 final v = values[i];
                 Color barColor;
                 double opacity;
-                if (v >= 8)      { barColor = t.accent;  opacity = 1.0; }
-                else if (v >= 5) { barColor = _C.cyan;   opacity = 0.65; }
-                else             { barColor = t.danger;  opacity = 0.65; }
+                if (v >= 8)      { barColor = t.accent; opacity = 1.0; }
+                else if (v >= 5) { barColor = _C.cyan;  opacity = 0.65; }
+                else             { barColor = t.danger; opacity = 0.65; }
 
                 return Expanded(child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -1000,6 +986,7 @@ class _QuickActions extends ConsumerWidget {
   }
 }
 
+// ── KALORI BANKASI SHEET ─────────────────────────────────
 class _BankAdviceSheet extends StatefulWidget {
   final _Theme t;
   const _BankAdviceSheet({required this.t});
@@ -1013,18 +1000,12 @@ class _BankAdviceSheetState extends State<_BankAdviceSheet> {
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
+  void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
     try {
       final response = await ApiClient.instance.post(Endpoints.aiCalorieBankAdvice, data: {});
-      setState(() {
-        _advice    = Map<String, dynamic>.from(response.data);
-        _isLoading = false;
-      });
+      setState(() { _advice = Map<String, dynamic>.from(response.data); _isLoading = false; });
     } catch (_) {
       setState(() { _error = 'Analiz alınamadı'; _isLoading = false; });
     }
@@ -1045,44 +1026,65 @@ class _BankAdviceSheetState extends State<_BankAdviceSheet> {
           Text('🤖 AI Kalori Analizi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: t.text)),
           const SizedBox(height: 16),
           if (_isLoading)
-            Center(child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: CircularProgressIndicator(color: t.accent),
-            ))
+            Center(child: Padding(padding: const EdgeInsets.all(32), child: CircularProgressIndicator(color: t.accent)))
           else if (_error != null)
             Text(_error!, style: TextStyle(color: t.danger))
           else if (_advice != null) ...[
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: t.accentDim, borderRadius: BorderRadius.circular(14), border: Border.all(color: t.accent)),
-              child: Text(_advice!['short_message'] as String? ?? '',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.accent)),
-            ),
-            const SizedBox(height: 12),
-            if (_advice!['detailed_advice'] != null)
-              Text(_advice!['detailed_advice'] as String,
-                style: TextStyle(fontSize: 13, color: t.text, height: 1.5)),
-            const SizedBox(height: 12),
-            if (_advice!['tomorrow_suggestion'] != null) ...[
-              Text('Yarın için öneri:', style: TextStyle(fontSize: 12, color: t.textMuted, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              Text(_advice!['tomorrow_suggestion'] as String,
-                style: TextStyle(fontSize: 13, color: t.text, height: 1.4)),
-            ],
-            if ((_advice!['telafi_options'] as List?)?.isNotEmpty == true) ...[
-              const SizedBox(height: 12),
-              Text('Telafi seçenekleri:', style: TextStyle(fontSize: 12, color: t.textMuted, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              ...(_advice!['telafi_options'] as List).map((o) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(children: [
-                  Icon(Icons.check_circle_outline, size: 14, color: t.accent),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(o.toString(), style: TextStyle(fontSize: 12, color: t.text))),
-                ]),
-              )),
-            ],
-          ],
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(color: t.accentDim, borderRadius: BorderRadius.circular(14), border: Border.all(color: t.accent)),
+                        child: Text(
+                          (_advice!['short_message'] as String?)?.isNotEmpty == true
+                              ? _advice!['short_message'] as String
+                              : 'Bugün iyi gidiyorsun!',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: t.accent),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if ((_advice!['detailed_advice'] as String?)?.isNotEmpty == true)
+                        Text(_advice!['detailed_advice'] as String,
+                          style: TextStyle(fontSize: 13, color: t.text, height: 1.5)),
+                      const SizedBox(height: 12),
+                      if ((_advice!['tomorrow_suggestion'] as String?)?.isNotEmpty == true) ...[
+                        Text('Yarın için öneri:', style: TextStyle(fontSize: 12, color: t.textMuted, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 4),
+                        Text(_advice!['tomorrow_suggestion'] as String,
+                          style: TextStyle(fontSize: 13, color: t.text, height: 1.4)),
+                      ],
+                      if ((_advice!['weekly_outlook'] as String?)?.isNotEmpty == true) ...[
+                        const SizedBox(height: 12),
+                        Text('Haftalık değerlendirme:', style: TextStyle(fontSize: 12, color: t.textMuted, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 4),
+                        Text(_advice!['weekly_outlook'] as String,
+                          style: TextStyle(fontSize: 13, color: t.text, height: 1.4)),
+                      ],
+                      if ((_advice!['telafi_options'] as List?)?.isNotEmpty == true) ...[
+                        const SizedBox(height: 12),
+                        Text('Telafi seçenekleri:', style: TextStyle(fontSize: 12, color: t.textMuted, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 6),
+                        ...(_advice!['telafi_options'] as List).map((o) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(children: [
+                            Icon(Icons.check_circle_outline, size: 14, color: t.accent),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(o.toString(), style: TextStyle(fontSize: 12, color: t.text))),
+                          ]),
+                        )),
+                      ],
+                      if ((_advice!['estimated_goal_date'] as String?)?.isNotEmpty == true) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(color: t.accentDim, borderRadius: BorderRadius.circular(10)),
+                          child: Row(children: [
+                            Icon(Icons.flag_outlined, size: 14, color: t.accent),
+                            const SizedBox(width: 8),
+                            Text('Tahmini hedef: ${_advice!['estimated_goal_date']}',
+                              style: TextStyle(fontSize: 12, color: t.accent, fontWeight: FontWeight.w600)),
+                          ]),
+                        ),
+                      ],
+                    ],
         ],
       ),
     );
