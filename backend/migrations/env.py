@@ -2,6 +2,9 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 from backend.app.core.config import get_settings
+from dotenv import load_dotenv
+import os
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 from backend.app.infrastructure.db.base import Base
 from backend.app.infrastructure.db.models import user_model # noqa
 from backend.app.infrastructure.db.models import measurement_model # noqa
@@ -21,6 +24,7 @@ from backend.app.infrastructure.db.models import user_level_model  # noqa
 from backend.app.infrastructure.db.models import friendship_model  # noqa
 from backend.app.infrastructure.db.models import step_log_model  # noqa
 from backend.app.infrastructure.db.models import menstrual_cycle_model  # noqa
+from backend.app.infrastructure.db.models import ai_usage_model  # noqa
 
 # Alembic config objesi — alembic.ini dosyasını okur
 config = context.config
