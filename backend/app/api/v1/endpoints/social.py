@@ -5,18 +5,13 @@ from backend.app.application.schemas.social import (
     SendFriendRequestSchema,
     FriendshipResponse,
     LeaderboardEntryResponse,
+    PendingRequestResponse,
 )
 from backend.app.application.services.social_service import SocialService
 from backend.app.core.dependencies import get_current_user
 from backend.app.infrastructure.db.session import get_db
 from sqlalchemy import select
 from backend.app.infrastructure.db.models.user_model import UserModel
-from backend.app.application.schemas.social import (
-    SendFriendRequestSchema,
-    FriendshipResponse,
-    LeaderboardEntryResponse,
-    PendingRequestResponse,   # ← ekle
-)
 
 router = APIRouter(tags=["Social"])
 
