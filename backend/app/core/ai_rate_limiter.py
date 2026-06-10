@@ -5,11 +5,10 @@ from sqlalchemy import select, func
 from fastapi import HTTPException
 
 # ── Limit sabitleri (Flutter rate_limiter.dart ile senkron) ──
-VISION_DAILY_LIMIT    = 3   # calorie-from-photo: 3/gün
-WEEKLY_ANALYSIS_LIMIT = 1   # weekly-summary: 1/hafta
-MEAL_ADVICE_LIMIT     = 2   # meal-advice: 2/hafta
-WORKOUT_PLAN_LIMIT    = 2   # workout-plan: 2/hafta
-
+VISION_DAILY_LIMIT = 3
+WEEKLY_ANALYSIS_LIMIT = 1
+MEAL_ADVICE_LIMIT = 2
+WORKOUT_PLAN_LIMIT = 2
 
 def _week_start(d: date) -> date:
     """Haftanın başlangıç günü (Pazartesi)."""
@@ -63,10 +62,10 @@ async def _check_limit(
     today = date.today()
     if period == "daily":
         start = today
-        end   = today
+        end = today
     else:  # weekly
         start = _week_start(today)
-        end   = today
+        end = today
 
     result = await db.execute(
         select(func.count()).where(

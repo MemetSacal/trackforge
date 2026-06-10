@@ -365,7 +365,7 @@ async def get_calorie_bank_advice(
         avg_weekly_loss = None
         if len(measurements) >= 2:
             first = measurements[-1]
-            last  = measurements[0]
+            last = measurements[0]
             weeks = max((last.date - first.date).days / 7, 1)
             if first.weight_kg and last.weight_kg:
                 avg_weekly_loss = abs(first.weight_kg - last.weight_kg) / weeks
