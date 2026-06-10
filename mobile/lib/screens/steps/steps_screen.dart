@@ -86,8 +86,13 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
     }
 
     // İzin al ve pedometer'ı başlat
-    final status = await Permission.activityRecognition.request();
-    if (status.isGranted) _startPedometer();
+    final actStatus = await Permission.activityRecognition.request();
+    final senStatus = await Permission.sensors.request();
+    if (actStatus.isGranted || senStatus.isGranted) {
+      _startPedometer();
+    } else {
+      setState(() => _isPedActive = false);
+    }
   }
 
   // ── PEDOMETER BAŞLAT ──────────────────────────────────

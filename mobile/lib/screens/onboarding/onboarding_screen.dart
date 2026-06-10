@@ -180,6 +180,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       }
 
       // Complete
+      // İlk kilo ölçümünü kaydet
+      final weightVal = double.tryParse(_weightController.text);
+      if (weightVal != null) {
+        try {
+          await ApiClient.instance.post(Endpoints.measurements, data: {
+            'date': '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2,'0')}-${DateTime.now().day.toString().padLeft(2,'0')}',
+            'weight_kg': weightVal,
+          });
+        } catch (_) {}
+      }
+
       await ApiClient.instance.post(Endpoints.onboardingComplete, data: {
         'goals':               _selectedGoals,
         'diet_preference':     _diet,

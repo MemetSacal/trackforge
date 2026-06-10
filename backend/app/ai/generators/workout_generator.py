@@ -55,7 +55,8 @@ SADECE JSON formatında yanıt ver, başka hiçbir şey yazma:
           "sets": 3,
           "reps": "10-12",
           "rest_seconds": 60,
-          "notes": "teknik notu (opsiyonel)"
+          "notes": "teknik notu (opsiyonel)",
+          "muscle_groups": ["Göğüs", "Triceps"]
         }}
       ],
       "estimated_duration_minutes": 45,

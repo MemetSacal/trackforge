@@ -185,17 +185,18 @@ class MealComplianceService:
         calorie_balance = None
         calories_burned = 0.0
 
-        if prefs and data.calories_consumed is not None:
+        if prefs:
             weight_kg = await self._get_last_weight(user_id, db)
             tdee = self._calculate_tdee(prefs, weight_kg)
             if tdee:
                 daily_target = self._calculate_daily_target(tdee, prefs.fitness_goal)
 
-                # ── Egzersiz kalorisi dahil ──
-                calories_burned = await self._get_burned_calories(user_id, data.date)
-                net_consumed = data.calories_consumed - calories_burned
-                calorie_balance = round(net_consumed - daily_target, 1)
-                weekly_bank = await self._calculate_weekly_bank(user_id, data.date, daily_target)
+                if data.calories_consumed is not None:
+                    # ── Egzersiz kalorisi dahil ──
+                    calories_burned = await self._get_burned_calories(user_id, data.date)
+                    net_consumed = data.calories_consumed - calories_burned
+                    calorie_balance = round(net_consumed - daily_target, 1)
+                    weekly_bank = await self._calculate_weekly_bank(user_id, data.date, daily_target)
 
         # ── complied otomatik hesapla — kullanıcı switch'e dokunmaz ──
         auto_complied = self._calculate_complied(

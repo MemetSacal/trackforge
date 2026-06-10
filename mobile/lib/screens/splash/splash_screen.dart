@@ -121,7 +121,7 @@ class _SplashScreenState extends State<SplashScreen>
                 child: Transform.scale(
                   scale: _imgScale.value,
                   child: SizedBox(
-                    height: sh * 0.60,
+                    height: sh * 0.75,
                     child: Image.asset(
                       'assets/images/splash_bg.png',
                       fit: BoxFit.contain,

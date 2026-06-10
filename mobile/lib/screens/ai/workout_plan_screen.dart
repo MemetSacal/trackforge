@@ -113,9 +113,11 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
           int? reps;
           if (repsRaw is int) reps = repsRaw;
           else if (repsRaw is String) reps = int.tryParse(repsRaw.split('-').first.trim().split(' ').first);
+          final muscleGroups = ex['muscle_groups'];
           await ApiClient.instance.post('${Endpoints.exerciseSessions}/$sessionId/exercises', data: {
             'exercise_name': name, 'sets': sets, 'reps': reps,
             'weight_kg': null, 'notes': ex['notes'] as String?,
+            'muscle_groups': muscleGroups is List ? muscleGroups : null,
           });
         } catch (_) { continue; }
       }
