@@ -344,14 +344,16 @@ class _CalorieBankNote extends ConsumerWidget {
       backgroundColor: t.bgCard,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (_) => _BankAdviceSheet(t: t),
+      builder: (_) => BankAdviceSheetPublic(isDark: t.isDark),
     );
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final consumed    = (meal['calories_consumed']   as num?)?.toDouble() ?? 0;
-    final target      = (meal['calories_target']     as num?)?.toDouble() ?? 0;
+    final target = (meal['calories_target'] as num?)?.toDouble() ?? 0;
+    // target 0 ise gösterme — veri henüz yok demektir
+    if (target == 0 && consumed == 0) return const SizedBox.shrink();
     final bankBalance = (meal['weekly_bank_balance'] as num?)?.toDouble() ?? 0;
     final bankMessage = meal['bank_message'] as String?;
     final isOver      = consumed > target && target > 0;
@@ -600,18 +602,22 @@ class _StatGrid extends StatelessWidget {
     final avgWater     = (water['avg_daily_ml']      as num?)?.toDouble();
 
     final items = [
-      _StatItem(label: 'Ağırlık',     value: weightKg  != null ? weightKg.toStringAsFixed(1) : '--', unit: 'kg',
+      _StatItem(label: 'Ağırlık', value: weightKg != null ? weightKg.toStringAsFixed(1) : '--', unit: 'kg',
         delta: weightChange != null ? '${weightChange < 0 ? "↓" : "↑"} ${weightChange.abs().toStringAsFixed(1)} kg' : null,
-        positive: weightChange != null && weightChange <= 0, bars: const [42, 55, 65, 72, 80, 92]),
-      _StatItem(label: 'Ortalama Su', value: avgWater  != null ? (avgWater / 1000).toStringAsFixed(1) : '--', unit: 'L/gün',
+        positive: weightChange != null && weightChange <= 0,
+        bars: weightKg != null ? [20, 30, 45, 55, 70, (weightKg.clamp(30, 150) / 150 * 100).toInt()] : [0,0,0,0,0,0]),
+      _StatItem(label: 'Ortalama Su', value: avgWater != null ? (avgWater / 1000).toStringAsFixed(1) : '--', unit: 'L/gün',
         delta: avgWater != null ? (avgWater >= 2000 ? '✓ hedefte' : '⚠ düşük') : null,
-        positive: avgWater != null && avgWater >= 2000, bars: const [50, 60, 45, 70, 80, 65]),
-      _StatItem(label: 'Egzersiz',    value: totalSess != null ? '$totalSess' : '--', unit: 'seans',
+        positive: avgWater != null && avgWater >= 2000,
+        bars: avgWater != null ? [10, 20, 35, 50, 65, (avgWater / 3000 * 100).clamp(0, 100).toInt()] : [0,0,0,0,0,0]),
+      _StatItem(label: 'Egzersiz', value: totalSess != null ? '$totalSess' : '--', unit: 'seans',
         delta: totalSess != null ? (totalSess >= 3 ? '✓ iyi' : '⚠ az') : null,
-        positive: totalSess != null && totalSess >= 3, bars: const [55, 70, 45, 88, 75, 100]),
-      _StatItem(label: 'Ort. Uyku',   value: avgSleep  != null ? avgSleep.toStringAsFixed(1) : '--', unit: 'saat',
+        positive: totalSess != null && totalSess >= 3,
+        bars: totalSess != null ? [0, 10, 25, 40, 60, (totalSess.clamp(0, 7) / 7 * 100).toInt()] : [0,0,0,0,0,0]),
+      _StatItem(label: 'Ort. Uyku', value: avgSleep != null ? avgSleep.toStringAsFixed(1) : '--', unit: 'saat',
         delta: avgSleep != null ? (avgSleep >= 7 ? '✓ iyi' : '⚠ az') : null,
-        positive: avgSleep != null && avgSleep >= 7, bars: const [60, 72, 55, 80, 68, 85]),
+        positive: avgSleep != null && avgSleep >= 7,
+        bars: avgSleep != null ? [10, 25, 40, 55, 70, (avgSleep.clamp(0, 10) / 10 * 100).toInt()] : [0,0,0,0,0,0]),
     ];
 
     return GridView.count(
@@ -801,13 +807,13 @@ class _SleepGaugePainter extends CustomPainter {
 }
 
 // ── SERİLER KARTI ───────────────────────────────────────
-class _StreaksCard extends StatelessWidget {
+class _StreaksCard extends ConsumerWidget {
   final _Theme t;
   final Map<String, dynamic> gami;
   const _StreaksCard({required this.t, required this.gami});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final rawStreaks = gami['streaks'];
     final streaks = rawStreaks is List
         ? rawStreaks.map((s) => Map<String, dynamic>.from(s)).toList()
@@ -832,7 +838,10 @@ class _StreaksCard extends StatelessWidget {
         children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text('🏆 Seriler', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: t.text)),
-            Text('Tümü', style: TextStyle(fontSize: 13, color: t.accent, fontWeight: FontWeight.w600)),
+            GestureDetector(
+              onTap: () => ref.read(bottomNavIndexProvider.notifier).state = 4,
+              child: Text('Tümü', style: TextStyle(fontSize: 13, color: t.accent, fontWeight: FontWeight.w600)),
+            ),
           ]),
           const SizedBox(height: 14),
           Row(
@@ -878,6 +887,7 @@ class _DietChartCard extends StatelessWidget {
 
     final values = List.generate(7, (i) {
       if (totalDays == 0) return 0.0;
+      if (i >= totalDays) return 0.0;
       return i < compliedDays ? 10.0 : 3.0;
     });
     final days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
@@ -893,7 +903,14 @@ class _DietChartCard extends StatelessWidget {
               Text('%${avgRate.toInt()}', style: TextStyle(fontSize: 13, color: t.accent, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 14),
-          SizedBox(
+          if (totalDays == 0) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text('Henüz diyet verisi yok', style: TextStyle(fontSize: 13, color: t.textMuted)),
+              ),
+            ),
+          ] else SizedBox(
             height: 60,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -987,14 +1004,14 @@ class _QuickActions extends ConsumerWidget {
 }
 
 // ── KALORI BANKASI SHEET ─────────────────────────────────
-class _BankAdviceSheet extends StatefulWidget {
-  final _Theme t;
-  const _BankAdviceSheet({required this.t});
+class BankAdviceSheetPublic extends StatefulWidget {
+  final bool isDark;
+  const BankAdviceSheetPublic({required this.isDark});
   @override
-  State<_BankAdviceSheet> createState() => _BankAdviceSheetState();
+  State<BankAdviceSheetPublic> createState() => _BankAdviceSheetState();
 }
 
-class _BankAdviceSheetState extends State<_BankAdviceSheet> {
+class _BankAdviceSheetState extends State<BankAdviceSheetPublic> {
   Map<String, dynamic>? _advice;
   bool _isLoading = true;
   String? _error;
@@ -1013,13 +1030,18 @@ class _BankAdviceSheetState extends State<_BankAdviceSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final t = widget.t;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    final t = _Theme(widget.isDark);
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      expand: false,
+      builder: (_, scrollController) => SingleChildScrollView(
+        controller: scrollController,
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           Center(child: Container(width: 40, height: 4,
             decoration: BoxDecoration(color: t.border, borderRadius: BorderRadius.circular(99)))),
           const SizedBox(height: 16),
@@ -1087,6 +1109,7 @@ class _BankAdviceSheetState extends State<_BankAdviceSheet> {
                     ],
         ],
       ),
+    );
     );
   }
 }

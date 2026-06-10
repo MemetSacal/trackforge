@@ -11,6 +11,7 @@ import '../takip/olcum_tab.dart';      // measurementsProvider
 import '../steps/steps_screen.dart';   // todayStepsProvider
 import '../alisveris/alisveris_screen.dart'; // shoppingListProvider
 import '../../core/utils/rate_limiter.dart';
+import '../ai/ai_helpers.dart';
 
 final profileUserProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final response = await ApiClient.instance.get(Endpoints.me);
@@ -46,6 +47,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
   final _aiNameController = TextEditingController();
   String _gender = 'male';
   String _activityLevel = 'sedentary';
+  String _fitnessGoal = 'general_fitness';
 
   // Sağlık tab alanları
   final _bloodTypeController = TextEditingController();
@@ -117,6 +119,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
     _aiNameController.text = prefs['ai_name'] as String? ?? 'TrackForge AI';
     _gender = prefs['gender'] as String? ?? 'male';
     _activityLevel = _safeActivity(prefs['activity_level'] as String? ?? 'sedentary');
+    _fitnessGoal = prefs['fitness_goal'] as String? ?? 'general_fitness';
 
     // Sağlık
     _bloodTypeController.text = prefs['blood_type'] as String? ?? '';
@@ -148,6 +151,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                 if (a != null) 'age': a,
                 'gender': _gender,
                 'activity_level': _activityLevel,
+                'fitness_goal': _fitnessGoal,
                 if (_aiNameController.text.trim().isNotEmpty) 'ai_name': _aiNameController.text.trim(),
               };
       } else if (_tab == 1) {
@@ -192,6 +196,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
       debugPrint('PROFIL RESP: ${resp.data}');
       _prefsLoaded = false; // ← setState dışında, invalidate'ten önce
       ref.invalidate(profilePrefsProvider);
+      ref.invalidate(aiCoachNameProvider); // AI koç ismi anında güncellenir
       setState(() {
         _isEditing = false;
       });
@@ -243,12 +248,11 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
       }
   Future<void> _clearUserPrefsCache() async {
     final prefs = await SharedPreferences.getInstance();
-    final userId = await TokenManager.getCurrentUserId() ?? 'guest';
-    await prefs.remove('last_meal_advice_$userId');
-    await prefs.remove('last_meal_advice_date_$userId');
-    await prefs.remove('last_recommended_foods_$userId');
-    await prefs.remove('last_foods_to_avoid_$userId');
-    await prefs.remove('last_weekly_meal_plan_$userId');
+    final themeMode = prefs.getString('theme_mode');
+    final rememberEmail = prefs.getString('remember_email');
+    await prefs.clear();
+    if (themeMode != null) await prefs.setString('theme_mode', themeMode);
+    if (rememberEmail != null) await prefs.setString('remember_email', rememberEmail);
   }
 
   @override
@@ -679,9 +683,26 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                     value: a['key'], child: Text(a['label']!)))
                 .toList(),
             onChanged: (v) => setState(() => _activityLevel = v!),
-          ),
-          const SizedBox(height: 16),
-          _saveButton(),
+                      ),
+                      const SizedBox(height: 12),
+                      Text('Hedef', style: TextStyle(fontSize: 13, color: textSoft, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: _fitnessGoal,
+                        decoration: const InputDecoration(prefixIcon: Icon(Icons.flag_outlined)),
+                        dropdownColor: bgCard,
+                        style: TextStyle(color: text, fontSize: 14),
+                        items: const [
+                          DropdownMenuItem(value: 'weight_loss',     child: Text('Kilo Vermek')),
+                          DropdownMenuItem(value: 'muscle_gain',     child: Text('Kas Kazanmak')),
+                          DropdownMenuItem(value: 'maintain',        child: Text('Kilo Korumak')),
+                          DropdownMenuItem(value: 'endurance',       child: Text('Dayanıklılık')),
+                          DropdownMenuItem(value: 'general_fitness', child: Text('Genel Fitness')),
+                        ],
+                        onChanged: (v) => setState(() => _fitnessGoal = v!),
+                      ),
+                      const SizedBox(height: 16),
+                      _saveButton(),
         ],
       ),
     );

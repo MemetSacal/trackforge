@@ -28,6 +28,14 @@ final profileGenderProvider = FutureProvider.autoDispose<String>((ref) async {
   } catch (_) { return 'male'; }
 });
 
+// Boy profilden otomatik al — Navy Method için
+final profileHeightProvider = FutureProvider.autoDispose<double?>((ref) async {
+  try {
+    final response = await ApiClient.instance.get(Endpoints.preferences);
+    return (response.data['height_cm'] as num?)?.toDouble();
+  } catch (_) { return null; }
+});
+
 class _OC {
   static const bg        = Color(0xFF0C0D10);
   static const bgCard    = Color(0xFF141620);
@@ -108,16 +116,21 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
   void _showNavySheet(
     BuildContext context,
     String profileGender,
+    double? profileHeight,
     Color bgCard, Color border, Color text, Color muted,
     Color accent, Color accentDim, Color danger,
   ) {
     final neckCtrl   = TextEditingController();
     final waistCtrl  = TextEditingController();
     final hipCtrl    = TextEditingController();
-    final heightCtrl = TextEditingController();
+    // Boy varsa profilden otomatik doldur
+    final heightCtrl = TextEditingController(
+      text: profileHeight != null ? profileHeight.toStringAsFixed(0) : '',
+    );
     String? result;
     String? error;
     final isMale = profileGender == 'male';
+    // heightCtrl profil boy değeriyle doldurulsun
 
     showModalBottomSheet(
       context: context,
@@ -196,33 +209,32 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                   const SizedBox(height: 8),
                 ],
 
-                if (result == null)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        final h  = double.tryParse(heightCtrl.text);
-                        final n  = double.tryParse(neckCtrl.text);
-                        final w  = double.tryParse(waistCtrl.text);
-                        final hi = double.tryParse(hipCtrl.text);
-                        if (h == null || n == null || w == null) {
-                          setModal(() => error = 'Boy, boyun ve bel zorunludur');
-                          return;
-                        }
-                        if (!isMale && hi == null) {
-                          setModal(() => error = 'Kadın için kalça ölçüsü zorunludur');
-                          return;
-                        }
-                        final bf = _navyBodyFat(isMale: isMale, waistCm: w, neckCm: n, heightCm: h, hipCm: hi);
-                        if (bf == null) {
-                          setModal(() => error = 'Geçersiz ölçüm değerleri');
-                          return;
-                        }
-                        setModal(() { result = '%${bf.toStringAsFixed(1)}'; error = null; });
-                      },
-                      child: const Text('Hesapla'),
-                    ),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final h  = double.tryParse(heightCtrl.text);
+                      final n  = double.tryParse(neckCtrl.text);
+                      final w  = double.tryParse(waistCtrl.text);
+                      final hi = double.tryParse(hipCtrl.text);
+                      if (h == null || n == null || w == null) {
+                        setModal(() => error = 'Boy, boyun ve bel zorunludur');
+                        return;
+                      }
+                      if (!isMale && hi == null) {
+                        setModal(() => error = 'Kadın için kalça ölçüsü zorunludur');
+                        return;
+                      }
+                      final bf = _navyBodyFat(isMale: isMale, waistCm: w, neckCm: n, heightCm: h, hipCm: hi);
+                      if (bf == null) {
+                        setModal(() => error = 'Geçersiz ölçüm değerleri');
+                        return;
+                      }
+                      setModal(() { result = '%${bf.toStringAsFixed(1)}'; error = null; });
+                    },
+                    child: Text(result == null ? 'Hesapla' : 'Tekrar Hesapla'),
                   ),
+                ),
               ],
             ),
           ),
@@ -312,6 +324,7 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
     final measurementsAsync = ref.watch(measurementsProvider);
     // Profil gender'ı — loading/error durumunda 'male' fallback
     final profileGender = ref.watch(profileGenderProvider).value ?? 'male';
+    final profileHeight = ref.watch(profileHeightProvider).value;
 
     return measurementsAsync.when(
       loading: () => Center(child: CircularProgressIndicator(color: accent)),

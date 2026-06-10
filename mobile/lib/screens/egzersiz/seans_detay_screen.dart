@@ -76,8 +76,8 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
       });
       _nameController.clear(); _setsController.clear();
       _repsController.clear(); _weightController.clear();
-      ref.invalidate(sessionExercisesProvider(_sessionId));
       if (mounted) Navigator.pop(ctx);
+      ref.invalidate(sessionExercisesProvider(_sessionId));
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Egzersiz eklenirken hata oluştu')));
     } finally { if (mounted) setState(() => _isLoading = false); }

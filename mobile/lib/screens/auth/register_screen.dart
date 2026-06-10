@@ -51,6 +51,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         accessToken:  loginResponse.data['access_token'],
         refreshToken: loginResponse.data['refresh_token'],
         userId:       loginResponse.data['user_id'] ?? '',
+        isPremium:    loginResponse.data['is_premium'] ?? false,
       );
       if (!mounted) return;
       context.go('/onboarding');

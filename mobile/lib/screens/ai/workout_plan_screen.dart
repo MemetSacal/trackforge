@@ -19,16 +19,16 @@ class WorkoutPlanScreen extends ConsumerStatefulWidget {
 class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
   String _goal     = 'muscle_gain';
   String _location = 'gym';
-  int _daysPerWeek      = 3;
-  int _sessionDuration  = 60;
+  int _daysPerWeek     = 3;
+  int _sessionDuration = 60;
 
   String? _planTitle;
   String? _weeklyNotes;
   List<Map<String, dynamic>> _schedule = [];
-  bool _isLoading         = false;
-  bool _isCreatingSession = false;
+  bool _isLoading          = false;
+  bool _isCreatingSession  = false;
   String? _error;
-  bool _limitReached      = false;
+  bool _limitReached       = false;
 
   final _goals = [
     {'key': 'muscle_gain',     'label': '💪 Kas Kazanmak'},
@@ -50,12 +50,16 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
   };
 
   Future<void> _generate() async {
-      final canUse = await RateLimiter.canUseWorkoutPlan();
-      if (!canUse) {
-        setState(() => _limitReached = true);
-        return;
-      }
-      setState(() { _isLoading = true; _error = null; _planTitle = null; _weeklyNotes = null; _schedule = []; _limitReached = false; });
+    final canUse = await RateLimiter.canUseWorkoutPlan();
+    if (!canUse) {
+      setState(() => _limitReached = true);
+      return;
+    }
+    setState(() {
+      _isLoading = true; _error = null;
+      _planTitle = null; _weeklyNotes = null;
+      _schedule = []; _limitReached = false;
+    });
     try {
       final response = await ApiClient.instance.post(Endpoints.aiWorkoutPlan, data: {
         'workout_location': _location, 'fitness_goal': _goal,
@@ -65,11 +69,14 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
       if (raw is List) _schedule = raw.map((d) => Map<String, dynamic>.from(d)).toList();
       await RateLimiter.recordWorkoutPlanUse();
       setState(() {
-        _planTitle   = response.data['plan_title']    as String? ?? '';
-        _weeklyNotes = response.data['weekly_notes']  as String? ?? '';
+        _planTitle   = response.data['plan_title']   as String? ?? '';
+        _weeklyNotes = response.data['weekly_notes'] as String? ?? '';
       });
-    } catch (e) { setState(() => _error = 'Plan oluşturulurken hata oluştu: $e'); }
-    finally { if (mounted) setState(() => _isLoading = false); }
+    } catch (e) {
+      setState(() => _error = 'Plan oluşturulurken hata oluştu: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _startTodayWorkout() async {
@@ -86,7 +93,7 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
     final focus    = todaySchedule['focus'] as String? ?? '';
     final duration = todaySchedule['estimated_duration_minutes'] as int? ?? _sessionDuration;
     final calories = (todaySchedule['estimated_calories'] as num?)?.toDouble();
-    final exercises= todaySchedule['exercises'] as List? ?? [];
+    final exercises = todaySchedule['exercises'] as List? ?? [];
 
     setState(() => _isCreatingSession = true);
     try {
@@ -107,15 +114,30 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
           if (repsRaw is int) reps = repsRaw;
           else if (repsRaw is String) reps = int.tryParse(repsRaw.split('-').first.trim().split(' ').first);
           await ApiClient.instance.post('${Endpoints.exerciseSessions}/$sessionId/exercises', data: {
-            'exercise_name': name, 'sets': sets, 'reps': reps, 'weight_kg': null, 'notes': ex['notes'] as String?,
+            'exercise_name': name, 'sets': sets, 'reps': reps,
+            'weight_kg': null, 'notes': ex['notes'] as String?,
           });
         } catch (_) { continue; }
       }
+
+      // sessionsProvider'ı invalidate et — egzersiz ekranında görünsün
+      ref.invalidate(sessionsProvider);
+
       if (!mounted) return;
-      Navigator.push(context, MaterialPageRoute(builder: (_) => SeansDetayScreen(session: session)));
+
+      // Haftalık plan ekranını navigation stack'ten temizle,
+      // direkt seans detay ekranına git
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => SeansDetayScreen(session: session)),
+        (route) => route.isFirst, // Sadece home_screen'i bırak
+      );
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Seans oluşturulurken hata oluştu')));
-    } finally { if (mounted) setState(() => _isCreatingSession = false); }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Seans oluşturulurken hata oluştu')));
+    } finally {
+      if (mounted) setState(() => _isCreatingSession = false);
+    }
   }
 
   @override
@@ -141,14 +163,14 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
           aiHeader(context, ref, isDark, bg, bgCard, border, text, textSoft, muted, accent, 'Antrenman Planı'),
           Expanded(
             child: _limitReached
-                            ? _buildLimitCard(accentDim, accent, border, text)
-                            : _isLoading
-                            ? aiLoadingState(accent, text, '💪 Antrenman planı hazırlanıyor...')
-                            : _error != null
-                                ? aiErrorState(_error!, danger, accent, _generate)
-                                : hasPlan
-                        ? _planResult(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim)
-                        : _planForm(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim),
+                ? _buildLimitCard(accentDim, accent, border, text)
+                : _isLoading
+                    ? aiLoadingState(accent, text, '💪 Antrenman planı hazırlanıyor...')
+                    : _error != null
+                        ? aiErrorState(_error!, danger, accent, _generate)
+                        : hasPlan
+                            ? _planResult(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim)
+                            : _planForm(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim),
           ),
         ],
       ),
@@ -163,14 +185,20 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
         const SizedBox(height: 10),
         Row(children: _locations.map((l) {
           final sel = _location == l['key'];
-          return Expanded(child: GestureDetector(onTap: () => setState(() => _location = l['key']!),
+          return Expanded(child: GestureDetector(
+            onTap: () => setState(() => _location = l['key']!),
             child: Container(
               margin: const EdgeInsets.only(right: 6),
               padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(color: sel ? accentDim : bgCard, borderRadius: BorderRadius.circular(14), border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1)),
+              decoration: BoxDecoration(
+                color: sel ? accentDim : bgCard,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1),
+              ),
               child: Text(l['label']!, textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text)),
-            )));
+            ),
+          ));
         }).toList()),
         const SizedBox(height: 20),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -199,26 +227,26 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
       child: Column(children: [
-        // Plan başlık
         Container(
           decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
           padding: const EdgeInsets.all(16),
           child: Row(children: [
             const Text('💪', style: TextStyle(fontSize: 32)),
             const SizedBox(width: 12),
-            Expanded(child: Text(_planTitle!.isNotEmpty ? _planTitle! : 'Kişisel Antrenman Planın',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: text))),
+            Expanded(child: Text(
+              _planTitle!.isNotEmpty ? _planTitle! : 'Kişisel Antrenman Planın',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: text),
+            )),
           ]),
         ),
         const SizedBox(height: 12),
 
-        // Günler
         ..._schedule.map((day) {
           final dayName  = day['day']    as String? ?? '';
           final focus    = day['focus']  as String? ?? '';
           final duration = day['estimated_duration_minutes'];
           final calories = day['estimated_calories'];
-          final exercises= day['exercises'] as List? ?? [];
+          final exercises = day['exercises'] as List? ?? [];
 
           return Container(
             margin: const EdgeInsets.only(bottom: 10),
@@ -250,8 +278,9 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
                   final name = ex['name'] as String? ?? ex['exercise_name'] as String? ?? 'Egzersiz';
                   final sets = ex['sets'];
                   final reps = ex['reps'];
-                  final notes= ex['notes'] as String?;
-                  return Padding(padding: const EdgeInsets.only(bottom: 10),
+                  final notes = ex['notes'] as String?;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
                     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Container(width: 6, height: 6, margin: const EdgeInsets.only(top: 7, right: 10),
                         decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
@@ -263,7 +292,8 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
                         if (notes != null && notes.isNotEmpty)
                           Text(notes, style: TextStyle(fontSize: 11, color: muted)),
                       ])),
-                    ]));
+                    ]),
+                  );
                 }),
               ],
             ]),
@@ -283,7 +313,8 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
           const SizedBox(height: 10),
         ],
 
-        SizedBox(width: double.infinity,
+        SizedBox(
+          width: double.infinity,
           child: ElevatedButton(
             onPressed: _isCreatingSession ? null : _startTodayWorkout,
             child: _isCreatingSession
@@ -292,33 +323,36 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
           ),
         ),
         const SizedBox(height: 10),
-        aiOutlineBtn('Yeni Plan Oluştur', Icons.arrow_back, accent, border,
+        aiOutlineBtn('Yeni Plan Oluştur', Icons.refresh, accent, border,
           () => setState(() { _planTitle = null; _weeklyNotes = null; _schedule = []; })),
       ]),
     );
   }
+
   Widget _buildLimitCard(Color accentDim, Color accent, Color border, Color text) {
-      return Center(
-        child: Padding(
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
           padding: const EdgeInsets.all(24),
-          child: Container(
-            decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
-            padding: const EdgeInsets.all(24),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text('⏳', style: TextStyle(fontSize: 48)),
-              const SizedBox(height: 16),
-              Text('Haftalık Limit', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent)),
-              const SizedBox(height: 8),
-              Text('Bu haftaki antrenman planı hakkını kullandın.\nYeni hafta başında tekrar kullanılabilir.',
-                  textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: text, height: 1.5)),
-            ]),
-          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('⏳', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 16),
+            Text('Haftalık Limit', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent)),
+            const SizedBox(height: 8),
+            Text('Bu haftaki antrenman planı hakkını kullandın.\nYeni hafta başında tekrar kullanılabilir.',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: text, height: 1.5)),
+          ]),
         ),
-      );
-    }
+      ),
+    );
+  }
 
   Widget _chip2(String label, Color bg, Color border, Color text) =>
-    Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: border)),
-      child: Text(label, style: TextStyle(fontSize: 11, color: text)));
+      child: Text(label, style: TextStyle(fontSize: 11, color: text)),
+    );
 }

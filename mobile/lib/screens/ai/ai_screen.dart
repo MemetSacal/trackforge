@@ -11,6 +11,7 @@ import 'workout_plan_screen.dart';
 import 'meal_advice_screen.dart';
 import 'recipe_screen.dart';
 import 'calorie_vision_screen.dart';
+import 'ai_helpers.dart';
 
 
 final aiNotificationsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
@@ -24,13 +25,6 @@ final aiNotificationsProvider = FutureProvider.autoDispose<List<Map<String, dyna
       'time':  parts.length > 2 ? parts[2] : '',
     };
   }).toList().reversed.toList();
-});
-
-final aiCoachNameProvider = FutureProvider<String>((ref) async {
-  try {
-    final response = await ApiClient.instance.get(Endpoints.preferences);
-    return response.data['ai_name'] as String? ?? 'TrackForge AI';
-  } catch (_) { return 'TrackForge AI'; }
 });
 
 class AiScreen extends ConsumerWidget {
@@ -158,7 +152,7 @@ class AiScreen extends ConsumerWidget {
               backgroundColor: isDark ? const Color(0xFF141620) : Colors.white,
               isScrollControlled: true,
               shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-              builder: (_) => _BankAdviceSheet(t: _Theme(isDark)),
+              builder: (_) => BankAdviceSheetPublic(isDark: isDark),
             );
           }),
           _Feature('👨‍🍳', 'Tarif Önerici',  'Malzeme bazlı tarifler',              null,      () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RecipeScreen()))),

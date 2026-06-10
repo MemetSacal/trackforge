@@ -1,7 +1,20 @@
 // ── ai_helpers.dart ─────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/api/api_client.dart';
+import '../../core/api/endpoints.dart';
 import '../../app.dart';
+
+// ── AI Koç ismi provider — autoDispose ile her açılışta fresh ──
+// profil_screen.dart'tan invalidate edilebilir
+final aiCoachNameProvider = FutureProvider.autoDispose<String>((ref) async {
+  try {
+    final response = await ApiClient.instance.get(Endpoints.preferences);
+    return response.data['ai_name'] as String? ?? 'TrackForge AI';
+  } catch (_) {
+    return 'TrackForge AI';
+  }
+});
 
 Widget aiHeader(BuildContext context, WidgetRef ref, bool isDark,
     Color bg, Color bgCard, Color border, Color text, Color textSoft, Color muted, Color accent, String title) {

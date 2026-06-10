@@ -13,6 +13,7 @@ void main() async {
   await NotificationService.init();
 
   FlutterNativeSplash.remove();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
   runApp(
     const ProviderScope(
