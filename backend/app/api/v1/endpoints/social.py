@@ -11,6 +11,12 @@ from backend.app.core.dependencies import get_current_user
 from backend.app.infrastructure.db.session import get_db
 from sqlalchemy import select
 from backend.app.infrastructure.db.models.user_model import UserModel
+from backend.app.application.schemas.social import (
+    SendFriendRequestSchema,
+    FriendshipResponse,
+    LeaderboardEntryResponse,
+    PendingRequestResponse,   # ← ekle
+)
 
 router = APIRouter(tags=["Social"])
 
@@ -74,6 +80,15 @@ async def get_friends(
 ):
     # Kabul edilmiş arkadaşları listele
     return await service.get_friends(user_id)
+
+
+# ── GET /social/friends/pending ──
+@router.get("/friends/pending", response_model=list[PendingRequestResponse])
+async def get_pending_requests(
+    user_id: str = Depends(get_current_user),
+    service: SocialService = Depends(get_social_service),
+):
+    return await service.get_pending_requests(user_id)
 
 
 # ── GET /social/leaderboard ──

@@ -85,20 +85,34 @@ class SocialRepository(ISocialRepository):
         await self.db.flush()
         return True
 
-    # ── Kullanıcının tüm kabul edilmiş arkadaşlarını getir ──
     async def get_friends(self, user_id: str) -> List[Friendship]:
+        result = await self.db.execute(...)
+        return [self._to_entity(m) for m in result.scalars().all()]
+
+    # ── Gelen bekleyen arkadaşlık isteklerini getir (requester ismiyle) ──
+    async def get_pending_requests(self, user_id: str) -> List[dict]:
         result = await self.db.execute(
-            select(FriendshipModel).where(
+            select(FriendshipModel, UserModel.full_name)
+            .join(UserModel, FriendshipModel.requester_id == UserModel.id)
+            .where(
                 and_(
-                    FriendshipModel.status == "accepted",
-                    or_(
-                        FriendshipModel.requester_id == user_id,
-                        FriendshipModel.addressee_id == user_id,
-                    ),
+                    FriendshipModel.addressee_id == user_id,
+                    FriendshipModel.status == "pending",
                 )
             )
         )
-        return [self._to_entity(m) for m in result.scalars().all()]
+        rows = result.all()
+        return [
+            {
+                "id": row[0].id,
+                "requester_id": row[0].requester_id,
+                "requester_name": row[1] or "Kullanıcı",
+                "addressee_id": row[0].addressee_id,
+                "status": row[0].status,
+                "created_at": row[0].created_at,
+            }
+            for row in rows
+        ]
 
     # ── İki kullanıcı arasındaki mevcut ilişkiyi getir ──
     async def get_friendship(self, requester_id: str, addressee_id: str) -> Optional[Friendship]:

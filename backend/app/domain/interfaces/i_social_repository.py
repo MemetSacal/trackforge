@@ -26,15 +26,20 @@ class ISocialRepository(ABC):
     async def get_friends(self, user_id: str) -> List[Friendship]:
         pass
 
-    # ── İki kullanıcı arasındaki mevcut ilişkiyi getir ──
-    @abstractmethod
-    async def get_friendship(self, requester_id: str, addressee_id: str) -> Optional[Friendship]:
-        pass
+        # ── İki kullanıcı arasındaki mevcut ilişkiyi getir ──
+        @abstractmethod
+        async def get_friendship(self, requester_id: str, addressee_id: str) -> Optional[Friendship]:
+            pass
 
-    # ── Leaderboard: arkadaşların haftalık XP sıralaması ──
-    @abstractmethod
-    async def get_leaderboard(self, user_id: str) -> List[dict]:
-        pass
+        # ── Gelen bekleyen arkadaşlık isteklerini getir ──
+        @abstractmethod
+        async def get_pending_requests(self, user_id: str) -> List[dict]:
+            pass
+
+        # ── Leaderboard: arkadaşların haftalık XP sıralaması ──
+        @abstractmethod
+        async def get_leaderboard(self, user_id: str) -> List[dict]:
+            pass
 
 
 """

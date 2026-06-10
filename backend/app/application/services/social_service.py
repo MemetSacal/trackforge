@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.application.schemas.social import (
     FriendshipResponse,
     LeaderboardEntryResponse,
+    PendingRequestResponse,
 )
 from backend.app.domain.entities.friendship import Friendship
 from backend.app.infrastructure.repositories.social_repository import SocialRepository
@@ -73,6 +74,10 @@ class SocialService:
     async def get_friends(self, user_id: str) -> List[FriendshipResponse]:
         friends = await self.repo.get_friends(user_id)
         return [self._to_response(f) for f in friends]
+
+    async def get_pending_requests(self, user_id: str) -> List[PendingRequestResponse]:
+        rows = await self.repo.get_pending_requests(user_id)
+        return [PendingRequestResponse(**row) for row in rows]
 
     # ── Leaderboard: arkadaşlar arası haftalık XP sıralaması ──
     async def get_leaderboard(self, user_id: str) -> List[LeaderboardEntryResponse]:

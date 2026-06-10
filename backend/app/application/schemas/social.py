@@ -20,6 +20,18 @@ class FriendshipResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Response: Gelen arkadaşlık isteği (requester bilgisiyle) ──
+class PendingRequestResponse(BaseModel):
+    id: str
+    requester_id: str
+    requester_name: str   # JOIN'den gelen isim
+    addressee_id: str
+    status: str
+    created_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Response: Leaderboard satırı ──
 class LeaderboardEntryResponse(BaseModel):
     rank: int
