@@ -27,9 +27,11 @@ class ExerciseSession:
     id: str
     user_id: str
     date: date
+
+    created_at: datetime
+
     duration_minutes: Optional[int] = None
     calories_burned: Optional[float] = None
     notes: Optional[str] = None
 
     source: str = "manual"
-    created_at: datetime = field(default_factory=datetime.utcnow)
