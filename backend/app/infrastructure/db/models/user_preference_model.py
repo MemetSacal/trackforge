@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import String, DateTime, JSON, ForeignKey, UniqueConstraint, func, Float, Integer
+from sqlalchemy import Boolean, String, DateTime, JSON, ForeignKey, UniqueConstraint, func, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.infrastructure.db.base import Base
@@ -48,6 +48,9 @@ class UserPreferenceModel(Base):
     ai_name: Mapped[str] = mapped_column(String(100), nullable=True, default="TrackForge AI")
     target_weight_kg: Mapped[float] = mapped_column(Float, nullable=True)  # Hedef kilo
     daily_calorie_habit: Mapped[str] = mapped_column(String, nullable=True)  # under_1500 / 1500_2000 vb.
+    fasting_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # v6: 🌙 Ramazan/oruç modu — aktifken AI öğünleri iftar-sahur düzenine
+    # göre planlar, antrenmanı iftar sonrasına önerir, gündüz beslenme önermez.
 
     # Zaman damgaları
     created_at: Mapped[datetime] = mapped_column(

@@ -16,11 +16,6 @@ from backend.app.core.dependencies import get_current_user
 from backend.app.infrastructure.db.session import get_db
 from backend.app.infrastructure.repositories.exercise_session_repository import ExerciseSessionRepository
 from backend.app.infrastructure.repositories.session_exercise_repository import SessionExerciseRepository
-from sqlalchemy import select as _select
-from backend.app.infrastructure.db.models.exercise_catalog_model import ExerciseCatalogModel
-from backend.app.infrastructure.db.session import get_db as _get_db
-from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
-
 
 router = APIRouter()
 
@@ -153,6 +148,13 @@ create_session → antrenman oluşturulunca gamification tetiklenir:
 
 Spring Boot karşılığı: @RestController + @PostMapping + Event publish.
 """
+
+# ── v5: GET /exercises/catalog ───────────────────────────
+from sqlalchemy import select as _select
+from backend.app.infrastructure.db.models.exercise_catalog_model import ExerciseCatalogModel
+from backend.app.infrastructure.db.session import get_db as _get_db
+from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
+
 
 @router.get("/catalog")
 async def get_exercise_catalog(

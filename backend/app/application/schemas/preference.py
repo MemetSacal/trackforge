@@ -36,6 +36,7 @@ class UserPreferenceUpdate(BaseModel):
     fitness_goal: Optional[str] = None
     ai_name: Optional[str] = None
     diet_preference: Optional[str] = None
+    fasting_mode: Optional[bool] = None  # v6: Ramazan/oruç modu
     target_weight_kg: Optional[float] = None
     daily_calorie_habit: Optional[str] = None
 
@@ -57,6 +58,7 @@ class UserPreferenceResponse(BaseModel):
     fitness_goal: Optional[str] = None
     ai_name: Optional[str] = None
     diet_preference: Optional[str] = None
+    fasting_mode: Optional[bool] = None  # v6: Ramazan/oruç modu
     target_weight_kg: Optional[float] = None
     daily_calorie_habit: Optional[str] = None
     created_at: datetime

@@ -132,6 +132,17 @@ async def build_user_context(db: AsyncSession, user_id: str) -> str:
             line += f" | Ort. alınan: {int(sum(cal_days) / len(cal_days))} kcal/gün"
         parts.append(line)
 
+    # ── v6: 🌙 Ramazan/oruç modu ──
+    if prefs and getattr(prefs, "fasting_mode", False):
+        parts.append(
+            "🌙 ORUÇ/RAMAZAN MODU AKTİF: Kullanıcı gün boyunca yemek yemiyor ve su içmiyor. "
+            "Beslenme önerilerini SADECE iftar (akşam) ve sahur (şafak öncesi) öğünlerine göre yapılandır. "
+            "Sahurda tok tutan (protein + kompleks karbonhidrat + sağlıklı yağ), iftar açılışında hafif başlangıç öner. "
+            "Antrenmanı iftardan 1-2 saat sonrasına veya iftara yakın saate öner; gündüz yoğun antrenman ÖNERME. "
+            "Gündüz su/beslenme hatırlatması YAPMA; sıvı hedefini iftar-sahur aralığına sıkıştır. "
+            "Kalori hedefini iki öğüne gerçekçi böl."
+        )
+
     # ── v3: Plato tespiti — AI proaktif değinsin ──
     plateau = await detect_plateau(db, user_id)
     goal = getattr(prefs, "fitness_goal", None) if prefs else None

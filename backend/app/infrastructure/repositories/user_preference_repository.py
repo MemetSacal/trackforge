@@ -56,6 +56,7 @@ class UserPreferenceRepository(IUserPreferenceRepository):
             activity_level=model.activity_level,
             ai_name=getattr(model, 'ai_name', None),
             diet_preference=getattr(model, 'diet_preference', None),
+            fasting_mode=getattr(model, 'fasting_mode', False),  # v6
             target_weight_kg=getattr(model, 'target_weight_kg', None),
             daily_calorie_habit=getattr(model, 'daily_calorie_habit', None),
         )
@@ -103,6 +104,7 @@ class UserPreferenceRepository(IUserPreferenceRepository):
         model.activity_level = preference.activity_level
         model.ai_name = preference.ai_name
         model.diet_preference = preference.diet_preference
+        model.fasting_mode = getattr(preference, 'fasting_mode', False)  # v6
         model.target_weight_kg = preference.target_weight_kg
         model.daily_calorie_habit = preference.daily_calorie_habit
         await self.db.flush()

@@ -12,12 +12,6 @@ from backend.app.core.dependencies import get_current_user
 from backend.app.infrastructure.db.session import get_db
 from sqlalchemy import select
 from backend.app.infrastructure.db.models.user_model import UserModel
-from datetime import date as _date, timedelta as _timedelta
-from pydantic import BaseModel as _BaseModel
-from sqlalchemy import select as _select, func as _func, or_ as _or, and_ as _and
-from backend.app.infrastructure.db.models.duel_model import DuelModel
-from backend.app.infrastructure.db.models.step_log_model import StepLogModel
-from backend.app.infrastructure.db.models.friendship_model import FriendshipModel
 
 router = APIRouter(tags=["Social"])
 
@@ -124,6 +118,15 @@ Spring Boot karşılığı: @RestController + @RequestMapping("/social")
 # Bitiş tarihi geçmiş aktif düellolar listeleme anında finalize edilir
 # (lazy finalization — cron/job gerekmez, v1.0 için yeterli).
 # ═════════════════════════════════════════════════════════
+
+from datetime import date as _date, timedelta as _timedelta
+from pydantic import BaseModel as _BaseModel
+
+from sqlalchemy import select as _select, func as _func, or_ as _or, and_ as _and
+from backend.app.infrastructure.db.models.duel_model import DuelModel
+from backend.app.infrastructure.db.models.step_log_model import StepLogModel
+from backend.app.infrastructure.db.models.friendship_model import FriendshipModel
+from backend.app.infrastructure.db.models.user_model import UserModel
 
 
 class DuelCreateRequest(_BaseModel):

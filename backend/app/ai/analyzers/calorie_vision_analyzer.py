@@ -129,3 +129,51 @@ SADECE JSON formatında yanıt ver, başka hiçbir şey yazma:
         text = text.split("```")[1].split("```")[0].strip()
     data = json.loads(text)
     return data.get("ingredients", [])
+
+
+# ═════════════════════════════════════════════════════════
+# ── v6: Serbest metinden kalori analizi ──
+# "2 yumurta, bir dilim tam buğday ekmeği, şekersiz çay" →
+# kalori + makrolar. Vision ile AYNI yanıt şekli döner; mobil
+# tek render koduyla ikisini de gösterir.
+# Sesli giriş bedavaya gelir: klavyenin 🎤 tuşu dikte eder,
+# biz sadece metni anlarız — ekstra paket/izin gerekmez.
+# ═════════════════════════════════════════════════════════
+
+async def analyze_food_text(description: str) -> dict:
+    client = get_claude_client()
+
+    prompt = f"""Kullanıcı yediği öğünü serbest metinle tarif etti:
+
+"{description}"
+
+Türk mutfağı porsiyon ölçülerini bil (1 dilim ekmek ~25g, 1 kepçe çorba ~250ml,
+1 porsiyon pilav ~150g, 1 su bardağı ~200ml gibi). Miktar belirtilmemişse
+makul ev porsiyonu varsay ve notes'ta varsayımını belirt.
+
+SADECE JSON formatında yanıt ver, başka hiçbir şey yazma:
+
+{{
+  "food_items": [
+    {{"name": "yemek adı", "portion": "tahmini porsiyon", "calories": 150}}
+  ],
+  "total_calories": 450,
+  "macros": {{"protein_g": 20, "carbs_g": 50, "fat_g": 15}},
+  "confidence": "high/medium/low",
+  "notes": "varsayımlar veya öneriler (opsiyonel)"
+}}"""
+
+    def _call():
+        return client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+    message = await asyncio.to_thread(_call)
+    text = message.content[0].text.strip()
+    if "```json" in text:
+        text = text.split("```json")[1].split("```")[0].strip()
+    elif "```" in text:
+        text = text.split("```")[1].split("```")[0].strip()
+    return json.loads(text)

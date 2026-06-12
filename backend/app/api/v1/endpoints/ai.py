@@ -41,7 +41,7 @@ from backend.app.core.dependencies import get_current_user, get_current_user_pre
 from backend.app.core.ai_rate_limiter import check_quota, consume_and_status
 from backend.app.ai.context_builder import build_user_context, detect_plateau
 from backend.app.ai.analyzers.weekly_analyzer import generate_weekly_summary
-from backend.app.ai.analyzers.calorie_vision_analyzer import analyze_food_calories, analyze_fridge_ingredients
+from backend.app.ai.analyzers.calorie_vision_analyzer import analyze_food_calories, analyze_fridge_ingredients, analyze_food_text
 from backend.app.ai.generators.workout_generator import generate_workout_plan
 from backend.app.ai.generators.meal_advisor import generate_meal_advice
 from backend.app.ai.generators.recipe_generator import generate_recipe
@@ -495,6 +495,45 @@ async def get_calorie_bank_advice(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Kalori bankası tavsiyesi oluşturulamadı: {str(e)}")
+
+
+# ── POST /ai/calorie-from-text (v6 YENİ) ─────────────────
+from pydantic import BaseModel as _BaseModel
+
+
+class TextCalorieRequest(_BaseModel):
+    description: str
+
+
+@router.post("/calorie-from-text", response_model=CalorieVisionResponse)
+async def get_calories_from_text(
+    data: TextCalorieRequest,
+    user_info: tuple = Depends(get_current_user_premium),
+    db: AsyncSession = Depends(get_db),
+):
+    """Serbest metinden kalori analizi (v6).
+
+    "2 yumurta, bir dilim ekmek, çay" → kalori + makro.
+    Klavye dikte tuşuyla sesli giriş bedavaya gelir.
+    Vision ile aynı yanıt şekli — mobil tek render kodu kullanır.
+    """
+    current_user, is_premium = user_info
+    desc = (data.description or "").strip()
+    if len(desc) < 3:
+        raise HTTPException(status_code=400, detail="Ne yediğini kısaca tarif et (örn: 2 yumurta, bir dilim ekmek).")
+    if len(desc) > 500:
+        raise HTTPException(status_code=400, detail="Tarif çok uzun — 500 karakteri geçme.")
+
+    await check_quota(db, current_user, is_premium, "text_calorie")
+    try:
+        result = await analyze_food_text(desc)
+        quota = await consume_and_status(db, current_user, is_premium, "text_calorie")
+        await db.commit()
+        return CalorieVisionResponse(**result, quota=quota)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kalori analizi yapılamadı: {str(e)}")
 
 
 # ── POST /ai/recipe-from-photo (v3 YENİ) ─────────────────

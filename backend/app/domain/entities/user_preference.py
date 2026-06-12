@@ -28,6 +28,7 @@ class UserPreference:
     workout_location: Optional[str] = None
     fitness_goal: Optional[str] = None
     diet_preference: Optional[str] = None
+    fasting_mode: bool = False  # v6: Ramazan/oruç modu
     ai_name: Optional[str] = None
     target_weight_kg: Optional[float] = None
     daily_calorie_habit: Optional[str] = None

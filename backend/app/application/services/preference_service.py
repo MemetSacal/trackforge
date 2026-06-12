@@ -33,6 +33,7 @@ class PreferenceService:
             fitness_goal=entity.fitness_goal,
             ai_name=getattr(entity, 'ai_name', None),
             diet_preference=getattr(entity, 'diet_preference', None),
+            fasting_mode=getattr(entity, 'fasting_mode', False),  # v6
             target_weight_kg=getattr(entity, 'target_weight_kg', None),
             daily_calorie_habit=getattr(entity, 'daily_calorie_habit', None),
             created_at=entity.created_at,
@@ -95,6 +96,7 @@ class PreferenceService:
         entity.fitness_goal = data.fitness_goal if data.fitness_goal is not None else entity.fitness_goal
         entity.ai_name = data.ai_name if data.ai_name is not None else entity.ai_name
         entity.diet_preference = data.diet_preference if data.diet_preference is not None else entity.diet_preference
+        entity.fasting_mode = data.fasting_mode if data.fasting_mode is not None else entity.fasting_mode  # v6
         entity.target_weight_kg = data.target_weight_kg if data.target_weight_kg is not None else entity.target_weight_kg
         entity.daily_calorie_habit = data.daily_calorie_habit if data.daily_calorie_habit is not None else entity.daily_calorie_habit
 

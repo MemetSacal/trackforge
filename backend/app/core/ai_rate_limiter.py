@@ -33,6 +33,7 @@ QUOTAS: dict[str, tuple[int, int, str]] = {
     "calorie_bank":    (3,   15, "daily"),    # v2: eskiden limitsizdi
     "ai_feedback":     (50, 200, "daily"),    # feedback spam koruması
     "fridge_recipe":   (2,   15, "weekly"),   # v3: buzdolabı foto→tarif (vision + üretim = 2 AI çağrısı, ayrı kota)
+    "text_calorie":    (5,   30, "daily"),    # v6: yazıyla/sesle öğün girişi (görsel yok → ucuz → cömert)
 }
 
 

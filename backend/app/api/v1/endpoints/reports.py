@@ -8,27 +8,6 @@ from backend.app.application.schemas.report import WeeklyReportResponse, Monthly
 from backend.app.application.services.report_service import ReportService
 from backend.app.infrastructure.db.session import get_db
 from backend.app.core.dependencies import get_current_user
-from datetime import date as _date
-from sqlalchemy import select as _select
-
-from backend.app.core.exceptions import NotFoundException
-from backend.app.infrastructure.db.models.measurement_model import MeasurementModel
-from backend.app.infrastructure.repositories.user_repository import UserRepository
-from backend.app.application.services.gamification_service import GamificationService
-from backend.app.application.services.meal_compliance_service import MealComplianceService
-from backend.app.application.services.water_service import WaterService
-from backend.app.application.services.sleep_service import SleepService
-from backend.app.infrastructure.repositories.meal_compliance_repository import MealComplianceRepository
-from sqlalchemy import func as _func
-from backend.app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
-from backend.app.infrastructure.db.models.session_exercise_model import SessionExerciseModel
-from backend.app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
-from backend.app.infrastructure.db.models.water_log_model import WaterLogModel
-from backend.app.infrastructure.db.models.step_log_model import StepLogModel
-from backend.app.infrastructure.db.models.streak_model import StreakModel
-from backend.app.infrastructure.db.models.badge_model import BadgeModel
-from datetime import datetime as _dt, time as _time, timezone as _tz
-
 
 router = APIRouter()
 
@@ -102,6 +81,19 @@ Spring Boot karşılığı: @RestController + @GetMapping + @RequestParam.
 #   endpoint'lerin döndürdükleriyle BİREBİR aynı (aynı servisler ve
 #   şemalar kullanılıyor) — mobil parse kodu hiç değişmeden çalışır.
 # ═════════════════════════════════════════════════════════
+
+from datetime import date as _date
+from sqlalchemy import select as _select
+
+from backend.app.core.exceptions import NotFoundException
+from backend.app.infrastructure.db.models.measurement_model import MeasurementModel
+from backend.app.infrastructure.repositories.user_repository import UserRepository
+from backend.app.application.services.gamification_service import GamificationService
+from backend.app.application.services.meal_compliance_service import MealComplianceService
+from backend.app.application.services.water_service import WaterService
+from backend.app.application.services.sleep_service import SleepService
+from backend.app.infrastructure.repositories.meal_compliance_repository import MealComplianceRepository
+
 
 @router.get("/dashboard-summary")
 async def get_dashboard_summary(
@@ -178,6 +170,14 @@ async def get_dashboard_summary(
 # kotasız ve bedava. Paylaşılan her kart organik tanıtımdır.
 # ═════════════════════════════════════════════════════════
 
+from sqlalchemy import func as _func
+from backend.app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
+from backend.app.infrastructure.db.models.session_exercise_model import SessionExerciseModel
+from backend.app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
+from backend.app.infrastructure.db.models.water_log_model import WaterLogModel
+from backend.app.infrastructure.db.models.step_log_model import StepLogModel
+from backend.app.infrastructure.db.models.streak_model import StreakModel
+from backend.app.infrastructure.db.models.badge_model import BadgeModel
 
 
 @router.get("/wrapped")
@@ -305,5 +305,6 @@ async def get_wrapped(
 
 def sa_dt(d: _date, end: bool = False):
     """date → timezone'lu datetime (gün başı/sonu) — earned_at karşılaştırması için."""
+    from datetime import datetime as _dt, time as _time, timezone as _tz
     t = _time(23, 59, 59) if end else _time(0, 0, 0)
     return _dt.combine(d, t, tzinfo=_tz.utc)
