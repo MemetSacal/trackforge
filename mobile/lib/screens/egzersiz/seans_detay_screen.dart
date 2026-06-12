@@ -468,15 +468,67 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
                     }),
 
                     const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: () => _showAddSheet(context, bgCard, border, text, accent),
-                      child: Container(
+                    // ── v4: Plan kilidi ──
+                    // AI planından gelen seansa elle egzersiz eklenmez:
+                    // plan hacim/denge bütünlüğünü korur, compliance temiz ölçülür.
+                    // Ekstra çalışmak isteyen serbest seans açar — o da AI'a
+                    // "kullanıcı plan dışı şunu yapıyor" sinyali olarak gider.
+                    if ((widget.session['source'] as String? ?? 'manual') == 'ai_plan')
+                      Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(16), border: Border.all(color: accent)),
-                        child: Center(child: Text('+ Egzersiz Ekle', style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 14))),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(16), border: Border.all(color: border)),
+                        child: Column(children: [
+                          Row(children: [
+                            const Text('🔒', style: TextStyle(fontSize: 16)),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(
+                              'Bu seans AI koçunun planı — bütünlüğü korumak için kilitli.',
+                              style: TextStyle(fontSize: 12, color: muted, height: 1.4),
+                            )),
+                          ]),
+                          const SizedBox(height: 10),
+                          GestureDetector(
+                            onTap: () async {
+                              // Bugüne serbest seans aç ve detayına git
+                              try {
+                                final res = await ApiClient.instance.post(Endpoints.exerciseSessions, data: {
+                                  'date': widget.session['date'],
+                                  'notes': 'Serbest seans',
+                                  'source': 'manual',
+                                });
+                                if (context.mounted) {
+                                  Navigator.pushReplacement(context, MaterialPageRoute(
+                                    builder: (_) => SeansDetayScreen(session: Map<String, dynamic>.from(res.data)),
+                                  ));
+                                }
+                              } catch (_) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Serbest seans açılamadı')));
+                                }
+                              }
+                            },
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(14), border: Border.all(color: accent)),
+                              child: Center(child: Text('💪 Ekstra mı çalışacaksın? Serbest seans aç',
+                                  style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 13))),
+                            ),
+                          ),
+                        ]),
+                      )
+                    else
+                      GestureDetector(
+                        onTap: () => _showAddSheet(context, bgCard, border, text, accent),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(16), border: Border.all(color: accent)),
+                          child: Center(child: Text('+ Egzersiz Ekle', style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 14))),
+                        ),
                       ),
-                    ),
                   ],
                 );
               },

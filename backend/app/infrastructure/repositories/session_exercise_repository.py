@@ -21,6 +21,7 @@ class SessionExerciseRepository(ISessionExerciseRepository):
             reps=exercise.reps,
             weight_kg=exercise.weight_kg,
             notes=exercise.notes,
+            completed=getattr(exercise, "completed", False),  # v5 FIX
             created_at=exercise.created_at,
         )
         self.session.add(db_obj)
@@ -57,6 +58,7 @@ class SessionExerciseRepository(ISessionExerciseRepository):
         db_obj.reps = exercise.reps
         db_obj.weight_kg = exercise.weight_kg
         db_obj.notes = exercise.notes
+        db_obj.completed = getattr(exercise, "completed", False)  # v5 FIX: işaret artık DB'ye yazılıyor
         await self.session.flush()
         return self._to_entity(db_obj)
 
@@ -82,6 +84,7 @@ class SessionExerciseRepository(ISessionExerciseRepository):
             weight_kg=db_obj.weight_kg,
             notes=db_obj.notes,
             created_at=db_obj.created_at,
+            completed=getattr(db_obj, "completed", False),  # v5 FIX: işaret artık okunuyor
         )
 
 """

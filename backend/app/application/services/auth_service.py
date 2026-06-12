@@ -49,9 +49,10 @@ class AuthService:
         return self._generate_tokens(user)
 
     def _generate_tokens(self, user: User) -> dict:
-        # access ve refresh token üretir
-        access_token = create_access_token({"sub": user.id})
-        refresh_token = create_refresh_token({"sub": user.id})
+        # access ve refresh token üretir — v3: token_version claim'i ile
+        ver = getattr(user, "token_version", 0)
+        access_token = create_access_token({"sub": user.id}, token_version=ver)
+        refresh_token = create_refresh_token({"sub": user.id}, token_version=ver)
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
@@ -77,7 +78,30 @@ class AuthService:
         if not user:
             raise UnauthorizedException("Kullanıcı bulunamadı")
 
+        # v3: token versiyonu eşleşmiyorsa bu refresh token logout/şifre
+        # değişimi ÖNCESİNDEN kalma demektir — reddet.
+        token_ver = payload.get("ver", 0)
+        if token_ver != getattr(user, "token_version", 0):
+            raise UnauthorizedException("Oturum sonlandırılmış, tekrar giriş yapın")
+
         return self._generate_tokens(user)
+
+    async def logout(self, user_id: str) -> None:
+        """v3: Sunucu tarafı logout — token_version +1.
+        Mobildeki prefs.clear() sadece cihazı temizliyordu; refresh token
+        sunucuda 7 gün geçerli kalıyordu. Artık gerçekten ölüyor."""
+        await self.user_repository.bump_token_version(user_id)
+
+    async def delete_account(self, user_id: str, password: str) -> None:
+        """v3: Hesap silme — Play Store zorunluluğu + KVKK m.7 (silme hakkı).
+        Şifre doğrulaması ister: çalınan telefonda açık oturumla
+        hesap silinememesi için."""
+        user = await self.user_repository.get_by_id(user_id)
+        if not user:
+            raise UnauthorizedException("Kullanıcı bulunamadı")
+        if not verify_password(password, user.password_hash):
+            raise UnauthorizedException("Şifre hatalı — hesap silinemedi")
+        await self.user_repository.delete(user_id)
 """
 Clean Architecture'da servis katmanı zaten implementasyon — yani ayrı bir impl sınıfına gerek yok.
 Spring Boot'ta şöyle yapıyordun:

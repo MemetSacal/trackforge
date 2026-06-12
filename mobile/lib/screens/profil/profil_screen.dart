@@ -1,5 +1,6 @@
 // ── profil_screen.dart ──────────────────────────────────
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -235,6 +236,14 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
       ),
     );
     if (confirm == true) {
+      // v3: Sunucu tarafı logout — token_version +1, refresh token'lar ölür.
+      // ESKİ DAVRANIŞ: sadece lokal temizlik vardı; çalınan/sızdırılan
+      // refresh token sunucuda 7 gün geçerli kalıyordu.
+      try {
+        await ApiClient.instance.post(Endpoints.authLogout);
+      } catch (_) {
+        // Sunucuya ulaşılamasa bile lokal çıkış devam eder
+      }
       await RateLimiter.clearUserLimits();
           await _clearUserPrefsCache();
           await TokenManager.clearTokens();
@@ -246,6 +255,84 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
           if (mounted) context.go('/login');
         }
       }
+  // ── v3: Hesap silme (Play Store zorunluluğu + KVKK) ──
+  // İki aşamalı güvenlik: onay dialogu + şifre doğrulaması.
+  // Geri alınamaz olduğu çok net söylenir.
+  Future<void> _deleteAccount() async {
+    final passwordController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Hesabı Kalıcı Olarak Sil'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Bu işlem GERİ ALINAMAZ. Tüm ölçümlerin, antrenmanların, '
+              'beslenme kayıtların, rozetlerin ve AI geçmişin kalıcı olarak silinir.\n\n'
+              'Onaylamak için şifreni gir:',
+              style: TextStyle(fontSize: 13, height: 1.45),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Şifre',
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hesabımı Sil', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final password = passwordController.text.trim();
+    if (password.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Silme işlemi için şifre gerekli')));
+      }
+      return;
+    }
+    try {
+      await ApiClient.instance.delete(Endpoints.authDeleteMe, data: {'password': password});
+      // Sunucudaki her şey silindi — lokali de temizle ve login'e dön
+      await RateLimiter.clearUserLimits();
+      await _clearUserPrefsCache();
+      await TokenManager.clearTokens();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Hesabın ve tüm verilerin silindi. Hoşça kal 👋')));
+        context.go('/login');
+      }
+    } on DioException catch (e) {
+      final msg = e.response?.statusCode == 401
+          ? 'Şifre hatalı — hesap silinemedi'
+          : 'Hesap silinemedi, tekrar dene';
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Hesap silinemedi, tekrar dene')));
+      }
+    }
+  }
+
   Future<void> _clearUserPrefsCache() async {
     final prefs = await SharedPreferences.getInstance();
     final themeMode = prefs.getString('theme_mode');
@@ -619,6 +706,34 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                           color: danger)),
                   const Spacer(),
                   Icon(Icons.chevron_right, color: danger, size: 18),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // v3: Hesap silme — Play Store zorunluluğu
+          GestureDetector(
+            onTap: _deleteAccount,
+            child: Container(
+              decoration: BoxDecoration(
+                  color: bgCard,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: danger.withOpacity(0.35))),
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.delete_forever_outlined, color: danger, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Hesabımı Sil',
+                          style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w700, color: danger)),
+                      const SizedBox(height: 2),
+                      Text('Tüm verilerinle birlikte, kalıcı olarak',
+                          style: TextStyle(fontSize: 11, color: muted)),
+                    ]),
+                  ),
                 ],
               ),
             ),

@@ -73,3 +73,59 @@ SADECE JSON formatında yanıt ver, başka hiçbir şey yazma:
         response_text = response_text.split("```")[1].split("```")[0].strip()
 
     return json.loads(response_text)
+
+# ═════════════════════════════════════════════════════════
+# ── v3: Buzdolabı/kiler fotoğrafından malzeme çıkarma ──
+# Aynı vision altyapısı, farklı görev: fotoğraftaki yenilebilir
+# malzemeleri listele → recipe_generator'a beslenir.
+# "Dolapta ne varsa fotoğrafla, akşam yemeğini söyleyeyim."
+# ═════════════════════════════════════════════════════════
+
+async def analyze_fridge_ingredients(image_data: bytes, image_media_type: str = "image/jpeg") -> list:
+    client = get_claude_client()
+    image_base64 = base64.standard_b64encode(image_data).decode("utf-8")
+
+    prompt = """Bu bir buzdolabı, kiler veya mutfak tezgahı fotoğrafı.
+Görünen YENİLEBİLİR malzemeleri tespit et.
+
+Kurallar:
+- Sadece net şekilde tanıyabildiğin malzemeleri yaz
+- Marka adı değil, malzeme adı yaz ("Pınar Süt" değil "süt")
+- Yemek pişirmede kullanılamayacak şeyleri (içecek şişesi hariç su, ilaç vb.) dahil etme
+- En fazla 20 malzeme
+
+SADECE JSON formatında yanıt ver, başka hiçbir şey yazma:
+
+{
+  "ingredients": ["domates", "yumurta", "kaşar peyniri", "biber"],
+  "confidence": "high/medium/low"
+}"""
+
+    def _call():
+        return client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=512,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": image_media_type,
+                            "data": image_base64,
+                        },
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        )
+
+    message = await asyncio.to_thread(_call)
+    text = message.content[0].text.strip()
+    if "```json" in text:
+        text = text.split("```json")[1].split("```")[0].strip()
+    elif "```" in text:
+        text = text.split("```")[1].split("```")[0].strip()
+    data = json.loads(text)
+    return data.get("ingredients", [])

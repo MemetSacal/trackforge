@@ -1,8 +1,10 @@
 // ── cycle_screen.dart ────────────────────────────────────
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
@@ -109,6 +111,10 @@ class _CycleScreenState extends ConsumerState<CycleScreen> {
         _aiAdvice    = Map<String, dynamic>.from(response.data);
         _showAiAdvice = true;
       });
+    } on DioException catch (e) {
+      // v2: cycle-advice artık kotalı — kota mesajını aynen göster
+      final q = QuotaException.fromDioError(e);
+      setState(() => _aiError = q?.message ?? 'AI tavsiyesi alınamadı. Lütfen tekrar deneyin.');
     } catch (_) {
       setState(() => _aiError = 'AI tavsiyesi alınamadı. Lütfen tekrar deneyin.');
     } finally {

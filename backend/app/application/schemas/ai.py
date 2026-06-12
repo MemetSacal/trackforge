@@ -12,7 +12,8 @@ class WeeklySummaryRequest(BaseModel):
 class WeeklySummaryResponse(BaseModel):
     week_start: str
     week_end: str
-    summary: str                    # Claude'un ürettiği Türkçe özet metin
+    summary: str
+    quota: Optional[Dict[str, Any]] = None  # v2: kalan hak bilgisi                    # Claude'un ürettiği Türkçe özet metin
 
 
 # ── Antrenman planı request ──
@@ -21,13 +22,18 @@ class WorkoutPlanRequest(BaseModel):
     fitness_goal: str = Field(..., description="weight_loss / muscle_gain / maintenance")
     fitness_level: str = Field(default="intermediate", description="beginner / intermediate / advanced")
     available_days: int = Field(default=4, ge=1, le=7)
+    # ── v2 alanları ──
+    force_new: bool = Field(default=False, description="True ise cache atlanır, yeni plan üretilir (kota tüketir)")
+    previous_plan: Optional[Dict[str, Any]] = Field(None, description="Revizyon modu: mevcut plan")
+    revision_request: Optional[str] = Field(None, max_length=300, description="Revizyon modu: kullanıcının değişiklik isteği")
 
 
 # ── Antrenman planı response ──
 class WorkoutPlanResponse(BaseModel):
     plan_title: str
-    weekly_schedule: List[Dict[str, Any]]
+    weekly_schedule: List[Dict[str, Any]]   # her gün: day_of_week (1-7) + day (Türkçe etiket)
     weekly_notes: str
+    quota: Optional[Dict[str, Any]] = None  # v2: kalan hak bilgisi — client lokal sayacı senkronlar
 
 
 # ── Diyet tavsiyesi request ──
@@ -38,6 +44,9 @@ class MealAdviceRequest(BaseModel):
 # ── Diyet tavsiyesi response ──
 class MealAdviceResponse(BaseModel):
     summary: str
+    weekly_plan: Optional[Dict[str, Any]] = None           # v2 FIX: şemada yoktu — response_model bu alanı sessizce budayabiliyordu
+    shopping_list: Optional[List[Dict[str, Any]]] = None  # v2: plan→alışveriş listesi
+    quota: Optional[Dict[str, Any]] = None                # v2: kalan hak bilgisi
     daily_calorie_target: int
     macros: Dict[str, Any]
     recommended_foods: List[str]
@@ -65,6 +74,8 @@ class RecipeResponse(BaseModel):
     cook_time_minutes: int
     servings: int
     tips: Optional[str] = None
+    detected_ingredients: Optional[List[str]] = None  # v3: buzdolabı fotoğrafından tespit edilenler
+    quota: Optional[Dict[str, Any]] = None            # v2: kalan hak bilgisi
 
 # ── Kalori Vision request ──
 class CalorieVisionResponse(BaseModel):
@@ -73,6 +84,7 @@ class CalorieVisionResponse(BaseModel):
     macros: Dict[str, Any]
     confidence: str
     notes: Optional[str] = None
+    quota: Optional[Dict[str, Any]] = None  # v2: kalan hak bilgisi
 
 # ── ai_schema_cycle_additions.py ────────────────────────
 class CycleAdviceRequest(BaseModel):
@@ -98,6 +110,17 @@ class CycleAdviceResponse(BaseModel):
     diet_advice: CycleAdviceDietResponse
     workout_advice: CycleAdviceWorkoutResponse
     wellness_tips: List[str]
+
+# ── AI Feedback (v2) ─────────────────────────────────────
+class AIFeedbackRequest(BaseModel):
+    feature: str = Field(..., description="workout_plan / meal_advice / vision / recipe / weekly_summary / cycle_advice / calorie_bank")
+    rating: int = Field(..., ge=-1, le=1, description="1 = beğendim, -1 = beğenmedim")
+    comment: Optional[str] = Field(None, max_length=300)
+
+
+class AIFeedbackResponse(BaseModel):
+    message: str
+
 
 """
 DOSYA AKIŞI:

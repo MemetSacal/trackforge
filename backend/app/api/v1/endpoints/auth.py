@@ -17,6 +17,10 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class DeleteAccountRequest(BaseModel):
+    password: str  # v3: hesap silmede şifre doğrulaması zorunlu
+
+
 # ── DEPENDENCY ───────────────────────────────────────────────────
 def get_auth_service(session: AsyncSession = Depends(get_db)) -> AuthService:
     user_repository = UserRepository(session)
@@ -53,6 +57,34 @@ async def refresh(
     auth_service: AuthService = Depends(get_auth_service)
 ):
     return await auth_service.refresh(request.refresh_token)
+
+
+@router.post("/logout")
+async def logout(
+    user_id: str = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """v3: Sunucu tarafı logout — tüm refresh token'ları geçersizleştirir.
+    Mobil taraf bunu çağırdıktan sonra lokal temizliğini (prefs.clear) yapar."""
+    await auth_service.logout(user_id)
+    await db.commit()
+    return {"message": "Oturum sonlandırıldı"}
+
+
+@router.delete("/me")
+async def delete_account(
+    request: DeleteAccountRequest,
+    user_id: str = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """v3: Hesap ve TÜM bağlı verileri kalıcı olarak siler.
+    Play Store hesap silme zorunluluğu + KVKK m.7 uyumu.
+    Geri alınamaz — mobil tarafta çift onay + şifre istenir."""
+    await auth_service.delete_account(user_id, request.password)
+    await db.commit()
+    return {"message": "Hesabınız ve tüm verileriniz kalıcı olarak silindi"}
 
 
 @router.get("/me")

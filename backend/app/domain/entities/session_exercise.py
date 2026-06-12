@@ -17,6 +17,7 @@ class SessionExercise:
     weight_kg: Optional[float]              # Kullanılan ağırlık kg cinsinden
     notes: Optional[str]                    # Egzersiz notu — "Son sette zorlandım" gibi
     created_at: datetime
+    completed: bool = False                 # v5 FIX: tamamlanma — zincirin kopuk halkasıydı
 
 
     # Bkz ExerciseSession

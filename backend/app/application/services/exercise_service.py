@@ -33,6 +33,7 @@ class ExerciseService:
             duration_minutes=data.duration_minutes,
             calories_burned=data.calories_burned,
             notes=data.notes,
+            source=getattr(data, "source", "manual"),  # v4
             created_at=datetime.now(timezone.utc),
         )
         return await self.session_repository.create(session)

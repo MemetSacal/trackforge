@@ -19,17 +19,22 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def create_access_token(data: dict) -> str:
+def create_access_token(data: dict, token_version: int = 0) -> str:
     # JWT access token üretir (kısa ömürlü — 15 dk)
+    # v3: "ver" claim'i — kullanıcının token_version'ı ile eşleşmeli
     payload = data.copy()
+    payload["ver"] = token_version
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     payload.update({"exp": expire, "type": "access"})
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def create_refresh_token(data: dict) -> str:
+def create_refresh_token(data: dict, token_version: int = 0) -> str:
     # JWT refresh token üretir (uzun ömürlü — 7 gün)
+    # v3: "ver" claim'i — logout/şifre değişiminde sunucudaki sayı artar,
+    # eski refresh token'lar otomatik geçersizleşir
     payload = data.copy()
+    payload["ver"] = token_version
     expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     payload.update({"exp": expire, "type": "refresh"})
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

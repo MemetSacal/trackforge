@@ -40,10 +40,15 @@ class SleepSummary(BaseModel):
 class MealComplianceSummary(BaseModel):
     # Diyete uyan gün sayısı
     complied_days: int
-    # Toplam kayıt gün sayısı
+    # Toplam KULLANILABİLİR kayıt gün sayısı (kalori girilmiş günler)
     total_days: int
-    # Uyum oranı — complied_days / total_days * 100
+    # Uyum oranı — complied_days / total_days * 100 (sadece veri olan günler üzerinden)
     compliance_rate: float
+    # ── v4: 3 durumlu compliance ──
+    # "Kayıt girilmedi" ≠ "diyete uyulmadı". Veri olmayan gün ceza üretmez;
+    # ayrı sayılır ki kullanıcı haksız yere kötü görünmesin (motivasyon korunur).
+    deviated_days: int = 0     # kalori girilmiş ama hedeften sapılmış günler
+    no_data_days: int = 0      # hiç kayıt/kalori girilmemiş günler
 
 
 # ── Egzersiz özeti ──

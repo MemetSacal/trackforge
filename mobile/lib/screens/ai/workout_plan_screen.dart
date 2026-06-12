@@ -1,8 +1,10 @@
 // ── workout_plan_screen.dart ────────────────────────────
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
 import '../egzersiz/seans_detay_screen.dart';
@@ -21,6 +23,7 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
   String _location = 'gym';
   int _daysPerWeek     = 3;
   int _sessionDuration = 60;
+  Map<String, dynamic>? _quota; // v2: sunucudan dönen kalan hak bilgisi
 
   String? _planTitle;
   String? _weeklyNotes;
@@ -50,6 +53,8 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
   };
 
   Future<void> _generate() async {
+    // v2: Lokal kontrol sadece UX iyileştirmesi (gereksiz istek atmamak için).
+    // Esas otorite backend — 429 dönerse aşağıda yakalanır.
     final canUse = await RateLimiter.canUseWorkoutPlan();
     if (!canUse) {
       setState(() => _limitReached = true);
@@ -67,11 +72,33 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
       });
       final raw = response.data['weekly_schedule'];
       if (raw is List) _schedule = raw.map((d) => Map<String, dynamic>.from(d)).toList();
-      await RateLimiter.recordWorkoutPlanUse();
+      // v2: Lokal sayacı sunucunun döndürdüğü gerçek değerle senkronla.
+      // Sunucu cache'den döndüyse kota tüketilmemiştir — lokal sayaç şişmez.
+      final quota = response.data['quota'];
+      if (quota is Map) {
+        await RateLimiter.syncFromServer('workout_plan',
+            (quota['used'] as num?)?.toInt() ?? 0);
+      } else {
+        await RateLimiter.recordWorkoutPlanUse();
+      }
       setState(() {
         _planTitle   = response.data['plan_title']   as String? ?? '';
         _weeklyNotes = response.data['weekly_notes'] as String? ?? '';
+        _quota       = quota is Map ? Map<String, dynamic>.from(quota) : null;
       });
+    } on DioException catch (e) {
+      // v2: Sunucu kotası — yapılandırılmış 429
+      final q = QuotaException.fromDioError(e);
+      if (q != null) {
+        setState(() => _limitReached = true);
+        if (mounted) {
+          await showQuotaDialog(context,
+              message: q.message, isPremium: q.isPremium,
+              resetsInDays: q.resetsInDays);
+        }
+      } else {
+        setState(() => _error = 'Plan oluşturulurken hata oluştu: ${e.message}');
+      }
     } catch (e) {
       setState(() => _error = 'Plan oluşturulurken hata oluştu: $e');
     } finally {
@@ -84,8 +111,12 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
     final todayWd = DateTime.now().weekday;
     Map<String, dynamic>? todaySchedule;
     for (final day in _schedule) {
-      final dayIndex = _turkishDays[(day['day'] as String? ?? '').toLowerCase().trim()];
-      if (dayIndex == todayWd) { todaySchedule = day; break; }
+      // ── v2: Backend artık day_of_week (1=Pzt...7=Paz) tamsayısı döndürüyor.
+      // Türkçe gün adı eşleştirme ("Pzt"/"1. Gün" yazınca kırılıyordu)
+      // sadece ESKİ plan yanıtları için yedek olarak duruyor.
+      final dow = (day['day_of_week'] as num?)?.toInt()
+          ?? _turkishDays[(day['day'] as String? ?? '').toLowerCase().trim()];
+      if (dow == todayWd) { todaySchedule = day; break; }
     }
     todaySchedule ??= _schedule.first;
 
@@ -98,6 +129,7 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
     setState(() => _isCreatingSession = true);
     try {
       final sessionRes = await ApiClient.instance.post(Endpoints.exerciseSessions, data: {
+        'source': 'ai_plan', // v4: AI planı seansı — serbest seanstan ayrışır
         'date': TFDateUtils.today(), 'duration_minutes': duration,
         'calories_burned': calories, 'notes': '$dayName — $focus',
       });
@@ -235,12 +267,16 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
           child: Row(children: [
             const Text('💪', style: TextStyle(fontSize: 32)),
             const SizedBox(width: 12),
-            Expanded(child: Text(
-              _planTitle!.isNotEmpty ? _planTitle! : 'Kişisel Antrenman Planın',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: text),
-            )),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                _planTitle!.isNotEmpty ? _planTitle! : 'Kişisel Antrenman Planın',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: text),
+              ),
+              aiQuotaChip(_quota, accent, muted), // v2: kalan hak
+            ])),
           ]),
         ),
+        AiFeedbackBar(feature: 'workout_plan', accent: accent, muted: muted), // v2: 👍/👎
         const SizedBox(height: 12),
 
         ..._schedule.map((day) {

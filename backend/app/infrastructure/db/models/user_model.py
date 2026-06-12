@@ -34,6 +34,7 @@ class UserModel(Base):
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     full_name: Mapped[str] = mapped_column(String, nullable=False)
     is_premium: Mapped[bool] = mapped_column(default=False, nullable=False)
+    token_version: Mapped[int] = mapped_column(default=0, nullable=False)  # v3: token versiyonlama
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)

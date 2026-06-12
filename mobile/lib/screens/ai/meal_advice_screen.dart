@@ -1,9 +1,11 @@
 // ── meal_advice_screen.dart ─────────────────────────────
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
 import 'ai_helpers.dart';
@@ -124,7 +126,28 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen>
           List<String>.from(data['foods_to_avoid'] ?? []);
       _initTabs();
       setState(() => _rawData = data);
-      await RateLimiter.recordMealAdviceUse();
+      // v2: lokal sayacı sunucu gerçeğiyle senkronla
+      // (sunucu cache'den döndüyse kota yanmamıştır, sayaç şişmez)
+      final quota = data['quota'];
+      if (quota is Map) {
+        await RateLimiter.syncFromServer('meal_advice',
+            (quota['used'] as num?)?.toInt() ?? 0);
+      } else {
+        await RateLimiter.recordMealAdviceUse();
+      }
+    } on DioException catch (e) {
+      // v2: sunucu kotası — yapılandırılmış 429
+      final q = QuotaException.fromDioError(e);
+      if (q != null) {
+        setState(() => _limitReached = true);
+        if (mounted) {
+          await showQuotaDialog(context,
+              message: q.message, isPremium: q.isPremium,
+              resetsInDays: q.resetsInDays);
+        }
+      } else {
+        setState(() => _error = 'Tavsiye alınırken hata oluştu.');
+      }
     } catch (_) {
       setState(() => _error = 'Tavsiye alınırken hata oluştu.');
     } finally {
@@ -370,6 +393,12 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen>
     if (data['weekly_plan'] != null) {
       await prefs.setString(
           'last_weekly_meal_plan_$userId', jsonEncode(data['weekly_plan']));
+    }
+    // v2: AI'ın ürettiği konsolide alışveriş listesini de sakla —
+    // diyet_tab'daki "Alışveriş listesine aktar" butonu bunu kullanır
+    if (data['shopping_list'] != null) {
+      await prefs.setString(
+          'last_shopping_list_$userId', jsonEncode(data['shopping_list']));
     }
 
     // Makro / kalori özeti

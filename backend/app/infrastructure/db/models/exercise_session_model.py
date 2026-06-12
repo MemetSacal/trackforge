@@ -35,6 +35,12 @@ class ExerciseSessionModel(Base):
     notes: Mapped[str] = mapped_column(
         Text, nullable=True                 # Seans notu — opsiyonel
     )
+    source: Mapped[str] = mapped_column(
+        String, nullable=False, default="manual"
+        # v4: 'manual' | 'ai_plan' — AI planından oluşan seansla kullanıcının
+        # kendi açtığı serbest seans ayrışır. Compliance AI planı üzerinden
+        # ölçülür, serbest seanslar bonus sinyal olur (plan kilidi mantığı).
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)

@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
+import 'wrapped_screen.dart'; // v5: yıl özeti
 import '../../app.dart';
 
 final weeklyReportDetailProvider = FutureProvider<Map<String, dynamic>>((ref) async {
@@ -229,6 +230,34 @@ class _WeeklyTab extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           child: Column(
             children: [
+              // ── v5: TrackForge Wrapped girişi ──
+              GestureDetector(
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const WrappedScreen())),
+                child: Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                        colors: [Color(0xFFFFB020), Color(0xFFFF6B2B)],
+                        begin: Alignment.centerLeft, end: Alignment.centerRight),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(children: [
+                    const Text('🏆', style: TextStyle(fontSize: 26)),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+                      Text('TrackForge Wrapped hazır! 🎁',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1A1208))),
+                      SizedBox(height: 2),
+                      Text('Yılının özetini gör, arkadaşlarına göster',
+                          style: TextStyle(fontSize: 12, color: Color(0xB31A1208))),
+                    ])),
+                    const Icon(Icons.chevron_right_rounded, color: Color(0xFF1A1208)),
+                  ]),
+                ),
+              ),
               Container(
                 decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                 padding: const EdgeInsets.all(16),

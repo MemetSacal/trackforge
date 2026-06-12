@@ -78,6 +78,15 @@ class Endpoints {
   static const String aiMealAdvice = '/ai/meal-advice';
   static const String aiRecipe = '/ai/recipe';
   static const String aiCalorieFromPhoto = '/ai/calorie-from-photo';
+  static const String aiFeedback = '/ai/feedback';  // v2: 👍/👎 geri bildirim
+  static const String aiRecipeFromPhoto = '/ai/recipe-from-photo';  // v3: buzdolabı→tarif
+  static const String aiPlateauStatus = '/ai/plateau-status';       // v3: plato kontrolü (kotasız)
+  static const String authLogout = '/auth/logout';                  // v3: sunucu tarafı logout
+  static const String authDeleteMe = '/auth/me';                    // v3: hesap silme (DELETE)
+  static const String reportsDashboardSummary = '/reports/dashboard-summary'; // v4: tek istekte dashboard
+  static const String reportsWrapped = '/reports/wrapped';      // v5: yıl özeti
+  static const String socialDuels = '/social/duels';            // v5: adım düellosu
+  static const String exerciseCatalog = '/exercises/catalog';   // v5: kanonik egzersiz kataloğu
   static const aiCycleAdvice = '$baseUrl/ai/cycle-advice';
   static const String aiCalorieBankAdvice = '/ai/calorie-bank-advice';
 }

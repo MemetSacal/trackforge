@@ -152,16 +152,29 @@ class ReportService:
         if not logs:
             return None
 
-        total_days = len(logs)
-        # complied=True olan günleri say
-        complied_days = sum(1 for l in logs if l.complied)
-        # Yüzde hesapla — 2 ondalık basamak
-        compliance_rate = round((complied_days / total_days) * 100, 1)
+        # ── v4: 3 durumlu compliance ──
+        # ESKİ MANTIK HATASI: kalori girilmemiş kayıt complied=False sayılıyor,
+        # "veri yok" ile "diyetten saptı" aynı kefeye konuyordu. Kullanıcı
+        # bir gün kayıt girmeyi unutunca uyum yüzdesi haksız yere düşüyordu.
+        # YENİ: Yüzde yalnızca kalori GİRİLMİŞ günler üzerinden hesaplanır;
+        # kayıtsız günler ayrı sayılır (no_data_days) ve ceza üretmez.
+        usable = [l for l in logs if l.calories_consumed is not None]
+        complied_days = sum(1 for l in usable if l.complied)
+        deviated_days = len(usable) - complied_days
+        span_days = (end - start).days + 1
+        no_data_days = span_days - len(usable)
+
+        total_days = len(usable)
+        compliance_rate = (
+            round((complied_days / total_days) * 100, 1) if total_days > 0 else 0.0
+        )
 
         return MealComplianceSummary(
             complied_days=complied_days,
             total_days=total_days,
             compliance_rate=compliance_rate,
+            deviated_days=deviated_days,
+            no_data_days=max(no_data_days, 0),
         )
 
     # ── Egzersiz özeti ──

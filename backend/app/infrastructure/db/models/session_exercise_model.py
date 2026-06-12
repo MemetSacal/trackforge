@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey, JSON
+from sqlalchemy import Boolean, String, Text, Integer, Float, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.infrastructure.db.base import Base
 
@@ -31,6 +31,11 @@ class SessionExerciseModel(Base):
     )
     muscle_groups: Mapped[dict] = mapped_column(
         JSON, nullable=True                 # Çalışan kas grupları — ["göğüs", "omuz", "triceps"]
+    )
+    completed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+        # v5 FIX: kolon DB'de f1a2b3c4d5e6 migration'ıyla zaten vardı ama
+        # ORM modelinde TANIMLI DEĞİLDİ → işaretleme hiç kalıcı olmuyordu.
     )
     notes: Mapped[str] = mapped_column(
         Text, nullable=True                 # Egzersiz notu — opsiyonel

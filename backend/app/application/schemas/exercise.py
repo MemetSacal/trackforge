@@ -46,6 +46,7 @@ class ExerciseSessionCreateRequest(BaseModel):
     duration_minutes: Optional[int] = Field(None, ge=1)  # Süre — en az 1 dakika
     calories_burned: Optional[float] = Field(None, ge=0) # Kalori — 0 veya üzeri
     notes: Optional[str] = None                           # Seans notu
+    source: str = "manual"                                 # v4: 'manual' | 'ai_plan'
 
 
 class ExerciseSessionUpdateRequest(BaseModel):
@@ -63,6 +64,7 @@ class ExerciseSessionResponse(BaseModel):
     duration_minutes: Optional[int]
     calories_burned: Optional[float]
     notes: Optional[str]
+    source: str = "manual"                          # v4: seans kaynağı
     created_at: datetime
     exercises: list[SessionExerciseResponse] = []   # Seanstaki egzersizler — default boş liste
 

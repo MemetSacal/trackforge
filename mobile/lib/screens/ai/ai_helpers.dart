@@ -86,3 +86,123 @@ Widget aiOutlineBtn(String label, IconData icon, Color accent, Color border, Voi
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     ));
+// ═════════════════════════════════════════════════════════
+// ── v2 EKLEMELERİ: Kota + Feedback ──
+// ═════════════════════════════════════════════════════════
+
+/// Sunucudan dönen quota objesini gösteren çip.
+/// Her başarılı AI yanıtındaki response.data['quota'] buraya verilir.
+///   {"used": 2, "limit": 3, "remaining": 1, "period": "weekly", ...}
+Widget aiQuotaChip(Map<String, dynamic>? quota, Color accent, Color muted) {
+  if (quota == null) return const SizedBox.shrink();
+  final remaining = (quota['remaining'] as num?)?.toInt() ?? 0;
+  final limit = (quota['limit'] as num?)?.toInt() ?? 0;
+  final period = quota['period'] == 'daily' ? 'bugün' : 'bu hafta';
+  return Padding(
+    padding: const EdgeInsets.only(top: 8),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.bolt_rounded, size: 14, color: remaining > 0 ? accent : muted),
+      const SizedBox(width: 4),
+      Text('$period $remaining/$limit hakkın kaldı',
+          style: TextStyle(fontSize: 11, color: muted, fontWeight: FontWeight.w600)),
+    ]),
+  );
+}
+
+/// 429 (kota aşımı) durumunda gösterilen dialog.
+/// Backend'in yapılandırılmış mesajını ve PRO köprüsünü gösterir.
+/// Kullanım: QuotaException.fromDioError(e) null değilse bu çağrılır.
+Future<void> showQuotaDialog(
+  BuildContext context, {
+  required String message,
+  required bool isPremium,
+  required int resetsInDays,
+  VoidCallback? onUpgradeTap,
+}) {
+  return showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Row(children: [
+        Text('⚡', style: TextStyle(fontSize: 22)),
+        SizedBox(width: 8),
+        Expanded(child: Text('Hakkın doldu', style: TextStyle(fontSize: 17))),
+      ]),
+      content: Text(
+        '$message\n\nLimitin $resetsInDays gün içinde yenilenecek.',
+        style: const TextStyle(fontSize: 14, height: 1.4),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Tamam')),
+        if (!isPremium && onUpgradeTap != null)
+          FilledButton(
+            onPressed: () { Navigator.pop(ctx); onUpgradeTap(); },
+            child: const Text('PRO\'ya geç'),
+          ),
+      ],
+    ),
+  );
+}
+
+/// ── Her AI çıktısının altına konan 👍/👎 geri bildirim barı ──
+/// POST /ai/feedback'e gönderir. AI tek yönlü olmaktan çıkar:
+/// hangi önerinin işe yaradığını ölçmeye başlarız.
+class AiFeedbackBar extends StatefulWidget {
+  final String feature; // workout_plan | meal_advice | vision | recipe | ...
+  final Color accent;
+  final Color muted;
+
+  const AiFeedbackBar({
+    super.key,
+    required this.feature,
+    required this.accent,
+    required this.muted,
+  });
+
+  @override
+  State<AiFeedbackBar> createState() => _AiFeedbackBarState();
+}
+
+class _AiFeedbackBarState extends State<AiFeedbackBar> {
+  int? _sent; // 1 = 👍 gönderildi, -1 = 👎 gönderildi
+
+  Future<void> _send(int rating) async {
+    setState(() => _sent = rating); // iyimser UI — yanıt beklemeden işaretle
+    try {
+      await ApiClient.instance.post(Endpoints.aiFeedback, data: {
+        'feature': widget.feature,
+        'rating': rating,
+      });
+    } catch (_) {
+      // Feedback kritik akış değil — hata sessizce yutulur,
+      // kullanıcı deneyimi bozulmaz.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_sent != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Text(
+          _sent == 1 ? 'Teşekkürler, koçun not aldı 📝' : 'Anlaşıldı, daha iyisi için çalışacağız 💪',
+          style: TextStyle(fontSize: 12, color: widget.muted),
+        ),
+      );
+    }
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text('Bu öneri işine yaradı mı?',
+          style: TextStyle(fontSize: 12, color: widget.muted)),
+      IconButton(
+        visualDensity: VisualDensity.compact,
+        icon: Icon(Icons.thumb_up_outlined, size: 17, color: widget.accent),
+        onPressed: () => _send(1),
+      ),
+      IconButton(
+        visualDensity: VisualDensity.compact,
+        icon: Icon(Icons.thumb_down_outlined, size: 17, color: widget.muted),
+        onPressed: () => _send(-1),
+      ),
+    ]);
+  }
+}

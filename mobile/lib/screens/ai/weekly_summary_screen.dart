@@ -1,8 +1,10 @@
 // ── weekly_summary_screen.dart ──────────────────────────
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -22,9 +24,24 @@ class _WeeklySummaryScreenState extends ConsumerState<WeeklySummaryScreen> {
   String? _error;
   bool _limitReached = false;
   String _limitText = '';
+  String? _plateauMsg; // v3: plato dedektörü mesajı
 
   @override
-  void initState() { super.initState(); _fetch(); }
+  void initState() { super.initState(); _fetch(); _checkPlateau(); }
+
+  // ── v3: Plato kontrolü — AI çağrısı YOK, kotasız, anlık ──
+  // Kilo 3+ haftadır sabitse kullanıcıyı proaktif yakala:
+  // abonelikten soğuduğu an değil, soğumadan ÖNCE.
+  Future<void> _checkPlateau() async {
+    try {
+      final res = await ApiClient.instance.get(Endpoints.aiPlateauStatus);
+      if (res.data is Map && res.data['is_plateau'] == true && mounted) {
+        setState(() => _plateauMsg = res.data['message_tr'] as String?);
+      }
+    } catch (_) {
+      // Banner kritik değil — sessiz geç
+    }
+  }
 
   Future<void> _fetch() async {
     final canUse = await RateLimiter.canUseWeeklyAnalysis();
@@ -40,6 +57,19 @@ class _WeeklySummaryScreenState extends ConsumerState<WeeklySummaryScreen> {
       final response = await ApiClient.instance.post(Endpoints.aiWeeklySummary, data: {'reference_date': TFDateUtils.today()});
       await RateLimiter.recordWeeklyAnalysisUse();
       setState(() => _summary = response.data['summary'] as String?);
+    } on DioException catch (e) {
+      // v2: sunucu kotası
+      final q = QuotaException.fromDioError(e);
+      if (q != null) {
+        setState(() => _limitReached = true);
+        if (mounted) {
+          await showQuotaDialog(context,
+              message: q.message, isPremium: q.isPremium,
+              resetsInDays: q.resetsInDays);
+        }
+      } else {
+        setState(() => _error = 'Özet alınırken hata oluştu. Tekrar dene.');
+      }
     } catch (_) { setState(() => _error = 'Özet alınırken hata oluştu. Tekrar dene.'); }
     finally { if (mounted) setState(() => _isLoading = false); }
   }
@@ -75,6 +105,25 @@ class _WeeklySummaryScreenState extends ConsumerState<WeeklySummaryScreen> {
                                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                                 child: Column(
                                   children: [
+                                    // ── v3: Plato banner'ı ──
+                                    if (_plateauMsg != null) ...[
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(14),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0x1FFBBF24),
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(color: const Color(0x66FBBF24)),
+                                        ),
+                                        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                          const Text('⚖️', style: TextStyle(fontSize: 22)),
+                                          const SizedBox(width: 10),
+                                          Expanded(child: Text(_plateauMsg!,
+                                              style: TextStyle(fontSize: 12.5, height: 1.45, color: text))),
+                                        ]),
+                                      ),
+                                      const SizedBox(height: 12),
+                                    ],
                                     Container(
                                       decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
                                       padding: const EdgeInsets.all(16),

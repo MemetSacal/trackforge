@@ -30,4 +30,5 @@ class ExerciseSession:
     duration_minutes: Optional[int]         # Seansın süresi dakika cinsinden
     calories_burned: Optional[float]        # Yakılan kalori — opsiyonel
     notes: Optional[str]                    # Seans notu — "Çok yoruldum" gibi
+    source: str = "manual"  # v4: 'manual' | 'ai_plan'
     created_at: datetime

@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'dart:typed_data';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../core/auth/token_manager.dart';
 import '../../app.dart';
 import 'ai_helpers.dart';
@@ -62,9 +63,27 @@ class _CalorieVisionScreenState extends ConsumerState<CalorieVisionScreen> {
       final formData = FormData.fromMap({'file': MultipartFile.fromBytes(_imageBytes!, filename: 'food.jpg', contentType: DioMediaType('image', 'jpeg'))});
       final token = await TokenManager.getAccessToken();
       final response = await ApiClient.instance.post(Endpoints.aiCalorieFromPhoto, data: formData, options: Options(headers: {'Authorization': 'Bearer $token'}));
-      await RateLimiter.recordVisionUse();
+      // v2: lokal sayacı sunucunun gerçek değeriyle senkronla
+      final quota = response.data['quota'];
+      if (quota is Map) {
+        await RateLimiter.syncFromServer('vision', (quota['used'] as num?)?.toInt() ?? 0);
+      } else {
+        await RateLimiter.recordVisionUse();
+      }
       final used = await RateLimiter.getVisionUsedToday();
-      setState(() => _result = Map<String, dynamic>.from(response.data));
+      setState(() { _result = Map<String, dynamic>.from(response.data); _visionUsed = used; });
+    } on DioException catch (e) {
+      // v2: sunucu kotası — yapılandırılmış 429
+      final q = QuotaException.fromDioError(e);
+      if (q != null) {
+        setState(() => _limitReached = true);
+        if (mounted) {
+          await showQuotaDialog(context,
+              message: q.message, isPremium: q.isPremium, resetsInDays: q.resetsInDays);
+        }
+      } else {
+        setState(() => _error = 'Analiz sırasında hata oluştu.');
+      }
     } catch (_) { setState(() => _error = 'Analiz sırasında hata oluştu.'); }
     finally { if (mounted) setState(() => _isLoading = false); }
   }
@@ -333,6 +352,8 @@ class _CalorieVisionScreenState extends ConsumerState<CalorieVisionScreen> {
                             ),
                             const SizedBox(height: 8),
                           ],
+                          // v2: 👍/👎 — vision tahmin kalitesini ölçmeye başla
+                          AiFeedbackBar(feature: 'vision', accent: accent, muted: muted),
                           aiOutlineBtn('Yeni Fotoğraf', Icons.refresh, accent, border,
                             () => setState(() { _result = null; _imageBytes = null; })),
                         ],

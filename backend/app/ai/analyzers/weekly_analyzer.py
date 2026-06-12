@@ -4,7 +4,9 @@ from backend.app.ai.client import get_claude_client, CLAUDE_MODEL, MAX_TOKENS_SU
 from backend.app.application.schemas.report import WeeklyReportResponse
 
 
-async def generate_weekly_summary(report: WeeklyReportResponse, user_name: str) -> str:
+async def generate_weekly_summary(report: WeeklyReportResponse, user_name: str, user_context: str = "") -> str:
+    # v2: user_context — kullanıcının plana kendi ekledikleri, döngü fazı
+    # ve güncel hedef bilgisi özete dahil olur (silo çözümü).
     client = get_claude_client()
 
     report_data = {}
@@ -48,6 +50,8 @@ async def generate_weekly_summary(report: WeeklyReportResponse, user_name: str) 
 Sen TrackForge uygulamasının kişisel sağlık asistanısın.
 Kullanıcı adı: {user_name}
 Hafta: {report.week_start} - {report.week_end}
+
+{user_context}
 
 Kullanıcının bu haftaki sağlık verileri:
 {json.dumps(report_data, ensure_ascii=False, indent=2)}

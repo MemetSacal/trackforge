@@ -16,6 +16,11 @@ class FriendshipResponse(BaseModel):
     status: str  # pending / accepted / blocked
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # ── v5: karşı tarafın kimliği — mobil "kim benim arkadaşım"
+    # hesabı yapmak zorunda kalmaz, isim boş görünmez, düello butonu
+    # doğrudan friend_id kullanır
+    friend_id: Optional[str] = None
+    friend_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

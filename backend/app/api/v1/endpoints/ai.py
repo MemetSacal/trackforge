@@ -1,6 +1,23 @@
-# AI endpoint'leri — Claude API entegrasyonu
-from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+# ── AI endpoint'leri (v2) — Claude API entegrasyonu ──
+#
+# v2 DEĞİŞİKLİKLERİ:
+#   1. TÜM endpoint'lerde sunucu tarafı kota (recipe, cycle, bank dahil —
+#      eskiden limitsizlerdi). Premium da artık sonlu limitli.
+#   2. build_user_context() her üretim çağrısına eklenir — modüller
+#      birbirinden habersiz çalışmayı bırakır (silo çözümü).
+#   3. 24 saatlik yanıt cache'i (workout + meal): aynı girdiyle tekrar
+#      basılan buton Claude'a gitmez, KOTA TÜKETMEZ. force_new ile aşılır.
+#   4. Her yanıta "quota" bilgisi gömülür — Flutter lokal sayacı
+#      sunucuyla senkronlar.
+#   5. POST /ai/feedback — 👍/👎 geri bildirim toplama.
+#   6. Workout planında revizyon modu (previous_plan + revision_request).
+
+import hashlib
+import json
+import uuid
+from datetime import date, datetime, timedelta, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, File, Form, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,38 +27,68 @@ from backend.app.application.schemas.ai import (
     MealAdviceRequest, MealAdviceResponse,
     RecipeRequest, RecipeResponse,
     CalorieVisionResponse,
+    CycleAdviceRequest, CycleAdviceResponse,
+    AIFeedbackRequest, AIFeedbackResponse,
 )
 from backend.app.application.services.report_service import ReportService
 from backend.app.infrastructure.db.session import get_db
 from backend.app.infrastructure.db.models.measurement_model import MeasurementModel
+from backend.app.infrastructure.db.models.ai_cache_model import AIResponseCacheModel
+from backend.app.infrastructure.db.models.ai_feedback_model import AIFeedbackModel
 from backend.app.infrastructure.repositories.user_preference_repository import UserPreferenceRepository
 from backend.app.infrastructure.repositories.user_repository import UserRepository
 from backend.app.core.dependencies import get_current_user, get_current_user_premium
-from backend.app.core.ai_rate_limiter import (
-    check_vision_limit,
-    check_weekly_summary_limit,
-    check_meal_advice_limit,
-    check_workout_plan_limit,
-    record_usage,
-)
+from backend.app.core.ai_rate_limiter import check_quota, consume_and_status
+from backend.app.ai.context_builder import build_user_context, detect_plateau
 from backend.app.ai.analyzers.weekly_analyzer import generate_weekly_summary
-from backend.app.ai.analyzers.calorie_vision_analyzer import analyze_food_calories
+from backend.app.ai.analyzers.calorie_vision_analyzer import analyze_food_calories, analyze_fridge_ingredients
 from backend.app.ai.generators.workout_generator import generate_workout_plan
 from backend.app.ai.generators.meal_advisor import generate_meal_advice
 from backend.app.ai.generators.recipe_generator import generate_recipe
 from backend.app.ai.generators.cycle_advisor import generate_cycle_advice
-from backend.app.application.schemas.ai import CycleAdviceRequest, CycleAdviceResponse
 from backend.app.ai.generators.calorie_bank_advisor import generate_calorie_bank_advice
-from backend.app.infrastructure.repositories.meal_compliance_repository import MealComplianceRepository
 from backend.app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
-from datetime import date as date_module
 from backend.app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
+from backend.app.infrastructure.db.models.exercise_catalog_model import ExerciseCatalogModel
 
 router = APIRouter()
+
+CACHE_TTL_HOURS = 24  # workout + meal yanıtları için
 
 
 def get_report_service(db: AsyncSession = Depends(get_db)) -> ReportService:
     return ReportService(db)
+
+
+# ── Cache yardımcıları ───────────────────────────────────
+def _input_hash(payload: dict) -> str:
+    raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+async def _cache_get(db: AsyncSession, user_id: str, feature: str, h: str) -> dict | None:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=CACHE_TTL_HOURS)
+    row = (await db.execute(
+        select(AIResponseCacheModel)
+        .where(AIResponseCacheModel.user_id == user_id,
+               AIResponseCacheModel.feature == feature,
+               AIResponseCacheModel.input_hash == h,
+               AIResponseCacheModel.created_at >= cutoff)
+        .order_by(AIResponseCacheModel.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    return json.loads(row.response_json) if row else None
+
+
+async def _cache_put(db: AsyncSession, user_id: str, feature: str, h: str, response: dict) -> None:
+    db.add(AIResponseCacheModel(
+        id=str(uuid.uuid4()),
+        user_id=user_id,
+        feature=feature,
+        input_hash=h,
+        response_json=json.dumps(response, ensure_ascii=False, default=str),
+    ))
+    await db.flush()
 
 
 # ── POST /ai/weekly-summary ──────────────────────────────
@@ -54,8 +101,7 @@ async def get_weekly_ai_summary(
 ):
     """Haftalık verileri analiz edip AI özeti üret."""
     current_user, is_premium = user_info
-    if not is_premium:
-        await check_weekly_summary_limit(current_user, db)
+    await check_quota(db, current_user, is_premium, "weekly_summary")
     try:
         reference_date = date.fromisoformat(data.reference_date)
         report = await report_service.get_weekly_report(current_user, reference_date)
@@ -64,15 +110,17 @@ async def get_weekly_ai_summary(
         user = await user_repo.get_by_id(current_user)
         user_name = user.full_name if user else "Kullanıcı"
 
-        summary = await generate_weekly_summary(report, user_name)
+        context = await build_user_context(db, current_user)
+        summary = await generate_weekly_summary(report, user_name, user_context=context)
 
-        await record_usage(current_user, db, "weekly_summary")
+        quota = await consume_and_status(db, current_user, is_premium, "weekly_summary")
         await db.commit()
 
         return WeeklySummaryResponse(
             week_start=str(report.week_start),
             week_end=str(report.week_end),
             summary=summary,
+            quota=quota,
         )
     except HTTPException:
         raise
@@ -87,22 +135,55 @@ async def get_workout_plan(
     user_info: tuple = Depends(get_current_user_premium),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lokasyon ve hedefe göre haftalık antrenman planı üret."""
+    """Lokasyon ve hedefe göre haftalık antrenman planı üret.
+
+    v2: Cache kontrolü ÖNCE yapılır — isabet varsa Claude'a gidilmez
+    ve kota tüketilmez. Kullanıcı bilinçli yeni plan isterse force_new
+    gönderir veya revizyon modunu kullanır.
+    """
     current_user, is_premium = user_info
-    if not is_premium:
-        await check_workout_plan_limit(current_user, db)
+
+    h = _input_hash({
+        "loc": data.workout_location, "goal": data.fitness_goal,
+        "level": data.fitness_level, "days": data.available_days,
+    })
+    is_revision = bool(data.previous_plan and data.revision_request)
+
+    if not data.force_new and not is_revision:
+        cached = await _cache_get(db, current_user, "workout_plan", h)
+        if cached:
+            from backend.app.core.ai_rate_limiter import get_quota_status
+            cached["quota"] = await get_quota_status(db, current_user, is_premium, "workout_plan")
+            return WorkoutPlanResponse(**cached)
+
+    await check_quota(db, current_user, is_premium, "workout_plan")
     try:
+        context = await build_user_context(db, current_user)
+
+        # v5: lokasyona uygun katalog — AI sadece bunlardan seçer
+        cat_rows = (await db.execute(
+            select(ExerciseCatalogModel).where(
+                ExerciseCatalogModel.location.in_([data.workout_location, "any"])
+            )
+        )).scalars().all()
+        catalog = [{"name": c.name, "muscle_groups": c.muscle_groups} for c in cat_rows]
+
         plan = await generate_workout_plan(
             workout_location=data.workout_location,
             fitness_goal=data.fitness_goal,
             fitness_level=data.fitness_level,
             available_days=data.available_days,
+            user_context=context,
+            previous_plan=data.previous_plan,
+            revision_request=data.revision_request,
+            catalog=catalog,
         )
 
-        await record_usage(current_user, db, "workout_plan")
+        await _cache_put(db, current_user, "workout_plan", h, plan)
+        quota = await consume_and_status(db, current_user, is_premium, "workout_plan")
         await db.commit()
 
-        return WorkoutPlanResponse(**plan)
+        return WorkoutPlanResponse(**plan, quota=quota)
     except HTTPException:
         raise
     except Exception as e:
@@ -116,20 +197,26 @@ async def get_meal_advice(
     user_info: tuple = Depends(get_current_user_premium),
     db: AsyncSession = Depends(get_db),
 ):
-    """Kullanıcı tercihlerine göre diyet tavsiyesi üret."""
+    """Kullanıcı tercihlerine göre 7 günlük diyet planı üret."""
     current_user, is_premium = user_info
-    if not is_premium:
-        await check_meal_advice_limit(current_user, db)
+
+    pref_repo = UserPreferenceRepository(db)
+    prefs = await pref_repo.get_by_user_id(current_user)
+    if not prefs:
+        raise HTTPException(
+            status_code=400,
+            detail="Diyet tavsiyesi için önce kullanıcı tercihlerini (/preferences) doldurun."
+        )
+
+    h = _input_hash({"target": data.calorie_target, "goal": prefs.fitness_goal})
+    cached = await _cache_get(db, current_user, "meal_advice", h)
+    if cached:
+        from backend.app.core.ai_rate_limiter import get_quota_status
+        cached["quota"] = await get_quota_status(db, current_user, is_premium, "meal_advice")
+        return MealAdviceResponse(**cached)
+
+    await check_quota(db, current_user, is_premium, "meal_advice")
     try:
-        pref_repo = UserPreferenceRepository(db)
-        prefs = await pref_repo.get_by_user_id(current_user)
-
-        if not prefs:
-            raise HTTPException(
-                status_code=400,
-                detail="Diyet tavsiyesi için önce kullanıcı tercihlerini (/preferences) doldurun."
-            )
-
         result = await db.execute(
             select(MeasurementModel)
             .where(MeasurementModel.user_id == current_user)
@@ -139,6 +226,7 @@ async def get_meal_advice(
         last_measurement = result.scalar_one_or_none()
         weight_kg = last_measurement.weight_kg if last_measurement else None
 
+        context = await build_user_context(db, current_user)
         advice = await generate_meal_advice(
             liked_foods=prefs.liked_foods or [],
             disliked_foods=prefs.disliked_foods or [],
@@ -152,12 +240,14 @@ async def get_meal_advice(
             gender=prefs.gender,
             activity_level=prefs.activity_level,
             weight_kg=weight_kg,
+            user_context=context,
         )
 
-        await record_usage(current_user, db, "meal_advice")
+        await _cache_put(db, current_user, "meal_advice", h, advice)
+        quota = await consume_and_status(db, current_user, is_premium, "meal_advice")
         await db.commit()
 
-        return MealAdviceResponse(**advice)
+        return MealAdviceResponse(**advice, quota=quota)
     except HTTPException:
         raise
     except Exception as e:
@@ -168,21 +258,21 @@ async def get_meal_advice(
 @router.post("/recipe", response_model=RecipeResponse)
 async def get_recipe_suggestion(
     data: RecipeRequest,
-    current_user: str = Depends(get_current_user),
+    user_info: tuple = Depends(get_current_user_premium),
     db: AsyncSession = Depends(get_db),
 ):
-    """Tarif önerisi — limit yok."""
+    """Tarif önerisi — v2: artık kotalı (eskiden limitsizdi)."""
+    current_user, is_premium = user_info
+    await check_quota(db, current_user, is_premium, "recipe")
     try:
         pref_repo = UserPreferenceRepository(db)
         prefs = await pref_repo.get_by_user_id(current_user)
 
-        from backend.app.application.services.report_service import ReportService
-        from datetime import date as date_module
         report_service = ReportService(db)
         weekly_bank_balance = None
         daily_calorie_target = None
         try:
-            report = await report_service.get_weekly_report(current_user, date_module.today())
+            report = await report_service.get_weekly_report(current_user, date.today())
             weekly_bank_balance = report.calorie_balance
             if prefs:
                 result = await db.execute(
@@ -207,6 +297,7 @@ async def get_recipe_suggestion(
         except Exception:
             pass
 
+        context = await build_user_context(db, current_user)
         recipe = await generate_recipe(
             available_ingredients=data.available_ingredients or [],
             liked_foods=prefs.liked_foods if prefs else [],
@@ -217,8 +308,14 @@ async def get_recipe_suggestion(
             craving=data.craving,
             weekly_bank_balance=weekly_bank_balance,
             daily_calorie_target=daily_calorie_target,
+            user_context=context,
         )
+
+        await consume_and_status(db, current_user, is_premium, "recipe")
+        await db.commit()
         return RecipeResponse(**recipe)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Tarif oluşturulamadı: {str(e)}")
 
@@ -232,8 +329,7 @@ async def get_calories_from_photo(
 ):
     """Yemek fotoğrafından kalori ve makro değerlerini hesapla — Claude Vision."""
     current_user, is_premium = user_info
-    if not is_premium:
-        await check_vision_limit(current_user, db)
+    await check_quota(db, current_user, is_premium, "vision")
     try:
         allowed_types = ["image/jpeg", "image/png", "image/webp"]
         if file.content_type not in allowed_types:
@@ -252,10 +348,10 @@ async def get_calories_from_photo(
 
         result = await analyze_food_calories(image_data, file.content_type)
 
-        await record_usage(current_user, db, "vision")
+        quota = await consume_and_status(db, current_user, is_premium, "vision")
         await db.commit()
 
-        return CalorieVisionResponse(**result)
+        return CalorieVisionResponse(**result, quota=quota)
     except HTTPException:
         raise
     except Exception as e:
@@ -265,10 +361,13 @@ async def get_calories_from_photo(
 # ── POST /ai/cycle-advice ────────────────────────────────
 @router.post("/cycle-advice", response_model=CycleAdviceResponse)
 async def get_cycle_advice(
-    current_user: str = Depends(get_current_user),
+    user_info: tuple = Depends(get_current_user_premium),
     db: AsyncSession = Depends(get_db),
 ):
-    """Mevcut döngü fazına göre AI diyet ve antrenman tavsiyesi üret — limit yok."""
+    """Mevcut döngü fazına göre AI tavsiyesi — v2: artık kotalı."""
+    current_user, is_premium = user_info
+    await check_quota(db, current_user, is_premium, "cycle_advice")
+
     from backend.app.application.services.cycle_service import CycleService
     cycle_service = CycleService(db)
     cycle = await cycle_service.get_current(current_user)
@@ -306,7 +405,11 @@ async def get_cycle_advice(
             age=prefs.age if prefs else None,
             activity_level=prefs.activity_level if prefs else None,
         )
+        await consume_and_status(db, current_user, is_premium, "cycle_advice")
+        await db.commit()
         return CycleAdviceResponse(**advice)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Döngü tavsiyesi oluşturulamadı: {str(e)}")
 
@@ -314,12 +417,14 @@ async def get_cycle_advice(
 # ── POST /ai/calorie-bank-advice ─────────────────────────
 @router.post("/calorie-bank-advice")
 async def get_calorie_bank_advice(
-    current_user: str = Depends(get_current_user),
+    user_info: tuple = Depends(get_current_user_premium),
     db: AsyncSession = Depends(get_db),
 ):
-    """Bugünkü kalori bankası durumunu analiz edip kişisel tavsiye üret — limit yok."""
+    """Bugünkü kalori bankası analizi — v2: artık kotalı."""
+    current_user, is_premium = user_info
+    await check_quota(db, current_user, is_premium, "calorie_bank")
     try:
-        today = date_module.today()
+        today = date.today()
 
         pref_repo = UserPreferenceRepository(db)
         prefs = await pref_repo.get_by_user_id(current_user)
@@ -354,11 +459,10 @@ async def get_calorie_bank_advice(
             s.calories_burned for s in sessions if s.calories_burned is not None
         )
 
-        from backend.app.infrastructure.db.models.measurement_model import MeasurementModel as MM
         hist_result = await db.execute(
-            select(MM)
-            .where(MM.user_id == current_user)
-            .order_by(MM.date.desc())
+            select(MeasurementModel)
+            .where(MeasurementModel.user_id == current_user)
+            .order_by(MeasurementModel.date.desc())
             .limit(8)
         )
         measurements = hist_result.scalars().all()
@@ -383,24 +487,141 @@ async def get_calorie_bank_advice(
             daily_calorie_habit=prefs.daily_calorie_habit if prefs and hasattr(prefs, 'daily_calorie_habit') else None,
             avg_weekly_loss_kg=avg_weekly_loss,
         )
+        await consume_and_status(db, current_user, is_premium, "calorie_bank")
+        await db.commit()
         return advice
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Kalori bankası tavsiyesi oluşturulamadı: {str(e)}")
 
 
+# ── POST /ai/recipe-from-photo (v3 YENİ) ─────────────────
+@router.post("/recipe-from-photo", response_model=RecipeResponse)
+async def get_recipe_from_photo(
+    file: UploadFile = File(..., description="Buzdolabı/kiler fotoğrafı"),
+    meal_type: str = Form(default="dinner"),
+    craving: str = Form(default=None),
+    user_info: tuple = Depends(get_current_user_premium),
+    db: AsyncSession = Depends(get_db),
+):
+    """Buzdolabı fotoğrafından tarif üret (v3).
+
+    İki aşamalı: (1) vision malzemeleri çıkarır,
+    (2) recipe_generator o malzemelerle + kullanıcı bağlamıyla tarif yazar.
+    İki AI çağrısı olduğu için ayrı (daha sıkı) kotası var: fridge_recipe.
+    """
+    current_user, is_premium = user_info
+    await check_quota(db, current_user, is_premium, "fridge_recipe")
+    try:
+        allowed_types = ["image/jpeg", "image/png", "image/webp"]
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Desteklenmeyen dosya tipi. İzin verilenler: {', '.join(allowed_types)}"
+            )
+        image_data = await file.read()
+        if len(image_data) > 5 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Fotoğraf boyutu 5MB'dan büyük olamaz.")
+
+        # Aşama 1: malzeme tespiti
+        ingredients = await analyze_fridge_ingredients(image_data, file.content_type)
+        if not ingredients:
+            raise HTTPException(
+                status_code=422,
+                detail="Fotoğrafta tanınabilir malzeme bulunamadı. Daha aydınlık ve yakın bir kare dene."
+            )
+
+        # Aşama 2: tespit edilen malzemelerle tarif
+        pref_repo = UserPreferenceRepository(db)
+        prefs = await pref_repo.get_by_user_id(current_user)
+        context = await build_user_context(db, current_user)
+
+        recipe = await generate_recipe(
+            available_ingredients=ingredients,
+            liked_foods=prefs.liked_foods if prefs else [],
+            disliked_foods=prefs.disliked_foods if prefs else [],
+            allergies=prefs.allergies if prefs else [],
+            meal_type=meal_type,
+            craving=craving,
+            user_context=context,
+        )
+
+        quota = await consume_and_status(db, current_user, is_premium, "fridge_recipe")
+        await db.commit()
+
+        return RecipeResponse(**recipe, detected_ingredients=ingredients, quota=quota)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fotoğraftan tarif oluşturulamadı: {str(e)}")
+
+
+# ── GET /ai/plateau-status (v3 YENİ) ─────────────────────
+@router.get("/plateau-status")
+async def get_plateau_status(
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Plato kontrolü — AI çağrısı YOK, sadece ölçüm analizi (kotasız, anlık).
+
+    Mobil taraf bunu haftalık özet ekranında banner olarak gösterir;
+    kullanıcı abonelikten soğumadan proaktif yakalanır."""
+    plateau = await detect_plateau(db, user_id)
+    if not plateau:
+        return {"is_plateau": False}
+    return {
+        "is_plateau": True,
+        **plateau,
+        "message_tr": (
+            f"Kilon {plateau['weeks']} haftadır {plateau['weight_kg']} kg civarında sabit. "
+            f"Bu çok normal bir plato — haftalık AI analizinden kırma önerileri alabilirsin 💪"
+        ),
+    }
+
+
+# ── POST /ai/feedback (v2 YENİ) ──────────────────────────
+@router.post("/feedback", response_model=AIFeedbackResponse)
+async def submit_ai_feedback(
+    data: AIFeedbackRequest,
+    user_info: tuple = Depends(get_current_user_premium),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI çıktısına 👍/👎 geri bildirim kaydet.
+
+    Bu veri zamanla altın değerinde olacak: hangi modül beğeniliyor,
+    hangi prompt iyileştirilmeli, kişiselleştirme nereden başlamalı.
+    """
+    current_user, is_premium = user_info
+    if data.rating == 0:
+        raise HTTPException(status_code=400, detail="rating 1 veya -1 olmalı")
+    await check_quota(db, current_user, is_premium, "ai_feedback")  # spam koruması
+
+    db.add(AIFeedbackModel(
+        user_id=current_user,
+        feature=data.feature,
+        rating=data.rating,
+        comment=data.comment,
+    ))
+    from backend.app.core.ai_rate_limiter import record_usage
+    await record_usage(db, current_user, "ai_feedback")
+    await db.commit()
+    return AIFeedbackResponse(message="Geri bildirim kaydedildi, teşekkürler!")
+
+
 """
-DOSYA AKIŞI:
-POST /ai/weekly-summary      → Free: 1/hafta  | Premium: sınırsız
-POST /ai/workout-plan        → Free: 2/hafta  | Premium: sınırsız
-POST /ai/meal-advice         → Free: 2/hafta  | Premium: sınırsız
-POST /ai/calorie-from-photo  → Free: 3/gün    | Premium: sınırsız
-POST /ai/recipe              → limit yok
-POST /ai/cycle-advice        → limit yok
-POST /ai/calorie-bank-advice → limit yok
+DOSYA AKIŞI (v2):
+POST /ai/weekly-summary      → Free: 1/hafta  | PRO: 3/hafta
+POST /ai/workout-plan        → Free: 2/hafta  | PRO: 10/hafta  (+24h cache, +revizyon modu)
+POST /ai/meal-advice         → Free: 2/hafta  | PRO: 10/hafta  (+24h cache, +shopping_list)
+POST /ai/calorie-from-photo  → Free: 3/gün    | PRO: 20/gün
+POST /ai/recipe              → Free: 3/hafta  | PRO: 30/hafta  (v2: eskiden limitsizdi)
+POST /ai/cycle-advice        → Free: 3/hafta  | PRO: 15/hafta  (v2: eskiden limitsizdi)
+POST /ai/calorie-bank-advice → Free: 3/gün    | PRO: 15/gün    (v2: eskiden limitsizdi)
+POST /ai/feedback            → 👍/👎 toplama (v2 yeni)
 
-Rate limit aşılınca 429 döner — Flutter bu response'u yakalayıp
-"PRO'ya geç" dialog'unu gösterir.
-
-Spring Boot karşılığı: @RestController + @PostMapping + @RequestPart.
+Kota aşımında 429 + yapılandırılmış detail (error_code, used, limit,
+resets_in_days) döner. Cache isabetinde kota TÜKETİLMEZ.
+Her başarılı yanıt "quota" alanıyla kalan hakkı bildirir.
 """

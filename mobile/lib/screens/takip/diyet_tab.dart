@@ -7,6 +7,7 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/auth/token_manager.dart';
+import '../ai/calorie_vision_screen.dart'; // v2: foto-kalori kısayolu
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 final todayMealProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
@@ -34,6 +35,8 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
   List<String> _recommendedFoods = [];
   List<String> _avoidFoods       = [];
   Map<String, dynamic>? _weeklyPlan;
+  List<dynamic> _shoppingList = []; // v2: AI'ın ürettiği haftalık alışveriş listesi
+  bool _exportingShopping = false;  // v2: aktarım sırasında buton durumu
 
   // Gün sırası ve Türkçe etiketler
   static const _dayKeys    = ['pazartesi','salı','çarşamba','perşembe','cuma','cumartesi','pazar'];
@@ -48,6 +51,45 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
   @override
   void initState() { super.initState(); _loadAdvice(); }
 
+  // ── v2: Plan → Alışveriş listesi ────────────────────────
+  // AI zaten diyet planıyla birlikte konsolide malzeme listesi üretiyor
+  // (meal_advisor shopping_list alanı). Bu fonksiyon o listeyi tek
+  // dokunuşla mevcut alışveriş sistemine (POST /shopping) aktarır —
+  // sıfır ek AI maliyeti, iki mevcut özelliğin birleşimi.
+  Future<void> _exportShoppingList() async {
+    if (_shoppingList.isEmpty || _exportingShopping) return;
+    setState(() => _exportingShopping = true);
+    var added = 0;
+    try {
+      for (final item in _shoppingList) {
+        final m = item is Map ? item : {};
+        final name = (m['name'] as String?)?.trim();
+        if (name == null || name.isEmpty) continue;
+        await ApiClient.instance.post(Endpoints.shopping, data: {
+          'name': name,
+          'quantity': (m['quantity'] as String?)?.trim() ?? '1',
+          'notes': 'AI diyet planından',
+        });
+        added++;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('🛒 $added malzeme alışveriş listene eklendi'),
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(added > 0
+              ? '🛒 $added malzeme eklendi, kalanlar eklenemedi'
+              : 'Alışveriş listesine aktarılamadı'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _exportingShopping = false);
+    }
+  }
+
   Future<void> _loadAdvice() async {
     final prefs  = await SharedPreferences.getInstance();
     final userId = await TokenManager.getCurrentUserId() ?? 'guest';
@@ -58,12 +100,20 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
       try { weeklyPlan = Map<String, dynamic>.from(jsonDecode(weeklyRaw)); } catch (_) {}
     }
 
+    // v2: AI'ın diyet planıyla birlikte ürettiği alışveriş listesi
+    List<dynamic> shoppingList = [];
+    final shoppingRaw = prefs.getString('last_shopping_list_$userId');
+    if (shoppingRaw != null) {
+      try { shoppingList = List<dynamic>.from(jsonDecode(shoppingRaw)); } catch (_) {}
+    }
+
     setState(() {
       _savedAdvice      = prefs.getString('last_meal_advice_$userId');
       _savedAdviceDate  = prefs.getString('last_meal_advice_date_$userId');
       _recommendedFoods = prefs.getStringList('last_recommended_foods_$userId') ?? [];
       _avoidFoods       = prefs.getStringList('last_foods_to_avoid_$userId')    ?? [];
       _weeklyPlan       = weeklyPlan;
+      _shoppingList     = shoppingList;
     });
   }
 
@@ -370,6 +420,36 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                     const SizedBox(height: 8),
                   ],
 
+                  // ── v2: PLAN → ALIŞVERİŞ LİSTESİ ───
+                  if (_shoppingList.isNotEmpty) ...[
+                    GestureDetector(
+                      onTap: _exportingShopping ? null : _exportShoppingList,
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: bgCard,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: accent.withOpacity(0.4)),
+                        ),
+                        child: Row(children: [
+                          const Text('🛒', style: TextStyle(fontSize: 20)),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(
+                            _exportingShopping
+                                ? 'Aktarılıyor...'
+                                : 'Alışveriş listesine aktar (${_shoppingList.length} kalem)',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text),
+                          )),
+                          _exportingShopping
+                              ? SizedBox(width: 16, height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: accent))
+                              : Icon(Icons.add_shopping_cart_rounded, size: 18, color: accent),
+                        ]),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+
                   // ── GENEL ÖZET (Markdown) ──────────
                   Container(
                     decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
@@ -484,7 +564,23 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                         prefixIcon: Icon(Icons.local_fire_department_outlined),
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
+                    // ── v2: Foto-kalori artık köşede bir ekran değil,
+                    // öğün kaydının doğal giriş yollarından biri.
+                    // Vision sonucu zaten "Diyet Planına Ekle" ile buraya yazıyor.
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const CalorieVisionScreen()));
+                        },
+                        icon: Icon(Icons.camera_alt_rounded, size: 16, color: accent),
+                        label: Text('Bilmiyorsan fotoğrafla — AI hesaplasın ✨',
+                            style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
                     TextField(
                       controller: _notesController,
                       maxLines: 2,

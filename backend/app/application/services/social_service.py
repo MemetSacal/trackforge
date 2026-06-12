@@ -73,7 +73,22 @@ class SocialService:
     # ── Arkadaş listesini getir ──
     async def get_friends(self, user_id: str) -> List[FriendshipResponse]:
         friends = await self.repo.get_friends(user_id)
-        return [self._to_response(f) for f in friends]
+        # v5: karşı tarafın id + adını yanıta göm — eski yanıt sadece
+        # requester/addressee id veriyordu, mobil isim gösteremiyordu.
+        from sqlalchemy import select as _select
+        from backend.app.infrastructure.db.models.user_model import UserModel
+
+        out = []
+        for f in friends:
+            resp = self._to_response(f)
+            other_id = f.addressee_id if f.requester_id == user_id else f.requester_id
+            other = (await self.db.execute(
+                _select(UserModel).where(UserModel.id == other_id)
+            )).scalar_one_or_none()
+            resp.friend_id = other_id
+            resp.friend_name = other.full_name if other else None
+            out.append(resp)
+        return out
 
     async def get_pending_requests(self, user_id: str) -> List[PendingRequestResponse]:
         rows = await self.repo.get_pending_requests(user_id)

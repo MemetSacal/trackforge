@@ -1,7 +1,7 @@
 # TrackForge — Mimari Tasarım Dokümanı
 
-**Versiyon:** v7.3 — Tam Güncel
-**Tarih:** 8 Haziran 2026
+**Versiyon:** v7.4 — Tam Güncel
+**Tarih:** 10 Haziran 2026
 **Mimari:** Clean Architecture + Repository Pattern
 **Yaklaşım:** Backend-First, AI-Ready, Mobile-First
 
@@ -140,15 +140,15 @@ backend/
 │   │   ├── entities/              # 17 entity
 │   │   │   ├── user.py            # is_premium: bool = False
 │   │   │   └── user_preference.py # diet_preference, ai_name, target_weight_kg, daily_calorie_habit
-│   │   └── interfaces/            # 15 interface
+│   │   └── interfaces/            # 16 interface
 │   ├── application/
 │   │   ├── services/              # 15 service
-│   │   └── schemas/               # 16 schema
+│   │   └── schemas/               # 17 schema (PendingRequestResponse eklendi)
 │   ├── infrastructure/
 │   │   ├── db/
 │   │   │   ├── base.py
 │   │   │   ├── session.py
-│   │   │   └── models/            # 17 model
+│   │   │   └── models/            # 18 model (ai_usage_model eklendi)
 │   │   ├── repositories/          # 15 repository
 │   │   ├── storage/
 │   │   └── logging/
@@ -166,21 +166,19 @@ backend/
 │   └── core/
 │       ├── config.py
 │       ├── security.py
-│       ├── dependencies.py
+│       ├── dependencies.py        # get_current_user_premium eklendi
+│       ├── ai_rate_limiter.py     # backend rate limit enforcement
 │       └── exceptions.py
 ├── migrations/
-│   └── versions/
-│       ├── e6c55c10c52b_add_target_weight_calorie_habit_burned.py
-│       └── 5d79c5ec0994_add_user_pref_new_fields.py
-├── static/
-│   ├── index.html
-│   └── privacy-policy.html
-└── tests/
+│   └── versions/                  # 22 migration
+└── static/
+    ├── index.html
+    └── privacy-policy.html
 ```
 
 ---
 
-## 6. Veritabanı Şeması — 17 Tablo
+## 6. Veritabanı Şeması — 18 Tablo
 
 ```sql
 users                  # is_premium boolean
@@ -199,9 +197,10 @@ onboarding_profile     # hedefler, diyet tercihi, target_weight_kg, daily_calori
 streaks                # water / exercise / sleep streak takibi
 badges                 # kazanılan rozetler
 user_levels            # XP sistemi
-friendships            # arkadaşlık istekleri ve durumu
-step_logs              # günlük adım sayısı (pedometer) ✅
-menstrual_cycles       # adet döngüsü takibi ✅
+friendships            # arkadaşlık istekleri ve durumu (pending/accepted)
+step_logs              # günlük adım sayısı (pedometer)
+menstrual_cycles       # adet döngüsü takibi
+ai_usage_logs          # AI rate limit kayıtları (feature, used_at, user_id)
 ```
 
 ---
@@ -295,19 +294,20 @@ GET    /reports/weekly?reference_date=
 GET    /reports/monthly?year=&month=
 
 ── AI ──
-POST   /ai/weekly-summary
-POST   /ai/workout-plan
-POST   /ai/meal-advice
-POST   /ai/recipe
-POST   /ai/calorie-from-photo    # multipart/form-data, field: "file"
-POST   /ai/calorie-bank-advice
-POST   /ai/cycle-advice
+POST   /ai/weekly-summary        # Free: 1/hafta  | Premium: sınırsız
+POST   /ai/workout-plan          # Free: 2/hafta  | Premium: sınırsız
+POST   /ai/meal-advice           # Free: 2/hafta  | Premium: sınırsız
+POST   /ai/recipe                # limit yok
+POST   /ai/calorie-from-photo    # Free: 3/gün    | Premium: sınırsız
+POST   /ai/calorie-bank-advice   # limit yok
+POST   /ai/cycle-advice          # limit yok
 
 ── SOCIAL ──
 POST   /social/friends/request
 POST   /social/friends/accept/{id}
 DELETE /social/friends/{id}
-GET    /social/friends
+GET    /social/friends            # accepted arkadaşlar
+GET    /social/friends/pending    # gelen bekleyen istekler (requester_name dahil)
 GET    /social/leaderboard
 
 ── GAMIFICATION ──
@@ -345,25 +345,25 @@ mobile/
 │   │   │   └── token_manager.dart
 │   │   ├── theme/
 │   │   ├── notifications/
-│   │   │   └── notification_service.dart  # ⚠️ bildirim ikonu geçici
+│   │   │   └── notification_service.dart
 │   │   └── utils/
 │   │       ├── date_utils.dart
-│   │       └── rate_limiter.dart          # user_id bazlı key'ler
+│   │       └── rate_limiter.dart          # user_id bazlı key'ler, client-side
 │   └── screens/
 │       ├── auth/
-│       │   └── login_screen.dart          # logo, dark/light toggle, beni hatırla
+│       │   └── login_screen.dart
 │       ├── onboarding/
 │       │   └── onboarding_screen.dart     # 6 adım + validasyon
 │       ├── home/
-│       │   └── dashboard_screen.dart      # AI Kalori Analizi butonu + günlük mesaj
+│       │   └── dashboard_screen.dart
 │       ├── takip/
 │       │   ├── olcum_tab.dart
 │       │   ├── diyet_tab.dart             # 7 günlük haftalık plan
 │       │   ├── su_tab.dart
 │       │   └── uyku_tab.dart
 │       ├── egzersiz/
-│       │   ├── egzersiz_screen.dart       # bar chart (BodyMapWidget kaldırıldı)
-│       │   └── seans_detay_screen.dart    # bar chart (BodyMapWidget kaldırıldı)
+│       │   ├── egzersiz_screen.dart
+│       │   └── seans_detay_screen.dart
 │       ├── ai/
 │       │   ├── ai_screen.dart
 │       │   ├── ai_helpers.dart
@@ -375,8 +375,8 @@ mobile/
 │       │   └── cycle_advice_screen.dart
 │       ├── raporlar/
 │       ├── gamification/
-│       │   └── gamification_screen.dart   # XP, level, streak, rozetler
 │       ├── sosyal/
+│       │   └── sosyal_screen.dart         # pending requests UI eklendi
 │       ├── profil/
 │       ├── more/
 │       ├── steps/
@@ -400,24 +400,24 @@ mobile/
 | Login / Register | ✅ | JWT flow, beni hatırla |
 | Onboarding | ✅ | 6 adım, backend entegre |
 | Dashboard | ✅ | Gamification + AI koç kartı |
-| Takip — Ölçüm | ✅ | CRUD |
+| Takip — Ölçüm | ⚠️ | Yağ oranı tekrar hesaplama yok, boy profilden gelmiyor |
 | Takip — Diyet | ✅ | 7 günlük haftalık plan |
 | Takip — Su | ✅ | Hızlı ekle, progress bar |
 | Takip — Uyku | ✅ | TimePicker, kalite slider |
-| Egzersiz | ✅ | Seans + detay + bar chart |
+| Egzersiz | ⚠️ | Egzersiz 2 kere ekleniyor, AI planı seansa aktarılmıyor, kas grafiği yok |
 | AI — Haftalık Özet | ✅ | Markdown render |
-| AI — Antrenman Planı | ✅ | Otomatik seans oluşturma |
+| AI — Antrenman Planı | ⚠️ | Egzersiz ekle butonu kaldırılacak, kas grafiği yok |
 | AI — Diyet Tavsiyesi | ✅ | shared_prefs cache |
-| AI — Tarif Önerisi | ✅ | Kullanıcı ne istediğini söyler → malzemeler alışveriş listesine |
+| AI — Tarif Önerisi | ⚠️ | Ara sıra hata veriyor |
 | AI — Vision Kalori | ✅ | multipart, manuel token |
-| AI — Kalori Bankası | ✅ | Dashboard butonu |
+| AI — Kalori Bankası | ⚠️ | Telafi seçenekleri sonrası scroll yok, UI renksiz |
 | AI — Regl Tavsiyesi | ✅ | cycle_advice_screen |
 | Raporlar | ✅ | fl_chart, haftalık+aylık |
 | Gamification | ✅ | XP, seviye, streak, rozetler |
-| Sosyal | ✅ | Arkadaşlar + liderboard |
+| Sosyal | ✅ | Arkadaşlar + pending istekler + liderboard |
 | Alışveriş | ✅ | Liste + barkod |
-| Adım Sayar | ✅ | Pedometer aktif |
-| Profil | ✅ | Görüntüleme + düzenleme |
+| Adım Sayar | ⚠️ | Pedometer kapalı gözüküyor |
+| Profil | ⚠️ | Hedef değiştirilemiyor, AI ismi güncelleme çalışmıyor |
 | More | ✅ | Menü kartları |
 | Regl Takvimi | ✅ | Sadece gender == female |
 
@@ -442,7 +442,7 @@ mobile/
 'last_foods_to_avoid_{userId}'
 'last_weekly_meal_plan_{userId}'
 
-// ── AI Rate Limiter (user_id bazlı) ─────────────────
+// ── AI Rate Limiter (user_id bazlı) — client-side ───
 'vision_count_{userId}_{Y}_{M}_{D}'
 'weekly_analysis_{userId}_{Y}_w{N}'
 'meal_advice_{userId}_{Y}_w{N}'
@@ -466,20 +466,28 @@ mobile/
 
 ## 12. AI Rate Limiter Sistemi
 
-```dart
-// core/utils/rate_limiter.dart
-// Limitler (Free tier):
-//   Vision kalori    → günde 3
-//   Haftalık analiz  → haftada 1
-//   Diyet tavsiyesi  → haftada 1
-//   Antrenman planı  → haftada 1
+```
+── CLIENT SIDE (rate_limiter.dart) ──────────────────────
+Limitler (Free tier):
+  Vision kalori    → günde 3
+  Haftalık analiz  → haftada 1
+  Diyet tavsiyesi  → haftada 2
+  Antrenman planı  → haftada 2
 
-// user_id bazlı key'ler — hesap değişince limit izole
-// clearUserLimits() → logout'ta çağrılıyor
+user_id bazlı key'ler — hesap değişince limit izole
+clearUserLimits() → logout'ta çağrılıyor
+isPremium() → true ise tüm limitler bypass
 
-// ⚠️ AÇIK SORUN:
-// Kullanıcı diyet tavsiyesi alıp kaydetmeden çıkınca hak tükeniyor
-// Çözüm: RateLimiter.recordMealAdviceUse() → _saveAdvice() içine taşı
+⚠️ AÇIK SORUN:
+  - Premium hesap client-side limitöre takılıyor
+    Çözüm: isPremium() DB'den değil /auth/me'den okumalı
+  - Kullanıcı tavsiye alıp kaydetmeden çıkınca hak tükeniyor
+    Çözüm: RateLimiter.recordMealAdviceUse() → _saveAdvice() içine taşı
+
+── BACKEND SIDE (ai_rate_limiter.py) ────────────────────
+ai_usage_logs tablosunda feature + used_at bazlı kayıt
+is_premium = true → limit kontrolü bypass
+429 döner → Flutter "PRO'ya geç" dialog gösterir
 ```
 
 ---
@@ -502,6 +510,11 @@ today_max_calories  = daily_target + max(weekly_bank, 0)
 complied → backend otomatik hesaplıyor (net tüketim / hedef → %80-120 = uyuldu)
 Egzersiz kalorisi bankaya dahil
 POST /ai/calorie-bank-advice → short_message, detailed_advice, tomorrow_suggestion, telafi_options
+
+⚠️ AÇIK SORUN:
+  - Kalori bankası hedefi 0 görünüyor (ölçüm girilmeden önce TDEE hesaplanamıyor)
+  - Diyet tavsiyesi (2500 kcal) ile kalori bankası (2000 kcal) önerileri çelişiyor
+  - Telafi seçenekleri bölümünden sonra scroll çalışmıyor
 ```
 
 ---
@@ -532,6 +545,10 @@ diyet_tab.dart:
   → Logout'ta user_id bazlı temizleniyor
 
 MAX_TOKENS_MEAL = 3000
+
+⚠️ AÇIK SORUN:
+  - AI diyet planı sefer başı günlük oluşturuyor, haftalık değil
+    Çözüm: meal_advisor.py'de weekly_plan zorunlu yapıldı, kontrol gerekiyor
 ```
 
 ---
@@ -549,6 +566,10 @@ Adım 6: AI Koç ismi (atlarsa default: TrackForge AI)
 _complete() → /onboarding/complete endpoint'ine gönderir
 Senkronizasyon: goals[0] → fitness_goal, diet_preference,
                 target_weight_kg, daily_calorie_habit → user_preferences'a da yazılır
+
+⚠️ AÇIK SORUN:
+  - Onboarding'de girilen başlangıç kilosu dashboard'a aktarılmıyor
+  - Register → tercih listesi → uygulamadan çık → gir → hesap açılmış oluyor (normal)
 ```
 
 ---
@@ -563,7 +584,7 @@ Faz 2 — Foliküler (Gün 6–13)     → Orta yoğun, protein ağırlıklı
 Faz 3 — Ovülasyon (Gün 14–16)    → Zirve performans, kalori artırılabilir
 Faz 4 — Luteal (Gün 17–28)       → Yoğunluk azalt, magnezyum açısından zengin
 
-AI Entegrasyonu (⏳ V1.1):
+AI Entegrasyonu (V1.1):
   → AI antrenman planı + tarif önerici + haftalık rapor
   → Faz bilgisi prompt'a eklenecek
 ```
@@ -598,7 +619,7 @@ AI Entegrasyonu (⏳ V1.1):
 
 | Paket | Fiyat | Özellikler |
 |---|---|---|
-| **Free** | Ücretsiz | Haftalık AI analizi 1x, Diyet tavsiyesi 1x/hafta, Antrenman planı 1x/hafta, Vision 3x/gün |
+| **Free** | Ücretsiz | Haftalık AI analizi 1x, Diyet tavsiyesi 2x/hafta, Antrenman planı 2x/hafta, Vision 3x/gün |
 | **PRO** | 149 TL/ay | Analiz sınırsız, Diyet günlük dinamik, Antrenman 2x/hafta, Vision 10x/gün |
 | **PRO+** | 299 TL/ay | Her şey sınırsız, Regl AI, Kan değerleri, Öncelikli destek |
 
@@ -667,6 +688,8 @@ Env Variables (Render):
 - POST /ai/calorie-bank-advice → short_message, detailed_advice, tomorrow_suggestion, telafi_options
 - activity_level → _safeActivityLevel() ile handle et
 - complied → artık POST/PUT body'sine gönderilmiyor, backend otomatik hesaplıyor
+- GET /social/friends/pending → PendingRequestResponse (requester_name JOIN ile)
+- AI rate limit aşılınca → 429 döner, Flutter "PRO'ya geç" gösterir
 
 # Egzersiz / Kas Grubu
 - BodyMapWidget KALDIRILDI
@@ -684,8 +707,10 @@ Env Variables (Render):
 
 # Alembic
 - .env backend/ klasöründe
-- Koşturma: cd backend → $env:PYTHONPATH=... → $env:DATABASE_URL=... → alembic ...
-- Render external DB URL kullanılır (asyncpg değil, psycopg2)
+- Root'tan çalıştır: alembic -c backend/alembic.ini <komut>
+- env.py'de load_dotenv ile .env otomatik bulunuyor
+- Render start command: alembic upgrade heads (plural — multiple heads)
+- Multiple heads çıkarsa: alembic merge heads → upgrade heads → revision
 
 # State Management
 - ThemeModeNotifier / StateNotifierProvider → dark mode
@@ -729,7 +754,8 @@ Env Variables (Render):
 | 10 | Flutter — Tüm ekranlar | ✅ |
 | 11 | Polish, UI/UX, Icon, Splash, Play Store | ✅ |
 | 12 | Bug Fix Round 1 + UI/UX Revize + Yeni Özellikler | ✅ |
-| 13 | Bug Fix Round 2 + Kas Grubu Grafiği + Gamification Revize | ⏳ APK test devam ediyor |
+| 13 | Bug Fix Round 2 + Kas Grubu Grafiği + Gamification Revize | ✅ |
+| 14 | V1.1 Özellikler — Sosyal UI, Backend Rate Limit | ⏳ APK test bekliyor |
 
 ---
 
@@ -737,16 +763,31 @@ Env Variables (Render):
 
 ### 🔴 Kritik
 - **body_map_widget.dart silinmeli** — artık kullanılmıyor, derleme hatası verir
-- **Splash ekranı çalışmıyor** — flutter_native_splash drawable üretiyor ama göstermiyor, styles.xml bağlantısı kopuk
+- **Splash ekranı çalışmıyor** — flutter_native_splash drawable üretiyor ama göstermiyor
 
 ### 🟡 Önemli
-- **Rate limiter kaydet-çıkış sorunu** — kullanıcı tavsiye alıp kaydetmeden çıkınca hak tükeniyor
-  Çözüm: RateLimiter.recordMealAdviceUse() → _saveAdvice() içine taşı
-- **Uyku hatırlatıcı** — bildirim sistemi mevcut ama uyku için özel hatırlatıcı eklenmedi
+- **Premium hesap client-side limitöre takılıyor** — isPremium() token'dan değil DB'den okumalı
+- **Egzersiz 2 kere ekleniyor** — seans detay ekranında duplicate insert var
+- **AI planından oluşturulan egzersiz seansa/kas grubuna aktarılmıyor**
+- **Profil — hedef değiştirilemiyor** — fitness_goal PUT çalışmıyor
+- **Profil — AI ismi güncellenmiyor** — ai_name PUT sonrası AI ekranına yansımıyor
+- **Onboarding başlangıç kilosu dashboard'a aktarılmıyor**
+- **Çapraz hesap uyku verisi** — varsayılan uyku değerleri diğer hesaba görünüyor
+- **Çapraz hesap kalori verisi** — bir hesabın 280 kcal'i diğer hesapta görünüyor
+- **Çapraz hesap egzersiz** — diğer hesabın egzersiz seansı silinemiyor (404)
+
+### 🟠 UI/UX
+- **Kalori bankası telafi scroll yok** — telafi seçenekleri sonrası sayfa kesilmiyor
+- **Kalori bankası UI renksiz** — detailed_advice düz metin, badge/renk yok
+- **Antrenman planı — egzersiz ekle butonu kaldırılacak** — AI zaten oluşturuyor
+- **Egzersiz kas grubu grafiği** — seans detayında ve AI planında çıkmıyor
+- **Dashboard — serilere tümüne bas** — gamification'a yönlendirmiyor
+- **Ölçüm tabı — yağ oranı tekrar hesaplama** — değer değişince "Tekrar Hesapla" çıkmıyor
+- **Ölçüm tabı — boy profilden gelmiyor**
 
 ### ⏳ Bekleyen
 - Bildirim ikonu kalıcı fix (drawable vector XML)
-- Play Store — App icon (512x512), Feature graphic (1024x500), ekran görüntüleri, İngilizce listing, content rating
+- Play Store — App icon (512x512), Feature graphic, screenshots, İngilizce listing
 
 ---
 
@@ -779,7 +820,6 @@ Env Variables (Render):
 - Regl fazı AI entegrasyonu (diyet + antrenman + haftalık rapor)
 - Çoklu dil desteği — TR + EN (flutter_localizations + intl)
 - Antrenman planı kas grubu tekrar önleme
-- AI rate limit backend kontrolü
 - Apple Developer hesabı
 
 ---
@@ -812,6 +852,6 @@ Env Variables (Render):
 ---
 
 *Bu doküman projenin yaşayan anayasası.*
-*Son güncelleme: 8 Haziran 2026 — v7.3*
-*Backend: Faz 1–9 tamamlandı · Flutter: Faz 10–13 devam ediyor*
-*Sonraki: APK test → Açık sorunlar → Play Store submit*
+*Son güncelleme: 10 Haziran 2026 — v7.4*
+*Backend: Faz 1–9 tamamlandı · Flutter: Faz 10–14 devam ediyor*
+*Sonraki: Açık sorunlar → APK test → Play Store submit*

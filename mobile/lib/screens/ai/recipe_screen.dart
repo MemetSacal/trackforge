@@ -1,8 +1,11 @@
 // ── recipe_screen.dart ──────────────────────────────────
+import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../app.dart';
 import 'ai_helpers.dart';
 
@@ -20,6 +23,7 @@ class _RecipeScreenState extends ConsumerState<RecipeScreen> {
   int _step = 0;
 
   final _ingredientController = TextEditingController();
+  final _picker = ImagePicker(); // v3: buzdolabı fotoğrafı için
   final List<String> _ingredients = [];
   String _mealType = 'dinner';
   String? _craving;
@@ -69,6 +73,81 @@ class _RecipeScreenState extends ConsumerState<RecipeScreen> {
     });
   }
 
+  // ── v3: Buzdolabı fotoğrafından tarif ──────────────────
+  // "Dolapta ne varsa fotoğrafla, akşam yemeğini söyleyeyim."
+  // Backend iki aşama çalıştırır: vision malzemeleri çıkarır,
+  // recipe üretici onlarla tarif yazar. Tespit edilen malzemeler
+  // sonuç ekranında gösterilir (kullanıcı AI'ın ne gördüğünü bilir).
+  Future<void> _getRecipeFromFridgePhoto() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.camera_alt_rounded),
+            title: const Text('Fotoğraf çek'),
+            subtitle: const Text('Dolabın kapağını aç, aydınlık bir kare al'),
+            onTap: () => Navigator.pop(ctx, ImageSource.camera),
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library_rounded),
+            title: const Text('Galeriden seç'),
+            onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (source == null) return;
+
+    final picked = await _picker.pickImage(
+        source: source, maxWidth: 1024, maxHeight: 1024, imageQuality: 85);
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+
+    setState(() { _isLoading = true; _error = null; _recipe = null; });
+    try {
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes,
+            filename: 'fridge.jpg', contentType: DioMediaType('image', 'jpeg')),
+        'meal_type': _mealType,
+        if (_craving != null) 'craving': _craving,
+      });
+      final response = await ApiClient.instance
+          .post(Endpoints.aiRecipeFromPhoto, data: formData);
+      final data = Map<String, dynamic>.from(response.data);
+      setState(() {
+        _recipe = data;
+        // AI'ın dolabında gördüklerini malzeme listesine yansıt
+        final detected = (data['detected_ingredients'] as List?) ?? [];
+        _ingredients
+          ..clear()
+          ..addAll(detected.map((e) => e.toString()));
+        _step = 2;
+      });
+    } on DioException catch (e) {
+      final q = QuotaException.fromDioError(e);
+      if (q != null) {
+        setState(() => _error = q.message);
+        if (mounted) {
+          await showQuotaDialog(context,
+              message: q.message, isPremium: q.isPremium,
+              resetsInDays: q.resetsInDays);
+        }
+      } else if (e.response?.statusCode == 422) {
+        setState(() => _error =
+            'Fotoğrafta tanınabilir malzeme bulunamadı. Daha aydınlık ve yakın bir kare dene.');
+      } else {
+        setState(() => _error = 'Fotoğraftan tarif alınamadı.');
+      }
+    } catch (_) {
+      setState(() => _error = 'Fotoğraftan tarif alınamadı.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _getRecipe() async {
     setState(() { _isLoading = true; _error = null; _recipe = null; });
     try {
@@ -79,6 +158,19 @@ class _RecipeScreenState extends ConsumerState<RecipeScreen> {
         'calorie_limit': null,
       });
       setState(() { _recipe = Map<String, dynamic>.from(response.data); _step = 2; });
+    } on DioException catch (e) {
+      // v2: sunucu kotası — recipe/cycle/bank artık kotalı
+      final q = QuotaException.fromDioError(e);
+      if (q != null) {
+        setState(() => _error = q.message);
+        if (mounted) {
+          await showQuotaDialog(context,
+              message: q.message, isPremium: q.isPremium,
+              resetsInDays: q.resetsInDays);
+        }
+      } else {
+        setState(() => _error = 'Tarif alınırken hata oluştu.');
+      }
     } catch (_) {
       setState(() => _error = 'Tarif alınırken hata oluştu.');
     } finally {
@@ -165,6 +257,41 @@ class _RecipeScreenState extends ConsumerState<RecipeScreen> {
         // Progress
         _progressBar(1, accent, muted),
         const SizedBox(height: 20),
+
+        // ── v3: Buzdolabı fotoğrafı — en hızlı yol ──
+        GestureDetector(
+          onTap: _getRecipeFromFridgePhoto,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: accentDim,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: accent.withOpacity(0.5)),
+            ),
+            child: Row(children: [
+              const Text('🧊', style: TextStyle(fontSize: 26)),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Dolabını fotoğrafla',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: text)),
+                const SizedBox(height: 2),
+                Text('AI malzemeleri tanısın, tarifi hazırlasın ✨',
+                    style: TextStyle(fontSize: 12, color: textSoft)),
+              ])),
+              Icon(Icons.camera_alt_rounded, color: accent, size: 22),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: Divider(color: muted.withOpacity(0.3))),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text('veya elle ekle', style: TextStyle(fontSize: 11, color: muted)),
+          ),
+          Expanded(child: Divider(color: muted.withOpacity(0.3))),
+        ]),
+        const SizedBox(height: 16),
 
         Text('Eklemek istediğin malzeme var mı?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: text, letterSpacing: -0.3)),
         const SizedBox(height: 6),

@@ -16,7 +16,11 @@ async def generate_meal_advice(
     gender: str = None,
     activity_level: str = None,
     weight_kg: float = None,
+    user_context: str = "",
 ) -> dict:
+    # v2: user_context — build_user_context() çıktısı.
+    # Diyet planı artık antrenman günlerini, döngü fazını ve geçen
+    # haftanın gerçek beslenme uyumunu BİLEREK üretilir (silo çözümü).
     client = get_claude_client()
 
     goal_labels = {
@@ -57,10 +61,17 @@ async def generate_meal_advice(
             f"\n- Tahmini günlük kalori ihtiyacı (TDEE): {tdee} kcal"
         )
 
+    context_block = f"\n{user_context}\n" if user_context else ""
+
     prompt = f"""
 Sen bir diyetisyen asistanısın. Kullanıcının sağlık profiline göre kişiselleştirilmiş 7 günlük haftalık diyet planı oluştur.
 
 ÖNEMLİ: Bu tıbbi tavsiye değil, genel beslenme önerisidir.
+{context_block}
+Yukarıdaki kullanıcı bağlamı varsa MUTLAKA dikkate al: antrenman yapılan
+günlerde karbonhidratı artır, döngü fazına göre demir/magnezyum gibi
+ihtiyaçları gözet, geçen haftaki gerçek uyuma göre planı gerçekçi tut
+(sürekli sapma varsa daha esnek ve uygulanabilir bir plan yaz).
 
 Kullanıcı profili:
 - Hedef: {goal_text}
@@ -134,8 +145,15 @@ SADECE JSON formatında yanıt ver, başka hiçbir şey yazma:
     "dinner": "bugünkü akşam önerisi",
     "snack": "bugünkü ara öğün önerisi"
   }},
+  "shopping_list": [
+    {{"name": "malzeme adı", "quantity": "haftalık tahmini miktar (örn: 500g, 2 adet)"}}
+  ],
   "warnings": ["varsa önemli uyarılar"]
 }}
+
+shopping_list KURALI: weekly_plan'daki tüm öğünler için gereken malzemeleri
+konsolide et — aynı malzeme birden çok günde geçiyorsa TEK satırda topla.
+Temel kiler malzemelerini (tuz, su) dahil etme. En fazla 25 kalem.
 """
 
     def _call():

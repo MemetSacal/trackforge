@@ -1,15 +1,23 @@
-// ── core/utils/rate_limiter.dart ────────────────────────
-// Tüm AI özelliklerinin kullanım limitlerini yöneten merkezi sınıf.
-// shared_preferences ile persist edilir — backend'e gerek yok.
+// ── core/utils/rate_limiter.dart (v2) ───────────────────
+// ROL DEĞİŞİKLİĞİ — ÖNEMLİ:
+//   v1'de bu dosya "güvenlik sınırı"ydı. Bu yanlıştı: SharedPreferences
+//   silinerek/modifiye APK ile aşılabilirdi ve esas limit hiçbir yerde
+//   zorlanmamış olurdu.
+//   v2'de ESAS OTORİTE BACKEND'dir (ai_rate_limiter.py). Bu sınıf artık
+//   sadece UX iyileştirmesidir: butonu önceden griye çekmek ve gereksiz
+//   istek atmamak için. Sunucu 429 dönerse ekranlar QuotaException ile
+//   yakalar (api_exceptions.dart).
 //
-// Limitler:
-//   Vision kalori    → günde 3
-//   Haftalık analiz  → haftada 1
-//   Diyet tavsiyesi  → haftada 1
-//   Antrenman planı  → haftada 1
-//
-// ✅ FIX: Tüm key'ler artık user_id bazlı.
-//         Hesap değişince limitler birbirini etkilemez.
+// v2 DEĞİŞİKLİKLERİ:
+//   1. Haftalık özellikler bool yerine SAYAÇ tutar. v1'de meal/workout
+//      lokalde 1/hafta'ya kilitliydi ama backend 2/hafta'ya izin
+//      veriyordu — kullanıcı 2. hakkını hiç kullanamıyordu (mantık hatası).
+//      Limitler artık backend QUOTAS free tier ile birebir aynı.
+//   2. syncFromServer(): her AI yanıtındaki "quota" objesiyle lokal
+//      sayaç sunucu gerçeğine eşitlenir (cache isabetinde kota yanmaz,
+//      lokal sayaç da şişmez).
+//   3. Key'ler "v2_" önekiyle — eski bool key'lerle tip çakışması olmaz,
+//      eski key'ler tarih bazlı oldukları için kendiliğinden ölür.
 
 import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/token_manager.dart';
@@ -17,96 +25,102 @@ import '../auth/token_manager.dart';
 class RateLimiter {
   RateLimiter._();
 
+  // ── Backend QUOTAS (free tier) ile senkron limitler ──
+  static const int visionDailyLimit   = 3;
+  static const int weeklyAnalysisLimit = 1;
+  static const int mealAdviceLimit    = 2;
+  static const int workoutPlanLimit   = 2;
+
+  static const String _visionFeature  = 'vision';
+  static const String _weeklyFeature  = 'weekly_summary';
+  static const String _mealFeature    = 'meal_advice';
+  static const String _workoutFeature = 'workout_plan';
+
   // ── User ID yardımcısı ────────────────────────────────
-  // User ID yoksa (logout sonrası vb.) 'guest' kullanır — güvenli fallback.
   static Future<String> _userId() async {
     return await TokenManager.getCurrentUserId() ?? 'guest';
   }
 
-  // ── Key üreticiler ────────────────────────────────────
+  // ── Key üreticiler (v2 öneki — eski bool key'lerle çakışmaz) ──
   static Future<String> _dayKey(String feature) async {
     final uid = await _userId();
     final now = DateTime.now();
-    return '${feature}_${uid}_${now.year}_${now.month}_${now.day}';
+    return 'v2_${feature}_${uid}_${now.year}_${now.month}_${now.day}';
   }
 
   static Future<String> _weekKey(String feature) async {
-    final uid    = await _userId();
-    final now    = DateTime.now();
+    final uid     = await _userId();
+    final now     = DateTime.now();
     final weekNum = _weekOfYear(now);
-    return '${feature}_${uid}_${now.year}_w$weekNum';
+    return 'v2_${feature}_${uid}_${now.year}_w$weekNum';
   }
 
-  // ISO week number hesabı
   static int _weekOfYear(DateTime date) {
     final startOfYear = DateTime(date.year, 1, 1);
     final daysDiff    = date.difference(startOfYear).inDays;
     return ((daysDiff + startOfYear.weekday - 1) / 7).ceil();
   }
 
-  // ── Vision: günde 3 ───────────────────────────────────
-  static const int visionDailyLimit = 3;
-  static const String _visionFeature = 'vision_count';
-
-  static Future<int> getVisionUsedToday() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(await _dayKey(_visionFeature)) ?? 0;
+  // ── Genel sayaç işlemleri ─────────────────────────────
+  static Future<String> _keyFor(String feature) async {
+    final isDaily = feature == _visionFeature;
+    return isDaily ? await _dayKey(feature) : await _weekKey(feature);
   }
+
+  static Future<int> _used(String feature) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(await _keyFor(feature)) ?? 0;
+  }
+
+  static Future<void> _increment(String feature) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key   = await _keyFor(feature);
+    await prefs.setInt(key, (prefs.getInt(key) ?? 0) + 1);
+  }
+
+  /// ── v2: Sunucudan dönen gerçek kullanımla senkronla ──
+  /// Her başarılı AI yanıtındaki quota objesinden çağrılır:
+  ///   RateLimiter.syncFromServer('workout_plan', quota['used']);
+  /// Böylece: sunucu cache'den döndüyse sayaç şişmez; başka cihazdan
+  /// kullanım olduysa bu cihazın sayacı da doğruyu gösterir.
+  static Future<void> syncFromServer(String feature, int used) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(await _keyFor(feature), used);
+  }
+
+  // ── Vision: günde 3 ───────────────────────────────────
+  static Future<int> getVisionUsedToday() async => _used(_visionFeature);
 
   static Future<bool> canUseVision() async {
-    if (await TokenManager.isPremium()) return true;
-    final used = await getVisionUsedToday();
-    return used < visionDailyLimit;
+    if (await TokenManager.isPremium()) return true; // PRO tavanını sunucu zorlar
+    return (await _used(_visionFeature)) < visionDailyLimit;
   }
 
-  static Future<void> recordVisionUse() async {
-    final prefs = await SharedPreferences.getInstance();
-    final key   = await _dayKey(_visionFeature);
-    final used  = prefs.getInt(key) ?? 0;
-    await prefs.setInt(key, used + 1);
-  }
+  static Future<void> recordVisionUse() async => _increment(_visionFeature);
 
-  // ── Haftalık analiz: haftada 1 ───────────────────────
-  static const String _weeklyFeature = 'weekly_analysis';
-
+  // ── Haftalık analiz: haftada 1 ────────────────────────
   static Future<bool> canUseWeeklyAnalysis() async {
     if (await TokenManager.isPremium()) return true;
-    final prefs = await SharedPreferences.getInstance();
-    return !(prefs.getBool(await _weekKey(_weeklyFeature)) ?? false);
+    return (await _used(_weeklyFeature)) < weeklyAnalysisLimit;
   }
 
-  static Future<void> recordWeeklyAnalysisUse() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(await _weekKey(_weeklyFeature), true);
-  }
+  static Future<void> recordWeeklyAnalysisUse() async => _increment(_weeklyFeature);
 
-  // ── Diyet tavsiyesi: haftada 1 ───────────────────────
-  static const String _mealFeature = 'meal_advice';
-
+  // ── Diyet tavsiyesi: haftada 2 (v1'de yanlışlıkla 1'di) ──
   static Future<bool> canUseMealAdvice() async {
     if (await TokenManager.isPremium()) return true;
-    final prefs = await SharedPreferences.getInstance();
-    return !(prefs.getBool(await _weekKey(_mealFeature)) ?? false);
+    return (await _used(_mealFeature)) < mealAdviceLimit;
   }
 
-  static Future<void> recordMealAdviceUse() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(await _weekKey(_mealFeature), true);
-  }
+  static Future<void> recordMealAdviceUse() async => _increment(_mealFeature);
 
-  // ── Antrenman planı: haftada 1 ────────────────────────
-  static const String _workoutFeature = 'workout_plan';
-
+  // ── Antrenman planı: haftada 2 (v1'de yanlışlıkla 1'di) ──
   static Future<bool> canUseWorkoutPlan() async {
     if (await TokenManager.isPremium()) return true;
-    final prefs = await SharedPreferences.getInstance();
-    return !(prefs.getBool(await _weekKey(_workoutFeature)) ?? false);
+    return (await _used(_workoutFeature)) < workoutPlanLimit;
   }
 
-  static Future<void> recordWorkoutPlanUse() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(await _weekKey(_workoutFeature), true);
-  }
+  static Future<void> recordWorkoutPlanUse() async => _increment(_workoutFeature);
 
   // ── UI için kalan hak metni ───────────────────────────
   static Future<String> visionRemainingText() async {
@@ -118,19 +132,23 @@ class RateLimiter {
   }
 
   static Future<String> weeklyRemainingText(String feature) async {
-    final can = feature == _weeklyFeature
-        ? await canUseWeeklyAnalysis()
-        : feature == _mealFeature
-            ? await canUseMealAdvice()
-            : await canUseWorkoutPlan();
-    return can ? 'Bu hafta 1 kullanım hakkın var' : 'Bu haftaki hakkını kullandın';
+    final limits = {
+      _weeklyFeature: weeklyAnalysisLimit,
+      _mealFeature: mealAdviceLimit,
+      _workoutFeature: workoutPlanLimit,
+    };
+    // Geriye uyum: eski feature adı 'weekly_analysis' ile çağrılırsa da çalışsın
+    final f = feature == 'weekly_analysis' ? _weeklyFeature : feature;
+    final limit = limits[f] ?? 1;
+    final remaining = limit - await _used(f);
+    return remaining > 0
+        ? 'Bu hafta $remaining kullanım hakkın kaldı'
+        : 'Bu haftaki hakkını kullandın';
   }
 
   // ── Logout temizleme ─────────────────────────────────
-  // Profil ekranında logout sırasında çağrılır.
-  // Mevcut kullanıcıya ait tüm limit key'lerini siler.
   static Future<void> clearUserLimits() async {
-    final uid   = await _userId(); // logout öncesi çağrılmalı, userId hâlâ var
+    final uid   = await _userId();
     final prefs = await SharedPreferences.getInstance();
     final keys  = prefs.getKeys().where((k) => k.contains('_${uid}_')).toList();
     for (final k in keys) {

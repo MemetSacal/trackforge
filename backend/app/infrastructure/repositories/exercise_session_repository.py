@@ -23,6 +23,7 @@ class ExerciseSessionRepository(IExerciseSessionRepository):
             duration_minutes=exercise_session.duration_minutes,
             calories_burned=exercise_session.calories_burned,
             notes=exercise_session.notes,
+            source=getattr(exercise_session, "source", "manual"),  # v4
             created_at=exercise_session.created_at,
         )
         self.session.add(db_obj)
@@ -85,6 +86,7 @@ class ExerciseSessionRepository(IExerciseSessionRepository):
             calories_burned=db_obj.calories_burned,
             notes=db_obj.notes,
             created_at=db_obj.created_at,
+            source=getattr(db_obj, 'source', 'manual'),
         )
 
 """

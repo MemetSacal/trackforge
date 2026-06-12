@@ -1,8 +1,10 @@
 // ── dashboard_screen.dart ───────────────────────────────
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
@@ -35,17 +37,38 @@ class _C {
   static const lDanger    = Color(0xFFDC2626);
 }
 
+// ── v4: TEK İSTEK DASHBOARD ──
+// ESKİ: Açılışta 6 ayrı GET (me, gamification, weekly, ölçüm, öğün, su+uyku)
+// → 6 round-trip, yavaş açılış, pil, sunucuda 6 kat istek.
+// YENİ: Tek agregat istek; eski provider'lar bu yanıtın DİLİMLERİNİ döndürür.
+// Alt nesne şekilleri tekil endpoint'lerle birebir aynı olduğundan
+// UI kodu hiç değişmeden çalışır.
+final dashSummaryProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final res = await ApiClient.instance.get(Endpoints.reportsDashboardSummary);
+  return Map<String, dynamic>.from(res.data);
+});
+
 final dashUserProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final summary = await ref.watch(dashSummaryProvider.future);
+  final u = summary['user'];
+  if (u is Map) return Map<String, dynamic>.from(u);
+  // Agregat'ta yoksa eski yola düş (geriye uyum)
   final res = await ApiClient.instance.get(Endpoints.me);
   return Map<String, dynamic>.from(res.data);
 });
 
 final dashGamificationProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final summary = await ref.watch(dashSummaryProvider.future); // v4: agregat dilimi
+  final g = summary['gamification'];
+  if (g is Map) return Map<String, dynamic>.from(g);
   final res = await ApiClient.instance.get(Endpoints.gamificationSummary);
   return Map<String, dynamic>.from(res.data);
 });
 
 final dashWeeklyProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final summary = await ref.watch(dashSummaryProvider.future); // v4: agregat dilimi
+  final w = summary['weekly'];
+  if (w is Map) return Map<String, dynamic>.from(w);
   final res = await ApiClient.instance.get(
     Endpoints.reportsWeekly,
     queryParameters: {'reference_date': TFDateUtils.today()},
@@ -56,6 +79,10 @@ final dashWeeklyProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref
 // ── Son vücut ölçümü (ağırlık için) ─────────────────────
 final dashLatestMeasurementProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
+    final summary = await ref.watch(dashSummaryProvider.future); // v4: agregat dilimi
+    final m = summary['latest_measurement'];
+    if (m is Map) return Map<String, dynamic>.from(m);
+    if (summary.containsKey('latest_measurement')) return null; // agregat "yok" dedi
     final to   = TFDateUtils.today();
     final from = DateTime.now().subtract(const Duration(days: 90));
     final fromStr = '${from.year}-${from.month.toString().padLeft(2,'0')}-${from.day.toString().padLeft(2,'0')}';
@@ -69,6 +96,10 @@ final dashLatestMeasurementProvider = FutureProvider.autoDispose<Map<String, dyn
 // ── Bugünkü kalori bankası verisi ───────────────────────
 final dashMealProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
+    final summary = await ref.watch(dashSummaryProvider.future); // v4: agregat dilimi
+    final v = summary['meal_today'];
+    if (v is Map) return Map<String, dynamic>.from(v);
+    if (summary.containsKey('meal_today')) return null; // agregat "bugün kayıt yok" dedi
     final res = await ApiClient.instance.get('${Endpoints.mealCompliance}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(res.data);
   } catch (_) { return null; }
@@ -77,6 +108,10 @@ final dashMealProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref)
 // ── Bugünkü su verisi ────────────────────────────────────
 final dashWaterTodayProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
+    final summary = await ref.watch(dashSummaryProvider.future); // v4: agregat dilimi
+    final v = summary['water_today'];
+    if (v is Map) return Map<String, dynamic>.from(v);
+    if (summary.containsKey('water_today')) return null; // agregat "bugün kayıt yok" dedi
     final res = await ApiClient.instance.get('${Endpoints.water}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(res.data);
   } catch (_) { return null; }
@@ -85,6 +120,10 @@ final dashWaterTodayProvider = FutureProvider.autoDispose<Map<String, dynamic>?>
 // ── Bugünkü uyku verisi ──────────────────────────────────
 final dashSleepTodayProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
+    final summary = await ref.watch(dashSummaryProvider.future); // v4: agregat dilimi
+    final v = summary['sleep_today'];
+    if (v is Map) return Map<String, dynamic>.from(v);
+    if (summary.containsKey('sleep_today')) return null; // agregat "bugün kayıt yok" dedi
     final res = await ApiClient.instance.get('${Endpoints.sleep}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(res.data);
   } catch (_) { return null; }
@@ -1023,6 +1062,10 @@ class _BankAdviceSheetState extends State<BankAdviceSheetPublic> {
     try {
       final response = await ApiClient.instance.post(Endpoints.aiCalorieBankAdvice, data: {});
       setState(() { _advice = Map<String, dynamic>.from(response.data); _isLoading = false; });
+    } on DioException catch (e) {
+      // v2: calorie-bank-advice artık kotalı — kota mesajını aynen göster
+      final q = QuotaException.fromDioError(e);
+      setState(() { _error = q?.message ?? 'Analiz alınamadı'; _isLoading = false; });
     } catch (_) {
       setState(() { _error = 'Analiz alınamadı'; _isLoading = false; });
     }

@@ -15,6 +15,7 @@ class User:
     created_at: datetime
     updated_at: datetime
     is_premium: bool = False
+    token_version: int = 0  # v3: logout/şifre değişiminde +1 — eski refresh token'ları geçersizleşir
 
 """
 id UUID olarak üretiliyor ve str(uuid.uuid4()) ile stringe çevriliyor — "796258c6-8f96-4a2f-..." formatında.

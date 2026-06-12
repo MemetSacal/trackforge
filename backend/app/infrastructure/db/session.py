@@ -6,7 +6,7 @@ settings = get_settings()
 # Async engine oluştur — veritabanına bağlantı kapısı
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=True,  # Geliştirme ortamında SQL sorgularını terminale yazdırır
+    echo=False,  # v2: Üretimde SQL loglama kapalı — Render loglarını şişiriyor ve yavaşlatıyordu
     pool_size=10,  # Aynı anda max 10 bağlantı açık tutulur
     max_overflow=20,  # Gerekirse 20 ekstra bağlantıya kadar çıkabilir
 )

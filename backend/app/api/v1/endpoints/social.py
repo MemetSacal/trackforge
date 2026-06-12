@@ -111,3 +111,173 @@ Bulunamayan kayıt → 404 Not Found
 
 Spring Boot karşılığı: @RestController + @RequestMapping("/social")
 """
+
+# ═════════════════════════════════════════════════════════
+# ── v5: ADIM DÜELLOSU ──
+# 7 günlük arkadaş yarışması. Adımlar step_logs'tan canlı toplanır.
+# Bitiş tarihi geçmiş aktif düellolar listeleme anında finalize edilir
+# (lazy finalization — cron/job gerekmez, v1.0 için yeterli).
+# ═════════════════════════════════════════════════════════
+
+from datetime import date as _date, timedelta as _timedelta
+from pydantic import BaseModel as _BaseModel
+
+from sqlalchemy import select as _select, func as _func, or_ as _or, and_ as _and
+from backend.app.infrastructure.db.models.duel_model import DuelModel
+from backend.app.infrastructure.db.models.step_log_model import StepLogModel
+from backend.app.infrastructure.db.models.friendship_model import FriendshipModel
+from backend.app.infrastructure.db.models.user_model import UserModel
+
+
+class DuelCreateRequest(_BaseModel):
+    opponent_id: str
+
+
+async def _steps_between(db, user_id: str, start: _date, end: _date) -> int:
+    total = (await db.execute(
+        _select(_func.coalesce(_func.sum(StepLogModel.step_count), 0)).where(
+            StepLogModel.user_id == user_id,
+            StepLogModel.date >= start,
+            StepLogModel.date <= end,
+        )
+    )).scalar_one()
+    return int(total)
+
+
+async def _duel_to_dict(db, duel: DuelModel, current_user: str) -> dict:
+    names = {}
+    for uid in (duel.challenger_id, duel.opponent_id):
+        u = (await db.execute(
+            _select(UserModel).where(UserModel.id == uid)
+        )).scalar_one_or_none()
+        names[uid] = u.full_name if u else "Kullanıcı"
+
+    counted_end = min(duel.end_date, _date.today())
+    challenger_steps = await _steps_between(db, duel.challenger_id, duel.start_date, counted_end)
+    opponent_steps = await _steps_between(db, duel.opponent_id, duel.start_date, counted_end)
+    days_left = max((duel.end_date - _date.today()).days, 0)
+
+    return {
+        "id": duel.id,
+        "status": duel.status,
+        "start_date": str(duel.start_date),
+        "end_date": str(duel.end_date),
+        "days_left": days_left,
+        "winner_id": duel.winner_id,
+        "is_challenger": duel.challenger_id == current_user,
+        "challenger": {"id": duel.challenger_id, "name": names[duel.challenger_id], "steps": challenger_steps},
+        "opponent": {"id": duel.opponent_id, "name": names[duel.opponent_id], "steps": opponent_steps},
+    }
+
+
+@router.post("/duels")
+async def create_duel(
+    data: DuelCreateRequest,
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Arkadaşa 7 günlük adım düellosu daveti gönder."""
+    if data.opponent_id == current_user:
+        raise HTTPException(status_code=400, detail="Kendinle düello yapamazsın aslanım 😄")
+
+    # Sadece kabul edilmiş arkadaşlarla düello
+    friendship = (await db.execute(
+        _select(FriendshipModel).where(
+            FriendshipModel.status == "accepted",
+            _or(
+                _and(FriendshipModel.requester_id == current_user,
+                     FriendshipModel.addressee_id == data.opponent_id),
+                _and(FriendshipModel.requester_id == data.opponent_id,
+                     FriendshipModel.addressee_id == current_user),
+            ),
+        )
+    )).scalar_one_or_none()
+    if not friendship:
+        raise HTTPException(status_code=400, detail="Sadece arkadaşlarınla düello yapabilirsin.")
+
+    # Aynı ikili arasında bekleyen/aktif düello varsa yenisi açılmaz
+    existing = (await db.execute(
+        _select(DuelModel).where(
+            DuelModel.status.in_(["pending", "active"]),
+            _or(
+                _and(DuelModel.challenger_id == current_user, DuelModel.opponent_id == data.opponent_id),
+                _and(DuelModel.challenger_id == data.opponent_id, DuelModel.opponent_id == current_user),
+            ),
+        )
+    )).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="Bu arkadaşınla zaten süren bir düellonuz var.")
+
+    duel = DuelModel(
+        challenger_id=current_user,
+        opponent_id=data.opponent_id,
+        start_date=_date.today(),          # kabulle aktive olur; tarihler kabulde tazelenir
+        end_date=_date.today() + _timedelta(days=6),
+        status="pending",
+    )
+    db.add(duel)
+    await db.commit()
+    await db.refresh(duel)
+    return await _duel_to_dict(db, duel, current_user)
+
+
+@router.post("/duels/{duel_id}/respond")
+async def respond_duel(
+    duel_id: str,
+    accept: bool = True,
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Düello davetini kabul et veya reddet (sadece davet edilen)."""
+    duel = (await db.execute(
+        _select(DuelModel).where(
+            DuelModel.id == duel_id,
+            DuelModel.opponent_id == current_user,  # IDOR: sadece muhatap yanıtlar
+            DuelModel.status == "pending",
+        )
+    )).scalar_one_or_none()
+    if not duel:
+        raise HTTPException(status_code=404, detail="Bekleyen düello bulunamadı.")
+
+    if accept:
+        duel.status = "active"
+        duel.start_date = _date.today()    # adil başlangıç: sayım kabul anından
+        duel.end_date = _date.today() + _timedelta(days=6)
+    else:
+        duel.status = "declined"
+    await db.commit()
+    return await _duel_to_dict(db, duel, current_user)
+
+
+@router.get("/duels")
+async def list_duels(
+    current_user: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Kullanıcının düelloları (canlı skorlarla) + lazy finalization."""
+    duels = (await db.execute(
+        _select(DuelModel).where(
+            _or(DuelModel.challenger_id == current_user,
+                DuelModel.opponent_id == current_user),
+            DuelModel.status.in_(["pending", "active", "finished"]),
+        ).order_by(DuelModel.created_at.desc()).limit(20)
+    )).scalars().all()
+
+    out = []
+    dirty = False
+    for d in duels:
+        # Süresi dolmuş aktif düelloyu finalize et
+        if d.status == "active" and _date.today() > d.end_date:
+            cs = await _steps_between(db, d.challenger_id, d.start_date, d.end_date)
+            os_ = await _steps_between(db, d.opponent_id, d.start_date, d.end_date)
+            d.status = "finished"
+            d.winner_id = (
+                d.challenger_id if cs > os_
+                else d.opponent_id if os_ > cs
+                else None  # berabere
+            )
+            dirty = True
+        out.append(await _duel_to_dict(db, d, current_user))
+    if dirty:
+        await db.commit()
+    return out

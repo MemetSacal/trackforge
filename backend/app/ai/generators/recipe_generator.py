@@ -13,6 +13,7 @@ async def generate_recipe(
     craving: str = None,           # tatlı / tuzlu / baharatlı / hafif / ağır / diyete uygun
     weekly_bank_balance: float = None,  # haftanın kalori açığı/fazlası
     daily_calorie_target: int = None,
+    user_context: str = "",
 ) -> dict:
     client = get_claude_client()
 
@@ -58,8 +59,11 @@ async def generate_recipe(
     else:
         ingredient_text = "\nKullanıcı özel malzeme belirtmedi — genel market malzemeleri kullanabilirsin."
 
+    context_block = f"\n{user_context}\n" if user_context else ""
+
     prompt = f"""
 Sen bir sağlıklı beslenme şefisin. Kullanıcının tercihlerine göre kişiselleştirilmiş bir {meal_text} tarifi öner.
+{context_block}
 
 Kullanıcı profili:
 - Sevilen yiyecekler: {', '.join(liked_foods) if liked_foods else 'belirtilmemiş'}

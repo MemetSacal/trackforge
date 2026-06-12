@@ -55,6 +55,43 @@ class UserRepository(IUserRepository):
         await self.session.flush()
         return self._to_entity(db_user)
 
+    async def bump_token_version(self, user_id: str) -> None:
+        """v3: Tüm aktif refresh token'ları geçersizleştirir (logout / şifre değişimi).
+        Access token zaten 15 dk ömürlü — refresh ölünce oturum biter."""
+        result = await self.session.execute(
+            select(UserModel).where(UserModel.id == user_id)
+        )
+        db_user = result.scalar_one_or_none()
+        if db_user:
+            db_user.token_version = (db_user.token_version or 0) + 1
+            await self.session.flush()
+
+    async def delete(self, user_id: str) -> bool:
+        """v3: Hesap silme (Play Store zorunluluğu + KVKK).
+        UserModel ilişkileri cascade='all, delete-orphan' — ORM bağlı kayıtları
+        otomatik siler. İlişki olarak tanımlanmamış AI tabloları (ai_usage_logs,
+        ai_feedback, ai_response_cache) açıkça temizlenir."""
+        from sqlalchemy import delete as sa_delete
+        from backend.app.infrastructure.db.models.ai_usage_model import AIUsageModel
+        from backend.app.infrastructure.db.models.ai_feedback_model import AIFeedbackModel
+        from backend.app.infrastructure.db.models.ai_cache_model import AIResponseCacheModel
+
+        result = await self.session.execute(
+            select(UserModel).where(UserModel.id == user_id)
+        )
+        db_user = result.scalar_one_or_none()
+        if not db_user:
+            return False
+
+        for model in (AIUsageModel, AIFeedbackModel, AIResponseCacheModel):
+            await self.session.execute(
+                sa_delete(model).where(model.user_id == user_id)
+            )
+
+        await self.session.delete(db_user)  # cascade ilişkili tüm verileri götürür
+        await self.session.flush()
+        return True
+
     def _to_entity(self, db_user: UserModel) -> User:
         # UserModel (SQLAlchemy) → User (domain entity) dönüşümü
         # Servis katmanı SQLAlchemy'yi hiç görmez, sadece User entity'si görür
@@ -65,6 +102,7 @@ class UserRepository(IUserRepository):
             full_name=db_user.full_name,
             created_at=db_user.created_at,
             updated_at=db_user.updated_at,
+            token_version=getattr(db_user, 'token_version', 0),
         )
 
 """

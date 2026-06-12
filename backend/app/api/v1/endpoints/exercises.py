@@ -148,3 +148,28 @@ create_session → antrenman oluşturulunca gamification tetiklenir:
 
 Spring Boot karşılığı: @RestController + @PostMapping + Event publish.
 """
+
+# ── v5: GET /exercises/catalog ───────────────────────────
+from sqlalchemy import select as _select
+from backend.app.infrastructure.db.models.exercise_catalog_model import ExerciseCatalogModel
+from backend.app.infrastructure.db.session import get_db as _get_db
+from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
+
+
+@router.get("/catalog")
+async def get_exercise_catalog(
+    location: str = None,
+    user_id: str = Depends(get_current_user),
+    db: _AsyncSession = Depends(_get_db),
+):
+    """Kanonik egzersiz kataloğu — manuel egzersiz eklerken
+    öneri/otomatik tamamlama için de kullanılabilir."""
+    q = _select(ExerciseCatalogModel).order_by(ExerciseCatalogModel.name)
+    if location:
+        q = q.where(ExerciseCatalogModel.location.in_([location, "any"]))
+    rows = (await db.execute(q)).scalars().all()
+    return [
+        {"id": r.id, "name": r.name, "muscle_groups": r.muscle_groups,
+         "location": r.location, "equipment": r.equipment}
+        for r in rows
+    ]
