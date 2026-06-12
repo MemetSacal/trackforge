@@ -25,10 +25,11 @@ class ExerciseSession:
     """
 
     id: str
-    user_id: str                            # FK — hangi kullanıcıya ait
-    date: date                              # DATE_BASED zaman referansı
-    duration_minutes: Optional[int]         # Seansın süresi dakika cinsinden
-    calories_burned: Optional[float]        # Yakılan kalori — opsiyonel
-    notes: Optional[str]                    # Seans notu — "Çok yoruldum" gibi
-    source: str = "manual"  # v4: 'manual' | 'ai_plan'
-    created_at: datetime
+    user_id: str
+    date: date
+    duration_minutes: Optional[int] = None
+    calories_burned: Optional[float] = None
+    notes: Optional[str] = None
+
+    source: str = "manual"
+    created_at: datetime = field(default_factory=datetime.utcnow)
