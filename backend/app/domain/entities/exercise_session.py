@@ -25,13 +25,10 @@ class ExerciseSession:
     """
 
     id: str
-    user_id: str
-    date: date
-
+    user_id: str                            # FK — hangi kullanıcıya ait
+    date: date                              # DATE_BASED zaman referansı
+    duration_minutes: Optional[int]         # Seansın süresi dakika cinsinden
+    calories_burned: Optional[float]        # Yakılan kalori — opsiyonel
+    notes: Optional[str]                    # Seans notu — "Çok yoruldum" gibi
     created_at: datetime
-
-    duration_minutes: Optional[int] = None
-    calories_burned: Optional[float] = None
-    notes: Optional[str] = None
-
-    source: str = "manual"
+    source: str = "manual"  # v4: 'manual' | 'ai_plan' — son sırada: default'lu alan default'suzdan ÖNCE gelemez
