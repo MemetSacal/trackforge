@@ -50,6 +50,9 @@ from backend.app.ai.generators.calorie_bank_advisor import generate_calorie_bank
 from backend.app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
 from backend.app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
 from backend.app.infrastructure.db.models.exercise_catalog_model import ExerciseCatalogModel
+from backend.app.core.ai_rate_limiter import record_usage
+# ── POST /ai/calorie-from-text (v6 YENİ) ─────────────────
+from pydantic import BaseModel as _BaseModel
 
 router = APIRouter()
 
@@ -496,11 +499,6 @@ async def get_calorie_bank_advice(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Kalori bankası tavsiyesi oluşturulamadı: {str(e)}")
 
-
-# ── POST /ai/calorie-from-text (v6 YENİ) ─────────────────
-from pydantic import BaseModel as _BaseModel
-
-
 class TextCalorieRequest(_BaseModel):
     description: str
 
@@ -643,7 +641,6 @@ async def submit_ai_feedback(
         rating=data.rating,
         comment=data.comment,
     ))
-    from backend.app.core.ai_rate_limiter import record_usage
     await record_usage(db, current_user, "ai_feedback")
     await db.commit()
     return AIFeedbackResponse(message="Geri bildirim kaydedildi, teşekkürler!")
