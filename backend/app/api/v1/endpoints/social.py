@@ -18,7 +18,6 @@ from sqlalchemy import select as _select, func as _func, or_ as _or, and_ as _an
 from backend.app.infrastructure.db.models.duel_model import DuelModel
 from backend.app.infrastructure.db.models.step_log_model import StepLogModel
 from backend.app.infrastructure.db.models.friendship_model import FriendshipModel
-from backend.app.infrastructure.db.models.user_model import UserModel
 
 router = APIRouter(tags=["Social"])
 
