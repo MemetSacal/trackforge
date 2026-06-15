@@ -14,6 +14,9 @@ import '../gamification/gamification_screen.dart';
 import '../steps/steps_screen.dart';
 import '../cycle/cycle_screen.dart';
 import '../notifications/notification_screen.dart';
+import '../ai/chat_screen.dart';
+import '../health/blood_values_screen.dart';
+import '../health/progress_photos_screen.dart';
 
 final _genderProvider = FutureProvider.autoDispose<String>((ref) async {
   try {
@@ -128,6 +131,9 @@ class MoreScreen extends ConsumerWidget {
       {
         'title': 'Analiz',
         'items': [
+          _Item('💬', 'Koçunla Konuş', 'Verilerini bilen AI asistan', const Color(0xFFFFB020), () => _push(context, const ChatScreen())),
+          _Item('🩸', 'Kan Değerleri', 'Tahlil takibi ve trend', const Color(0xFFEF4444), () => _push(context, const BloodValuesScreen())),
+          _Item('📸', 'İlerleme Fotoğrafları', 'Değişimini yan yana gör', const Color(0xFFA78BFA), () => _push(context, const ProgressPhotosScreen())),
           _Item('📊', 'Raporlar',       'Haftalık ve aylık grafikler', const Color(0xFF22D3EE),  () => _push(context, const RaporlarScreen())),
           _Item('🏆', 'Gamification',   'XP, rozetler, seviye',        const Color(0xFFFFB020),  () => _push(context, const GamificationScreen())),
           _Item('👟', 'Adım Sayar',     'Günlük adım takibi',          const Color(0xFF34D399),  () => _push(context, const StepsScreen())),

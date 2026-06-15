@@ -1,5 +1,6 @@
 // ── seans_detay_screen.dart ─────────────────────────────
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/api/api_client.dart';
@@ -44,9 +45,16 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
   String get _sessionId => widget.session['id'] as String;
 
   // Egzersiz tamamlandı toggle
+  // v8: tamamlama anında dokunsal geri bildirim
   Future<void> _toggleCompleted(String exerciseId, bool current) async {
     final newVal = !current;
     setState(() => _completedState[exerciseId] = newVal);
+    // v8: işaretleme anında dokunsal his — premium uygulamaların gizli imzası
+    if (newVal) {
+      HapticFeedback.lightImpact();
+    } else {
+      HapticFeedback.selectionClick();
+    }
     try {
       await ApiClient.instance.put(
         '${Endpoints.exerciseSessions.replaceAll('/sessions', '')}/exercises/$exerciseId',

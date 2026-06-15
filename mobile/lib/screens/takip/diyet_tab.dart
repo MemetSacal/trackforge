@@ -1,10 +1,12 @@
 // ── diyet_tab.dart ──────────────────────────────────────
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
+import '../../core/api/api_exceptions.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/auth/token_manager.dart';
 import '../ai/calorie_vision_screen.dart'; // v2: foto-kalori kısayolu
@@ -50,6 +52,136 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
 
   @override
   void initState() { super.initState(); _loadAdvice(); }
+
+  // ── v6: Yazıyla/sesle öğün girişi ───────────────────────
+  // "2 yumurta, bir dilim ekmek, çay" yaz (veya klavyenin 🎤 tuşuyla
+  // söyle) → AI kaloriyi hesaplar → kalori alanına tek dokunuşla işler.
+  // Veri girişi sürtünmesinin en büyük kırıcısı.
+  Future<void> _showTextCalorieSheet(BuildContext context) async {
+    final controller = TextEditingController();
+    Map<String, dynamic>? result;
+    bool loading = false;
+    String? error;
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        Future<void> analyze() async {
+          final desc = controller.text.trim();
+          if (desc.length < 3) return;
+          setSheet(() { loading = true; error = null; });
+          try {
+            final res = await ApiClient.instance
+                .post(Endpoints.aiCalorieFromText, data: {'description': desc});
+            setSheet(() => result = Map<String, dynamic>.from(res.data));
+          } on DioException catch (e) {
+            final q = QuotaException.fromDioError(e);
+            setSheet(() => error = q?.message ?? 'Analiz yapılamadı, tekrar dene');
+          } catch (_) {
+            setSheet(() => error = 'Analiz yapılamadı, tekrar dene');
+          } finally {
+            setSheet(() => loading = false);
+          }
+        }
+
+        return Padding(
+          padding: EdgeInsets.only(
+              left: 16, right: 16, top: 4,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Ne yedin? 🍽',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              const Text('Yaz veya klavyedeki 🎤 tuşuyla söyle — AI hesaplasın.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 2,
+                maxLength: 500,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'örn: 2 yumurta, bir dilim tam buğday ekmeği, çay',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 4),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(error!,
+                      style: const TextStyle(fontSize: 12, color: Colors.red)),
+                ),
+              if (result != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                      color: const Color(0x1FFFB020),
+                      borderRadius: BorderRadius.circular(14)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('🔥 ${result!['total_calories']} kcal',
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 4),
+                      Text(
+                        ((result!['food_items'] as List?) ?? [])
+                            .map((f) => '${f['name']} (${f['calories']} kcal)')
+                            .join(' · '),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      if (result!['macros'] is Map)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'P: ${result!['macros']['protein_g']}g · K: ${result!['macros']['carbs_g']}g · Y: ${result!['macros']['fat_g']}g',
+                            style: const TextStyle(
+                                fontSize: 11, color: Colors.grey),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: loading
+                      ? null
+                      : result == null
+                          ? analyze
+                          : () {
+                              // Kaloriyi giriş alanına işle — mevcut değerin üstüne ekle
+                              final current = double.tryParse(
+                                      _caloriesController.text.replaceAll(',', '.')) ?? 0;
+                              final add = (result!['total_calories'] as num?)?.toDouble() ?? 0;
+                              _caloriesController.text =
+                                  (current + add).toStringAsFixed(0);
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text(
+                                      '✅ ${add.toStringAsFixed(0)} kcal kalori alanına eklendi — Kaydet\'e basmayı unutma')));
+                            },
+                  child: loading
+                      ? const SizedBox(width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : Text(result == null ? 'Hesapla' : 'Kalori alanına ekle'),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+  }
 
   // ── v2: Plan → Alışveriş listesi ────────────────────────
   // AI zaten diyet planıyla birlikte konsolide malzeme listesi üretiyor
@@ -568,18 +700,24 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                     // ── v2: Foto-kalori artık köşede bir ekran değil,
                     // öğün kaydının doğal giriş yollarından biri.
                     // Vision sonucu zaten "Diyet Planına Ekle" ile buraya yazıyor.
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
+                    Row(children: [
+                      TextButton.icon(
                         onPressed: () {
                           Navigator.push(context, MaterialPageRoute(
                             builder: (_) => const CalorieVisionScreen()));
                         },
                         icon: Icon(Icons.camera_alt_rounded, size: 16, color: accent),
-                        label: Text('Bilmiyorsan fotoğrafla — AI hesaplasın ✨',
+                        label: Text('Fotoğrafla',
                             style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600)),
                       ),
-                    ),
+                      // v6: yazıyla/sesle tarif — klavyenin 🎤 tuşu dikteyi halleder
+                      TextButton.icon(
+                        onPressed: () => _showTextCalorieSheet(context),
+                        icon: Icon(Icons.keyboard_voice_rounded, size: 16, color: accent),
+                        label: Text('Tarif et — AI hesaplasın ✨',
+                            style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600)),
+                      ),
+                    ]),
                     const SizedBox(height: 6),
                     TextField(
                       controller: _notesController,

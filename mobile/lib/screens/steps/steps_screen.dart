@@ -9,6 +9,20 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
+import 'package:fl_chart/fl_chart.dart';
+import '../../core/widgets/count_up_text.dart';
+import '../../core/widgets/pulse_skeleton.dart';
+
+// v8: son 7 günün adımları — mini grafik için
+final weekStepsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  try {
+    final response = await ApiClient.instance.get(Endpoints.steps);
+    final list = (response.data as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e)).toList();
+    list.sort((a, b) => (a['date'] ?? '').toString().compareTo((b['date'] ?? '').toString()));
+    return list.length > 7 ? list.sublist(list.length - 7) : list;
+  } catch (_) { return []; }
+});
 
 final todayStepsProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   try {
@@ -300,7 +314,10 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                                 ),
                                 Column(children: [
                                   Text(_isPedActive && _isWalking ? '🚶' : '👟', style: const TextStyle(fontSize: 32)),
-                                  Text('$displaySteps', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: accent)),
+                                  CountUpText(
+                                    value: displaySteps,
+                                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: accent),
+                                  ),
                                   Text('adım', style: TextStyle(fontSize: 12, color: muted)),
                                 ]),
                               ],
@@ -324,6 +341,12 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                             ),
                           ],
                         ),
+                      ),
+                      const SizedBox(height: 12),
+                      // ── v8: Son 7 gün mini grafik ──
+                      _WeekStepsCard(
+                        bgCard: bgCard, border: border, text: text,
+                        muted: muted, accent: accent, goal: goal,
                       ),
                       const SizedBox(height: 12),
                       Container(
@@ -396,6 +419,103 @@ class _StepsScreenState extends ConsumerState<StepsScreen> {
                 );
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── v8: Son 7 gün adım grafiği ──────────────────────────
+class _WeekStepsCard extends ConsumerWidget {
+  final Color bgCard, border, text, muted, accent;
+  final int goal;
+  const _WeekStepsCard({
+    required this.bgCard, required this.border, required this.text,
+    required this.muted, required this.accent, required this.goal,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final weekAsync = ref.watch(weekStepsProvider);
+    return Container(
+      decoration: BoxDecoration(
+        color: bgCard,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Son 7 Gün',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+          const SizedBox(height: 14),
+          weekAsync.when(
+            loading: () => const PulseSkeleton(height: 120, width: double.infinity),
+            error: (_, __) => SizedBox(
+              height: 120,
+              child: Center(child: Text('Veri yok', style: TextStyle(color: muted, fontSize: 12))),
+            ),
+            data: (week) {
+              if (week.isEmpty) {
+                return SizedBox(
+                  height: 120,
+                  child: Center(child: Text('Henüz adım kaydın yok',
+                      style: TextStyle(color: muted, fontSize: 12))),
+                );
+              }
+              final maxVal = week
+                  .map((d) => (d['step_count'] as num?)?.toInt() ?? 0)
+                  .fold<int>(goal, (a, b) => a > b ? a : b)
+                  .toDouble();
+              const days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+              return SizedBox(
+                height: 130,
+                child: BarChart(BarChartData(
+                  maxY: maxVal * 1.1,
+                  barTouchData: BarTouchData(enabled: true),
+                  gridData: const FlGridData(show: false),
+                  borderData: FlBorderData(show: false),
+                  titlesData: FlTitlesData(
+                    leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, _) {
+                          final i = value.toInt();
+                          if (i < 0 || i >= week.length) return const SizedBox.shrink();
+                          final dateStr = (week[i]['date'] ?? '').toString();
+                          String label = '';
+                          try {
+                            final d = DateTime.parse(dateStr);
+                            label = days[d.weekday - 1];
+                          } catch (_) {}
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(label, style: TextStyle(fontSize: 9, color: muted)),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  barGroups: List.generate(week.length, (i) {
+                    final v = (week[i]['step_count'] as num?)?.toInt() ?? 0;
+                    final reached = v >= goal;
+                    return BarChartGroupData(x: i, barRods: [
+                      BarChartRodData(
+                        toY: v.toDouble(),
+                        width: 16,
+                        borderRadius: BorderRadius.circular(6),
+                        color: reached ? const Color(0xFF34D399) : accent,
+                      ),
+                    ]);
+                  }),
+                )),
+              );
+            },
           ),
         ],
       ),

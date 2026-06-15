@@ -56,14 +56,22 @@ Hafta: {report.week_start} - {report.week_end}
 Kullanıcının bu haftaki sağlık verileri:
 {json.dumps(report_data, ensure_ascii=False, indent=2)}
 
-Lütfen bu verilere dayanarak:
-1. Haftanın kısa ve samimi bir özetini yaz (2-3 cümle)
-2. En iyi 1-2 başarıyı vurgula
-3. Geliştirilmesi gereken 1-2 alanı nazikçe belirt
-4. Önümüzdeki hafta için 1-2 somut öneri ver
+Yanıtını AYNEN şu formatta, bu etiketlerle ver (etiketleri olduğu gibi yaz):
 
-Yanıt Türkçe olsun, samimi ve motive edici bir ton kullan.
-Maksimum 200 kelime.
+[ÖZET]
+Haftanın kısa ve samimi özeti (2-3 cümle).
+
+[BAŞARILAR]
+En iyi 1-2 başarı. Her birini yeni satırda "- " ile başlat.
+
+[GELİŞİM]
+Geliştirilmesi gereken 1-2 alan, nazikçe. Her birini yeni satırda "- " ile başlat.
+
+[ÖNERİLER]
+Önümüzdeki hafta için 1-2 somut öneri. Her birini yeni satırda "- " ile başlat.
+
+Türkçe, samimi ve motive edici ton. Toplam maksimum 200 kelime.
+Etiketlerin dışına yazı yazma, başka başlık ekleme.
 """
 
     # ✅ Senkron Claude çağrısını ayrı thread'de çalıştır — event loop bloke olmaz

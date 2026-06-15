@@ -8,17 +8,8 @@ from backend.app.application.schemas.report import WeeklyReportResponse, Monthly
 from backend.app.application.services.report_service import ReportService
 from backend.app.infrastructure.db.session import get_db
 from backend.app.core.dependencies import get_current_user
-from sqlalchemy import func as _func
-from backend.app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
-from backend.app.infrastructure.db.models.session_exercise_model import SessionExerciseModel
-from backend.app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
-from backend.app.infrastructure.db.models.water_log_model import WaterLogModel
-from backend.app.infrastructure.db.models.step_log_model import StepLogModel
-from backend.app.infrastructure.db.models.streak_model import StreakModel
-from backend.app.infrastructure.db.models.badge_model import BadgeModel
-from datetime import date as _date
+from datetime import date as _date, timedelta as _timedelta
 from sqlalchemy import select as _select
-
 from backend.app.core.exceptions import NotFoundException
 from backend.app.infrastructure.db.models.measurement_model import MeasurementModel
 from backend.app.infrastructure.repositories.user_repository import UserRepository
@@ -27,6 +18,20 @@ from backend.app.application.services.meal_compliance_service import MealComplia
 from backend.app.application.services.water_service import WaterService
 from backend.app.application.services.sleep_service import SleepService
 from backend.app.infrastructure.repositories.meal_compliance_repository import MealComplianceRepository
+from sqlalchemy import func as _func
+from backend.app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
+from backend.app.infrastructure.db.models.session_exercise_model import SessionExerciseModel
+from backend.app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
+from backend.app.infrastructure.db.models.water_log_model import WaterLogModel
+from backend.app.infrastructure.db.models.step_log_model import StepLogModel
+from backend.app.infrastructure.db.models.sleep_log_model import SleepLogModel as _SleepLogModel
+from backend.app.infrastructure.db.models.streak_model import StreakModel
+from backend.app.infrastructure.db.models.badge_model import BadgeModel
+from fastapi.responses import Response
+from backend.app.application.services.health_report_pdf import build_health_report
+from backend.app.infrastructure.repositories.user_preference_repository import UserPreferenceRepository
+from backend.app.ai.context_builder import detect_plateau
+from datetime import datetime as _dt, time as _time, timezone as _tz
 
 router = APIRouter()
 
@@ -179,6 +184,8 @@ async def get_dashboard_summary(
 # kotasız ve bedava. Paylaşılan her kart organik tanıtımdır.
 # ═════════════════════════════════════════════════════════
 
+
+
 @router.get("/wrapped")
 async def get_wrapped(
     year: int = None,
@@ -304,6 +311,222 @@ async def get_wrapped(
 
 def sa_dt(d: _date, end: bool = False):
     """date → timezone'lu datetime (gün başı/sonu) — earned_at karşılaştırması için."""
-    from datetime import datetime as _dt, time as _time, timezone as _tz
     t = _time(23, 59, 59) if end else _time(0, 0, 0)
     return _dt.combine(d, t, tzinfo=_tz.utc)
+
+
+# ═════════════════════════════════════════════════════════
+# ── v7: GET /reports/health-report.pdf ──
+# Doktor/diyetisyen randevusuna götürülecek tek sayfalık özet.
+# AI yok, kota yok — saf agregasyon. Türkçe font repo'da gömülü.
+# ═════════════════════════════════════════════════════════
+
+@router.get("/health-report.pdf")
+async def get_health_report_pdf(
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    since = _date.today() - _timedelta(weeks=4)
+
+    user = await UserRepository(db).get_by_id(user_id)
+    prefs_e = await UserPreferenceRepository(db).get_by_user_id(user_id)
+    prefs = {
+        "age": getattr(prefs_e, "age", None),
+        "gender": getattr(prefs_e, "gender", None),
+        "height_cm": getattr(prefs_e, "height_cm", None),
+        "fitness_goal": getattr(prefs_e, "fitness_goal", None),
+        "allergies": getattr(prefs_e, "allergies", None) or [],
+        "diseases": getattr(prefs_e, "diseases", None) or [],
+    } if prefs_e else {}
+
+    m_rows = (await db.execute(
+        _select(MeasurementModel)
+        .where(MeasurementModel.user_id == user_id)
+        .order_by(MeasurementModel.date.desc())
+        .limit(10)
+    )).scalars().all()
+    measurements = [{
+        "date": str(m.date), "weight_kg": m.weight_kg,
+        "body_fat_pct": m.body_fat_pct, "waist_cm": m.waist_cm,
+    } for m in m_rows]
+
+    sessions = (await db.execute(
+        _select(ExerciseSessionModel).where(
+            ExerciseSessionModel.user_id == user_id,
+            ExerciseSessionModel.date >= since,
+        )
+    )).scalars().all()
+    s_ids = [x.id for x in sessions]
+    exercises = []
+    if s_ids:
+        exercises = (await db.execute(
+            _select(SessionExerciseModel).where(
+                SessionExerciseModel.session_id.in_(s_ids))
+        )).scalars().all()
+    freq = {}
+    for e in exercises:
+        n = (e.exercise_name or "").strip()
+        if n:
+            freq[n] = freq.get(n, 0) + 1
+    top = sorted(freq, key=freq.get, reverse=True)
+    workout = {
+        "sessions": len(sessions),
+        "plan_sessions": sum(1 for x in sessions if getattr(x, "source", "manual") == "ai_plan"),
+        "free_sessions": sum(1 for x in sessions if getattr(x, "source", "manual") != "ai_plan"),
+        "minutes": sum(x.duration_minutes or 0 for x in sessions),
+        "calories": round(sum(x.calories_burned or 0 for x in sessions)),
+        "top_exercises": top,
+    }
+
+    mc_rows = (await db.execute(
+        _select(MealComplianceModel).where(
+            MealComplianceModel.user_id == user_id,
+            MealComplianceModel.date >= since,
+        )
+    )).scalars().all()
+    usable = [m for m in mc_rows if m.calories_consumed is not None]
+    cal_vals = [m.calories_consumed for m in usable if m.calories_consumed]
+    nutrition = {
+        "tracked_days": len(usable),
+        "complied_days": sum(1 for m in usable if m.complied),
+        "deviated_days": sum(1 for m in usable if not m.complied),
+        "no_data_days": max(((_date.today() - since).days + 1) - len(usable), 0),
+        "avg_calories": round(sum(cal_vals) / len(cal_vals)) if cal_vals else None,
+    }
+
+    plateau = await detect_plateau(db, user_id)
+
+    pdf_bytes = build_health_report({
+        "user": {"full_name": user.full_name if user else None},
+        "prefs": prefs,
+        "measurements": measurements,
+        "workout": workout,
+        "nutrition": nutrition,
+        "fasting_mode": getattr(prefs_e, "fasting_mode", False) if prefs_e else False,
+        "plateau": plateau,
+    })
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="trackforge_saglik_raporu.pdf"'},
+    )
+
+
+# ═════════════════════════════════════════════════════════
+# ── v1.1: GET /reports/insights — Veri Korelasyonları ──
+# Kullanıcının kendisi hakkında bilmediği örüntüler:
+# "az uyuduğun günlerde adımın düşüyor", "antrenman yaptığın
+# günlerde diyete daha çok uyuyorsun" gibi. AI YOK, saf istatistik
+# (kotasız, bedava). Yeterli veri yoksa o içgörü atlanır.
+# ═════════════════════════════════════════════════════════
+
+
+@router.get("/insights")
+async def get_insights(
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    since = _date.today() - _timedelta(weeks=8)
+
+    # Verileri tarihe göre topla
+    sleeps = (await db.execute(
+        _select(_SleepLogModel).where(
+            _SleepLogModel.user_id == user_id,
+            _SleepLogModel.date >= since,
+        )
+    )).scalars().all()
+    steps = (await db.execute(
+        _select(StepLogModel).where(
+            StepLogModel.user_id == user_id,
+            StepLogModel.date >= since,
+        )
+    )).scalars().all()
+    meals = (await db.execute(
+        _select(MealComplianceModel).where(
+            MealComplianceModel.user_id == user_id,
+            MealComplianceModel.date >= since,
+        )
+    )).scalars().all()
+
+    # Tarih -> değer sözlükleri
+    sleep_by_date = {s.date: s.duration_hours for s in sleeps if s.duration_hours is not None}
+    steps_by_date = {s.date: s.step_count for s in steps if s.step_count is not None}
+    # meal_compliance.date datetime olabilir → date'e indir
+    meal_by_date = {}
+    for m in meals:
+        d = m.date.date() if hasattr(m.date, "date") else m.date
+        if m.calories_consumed is not None:
+            meal_by_date[d] = m.complied
+
+    insights = []
+
+    # ── İçgörü 1: Uyku ↔ Adım ──
+    # Az uyunan günler (<6.5 sa) vs iyi uyunan günler (>=7.5 sa) adım ortalaması
+    common_sleep_steps = [(sleep_by_date[d], steps_by_date[d])
+                          for d in sleep_by_date if d in steps_by_date]
+    if len(common_sleep_steps) >= 6:
+        low = [st for sl, st in common_sleep_steps if sl < 6.5]
+        high = [st for sl, st in common_sleep_steps if sl >= 7.5]
+        if len(low) >= 2 and len(high) >= 2:
+            avg_low = sum(low) / len(low)
+            avg_high = sum(high) / len(high)
+            if avg_high > avg_low * 1.15:  # anlamlı fark (%15+)
+                diff_pct = round((avg_high - avg_low) / avg_low * 100)
+                insights.append({
+                    "icon": "😴",
+                    "title": "Uyku ve hareketin bağlantılı",
+                    "text": f"İyi uyuduğun günlerde (%{diff_pct} daha fazla) ortalama "
+                            f"{int(avg_high)} adım atıyorsun; az uyuduğunda {int(avg_low)}'e düşüyor.",
+                })
+
+    # ── İçgörü 2: Antrenman günü ↔ Beslenme uyumu ──
+    # (antrenman = o gün adım yüksek veya seans var — basit proxy: adım >= 8000)
+    if len(meal_by_date) >= 6:
+        active_days_complied = []
+        rest_days_complied = []
+        for d, complied in meal_by_date.items():
+            st = steps_by_date.get(d, 0)
+            if st >= 8000:
+                active_days_complied.append(1 if complied else 0)
+            else:
+                rest_days_complied.append(1 if complied else 0)
+        if len(active_days_complied) >= 2 and len(rest_days_complied) >= 2:
+            rate_active = sum(active_days_complied) / len(active_days_complied)
+            rate_rest = sum(rest_days_complied) / len(rest_days_complied)
+            if abs(rate_active - rate_rest) >= 0.2:
+                if rate_active > rate_rest:
+                    insights.append({
+                        "icon": "🔥",
+                        "title": "Hareketli günler seni disiplinli yapıyor",
+                        "text": f"Aktif günlerinde diyete uyma oranın %{int(rate_active*100)}, "
+                                f"hareketsiz günlerde %{int(rate_rest*100)}. Hareket motivasyonu besliyor!",
+                    })
+                else:
+                    insights.append({
+                        "icon": "🍽️",
+                        "title": "Dinlenme günlerinde dikkat",
+                        "text": f"Hareketsiz günlerinde diyete uyma oranın %{int(rate_rest*100)}, "
+                                f"aktif günlerde %{int(rate_active*100)}. Dinlenme günü = serbest değil 😊",
+                    })
+
+    # ── İçgörü 3: Genel uyum trendi (yeterli veri yoksa motive edici fallback) ──
+    if meal_by_date:
+        overall = sum(1 for c in meal_by_date.values() if c) / len(meal_by_date)
+        if overall >= 0.7:
+            insights.append({
+                "icon": "🏆",
+                "title": "Beslenme disiplinin güçlü",
+                "text": f"Son 8 haftada kayıt girdiğin günlerin %{int(overall*100)}'inde "
+                        f"hedefini tutturmuşsun. Bu istikrar harika.",
+            })
+
+    return {
+        "insights": insights,
+        "has_enough_data": len(insights) > 0,
+        "hint": (
+            None if insights else
+            "Daha fazla içgörü için uyku, adım ve beslenme verisi girmeye devam et — "
+            "birkaç hafta sonra örüntülerini göstereceğim 📊"
+        ),
+    }

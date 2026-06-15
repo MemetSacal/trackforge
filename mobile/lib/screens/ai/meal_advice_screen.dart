@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/api/api_client.dart';
+import '../../core/widgets/staged_loader.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/api/api_exceptions.dart';
 import '../../core/utils/date_utils.dart';
@@ -117,9 +118,13 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen>
     });
     try {
       final calorieTarget = _getCalorieTarget(prefs);
-      final response = await ApiClient.instance
-          .post(Endpoints.aiMealAdvice, data: {'calorie_target': calorieTarget});
-      final data = Map<String, dynamic>.from(response.data);
+      // v7: job pattern — uzun üretim arka planda, biz yoklarız.
+      // Cache isabetinde anında 'done' döner, kota yanmaz.
+      final start = await ApiClient.instance
+          .post(Endpoints.aiJobsMeal, data: {'calorie_target': calorieTarget});
+      final jobData = await _awaitMealJob(start);
+      if (jobData == null) return; // hata _awaitMealJob içinde işlendi
+      final data = Map<String, dynamic>.from(jobData);
       data['recommended_foods'] =
           List<String>.from(data['recommended_foods'] ?? []);
       data['foods_to_avoid'] =
@@ -494,7 +499,12 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen>
     if (_limitReached)
       return _buildLimitCard(accentDim, accent, border, text);
     if (_isLoading)
-      return aiLoadingState(accent, text, '🥗 Beslenme planı hazırlanıyor...');
+      return StagedLoader(accent: accent, text: text, stages: const [
+                        '📊 Beslenme geçmişini okuyorum...',
+                        '🔢 Kalori hedefini hesaplıyorum...',
+                        '🥗 Haftalık menüyü kuruyorum...',
+                        '🛒 Alışveriş listesini çıkarıyorum...',
+                      ]);
     if (_error != null)
       return aiErrorState(_error!, danger, accent, () => _getAdvice(prefs));
     if (_rawData != null)

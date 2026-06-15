@@ -1,5 +1,7 @@
 // ── gamification_screen.dart ────────────────────────────
 import 'package:flutter/material.dart';
+import '../../core/widgets/celebrate.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
@@ -335,7 +337,17 @@ class GamificationScreen extends ConsumerWidget {
                                   final desc      = b['description'] as String? ?? '';
                                   final emoji     = _extractEmoji(badgeName);
                                   final name      = _extractName(badgeName);
-                                  return Container(
+                                  return GestureDetector(
+                                    onTap: () {
+                                      // v8: rozetine dokun, kutlamayı tekrar yaşa
+                                      HapticFeedback.mediumImpact();
+                                      Celebrate.burst(context);
+                                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                        content: Text('$emoji $name'),
+                                        duration: const Duration(seconds: 2),
+                                      ));
+                                    },
+                                    child: Container(
                                     padding: const EdgeInsets.all(10),
                                     decoration: BoxDecoration(
                                       color: bgSoft,
@@ -360,6 +372,7 @@ class GamificationScreen extends ConsumerWidget {
                                         ],
                                       ],
                                     ),
+                                  ),
                                   );
                                 },
                               ),

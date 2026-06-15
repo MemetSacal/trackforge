@@ -139,20 +139,10 @@ class _WeeklySummaryScreenState extends ConsumerState<WeeklySummaryScreen> {
                                       ),
                                     ),
                                     const SizedBox(height: 12),
-                                    Container(
-                                      decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
-                                      padding: const EdgeInsets.all(16),
-                                      child: MarkdownBody(
-                                        data: _summary!,
-                                        selectable: true,
-                                        styleSheet: MarkdownStyleSheet(
-                                          p:          TextStyle(fontSize: 14, height: 1.6, color: text),
-                                          h2:         TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: accent),
-                                          h3:         TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: accent),
-                                          strong:     const TextStyle(fontWeight: FontWeight.w700),
-                                          listBullet: TextStyle(fontSize: 14, color: text),
-                                        ),
-                                      ),
+                                    _SummaryCards(
+                                      raw: _summary!,
+                                      bgCard: bgCard, border: border,
+                                      text: text, muted: muted, accent: accent,
                                     ),
                                     const SizedBox(height: 12),
                                     aiOutlineBtn('Yeniden Analiz Et', Icons.refresh, accent, border, _isLoading ? null : _fetch),
@@ -196,6 +186,125 @@ class _WeeklySummaryScreenState extends ConsumerState<WeeklySummaryScreen> {
           ]),
         ),
       ),
+    );
+  }
+}
+
+// ── v8 cila: Haftalık özeti bölümlü renkli kartlara ayırır ──
+// Backend [ÖZET]/[BAŞARILAR]/[GELİŞİM]/[ÖNERİLER] işaretçileriyle döner.
+// İşaretçi bulunamazsa (eski özet) düz metne düşer — geriye uyumlu.
+class _SummaryCards extends StatelessWidget {
+  final String raw;
+  final Color bgCard, border, text, muted, accent;
+  const _SummaryCards({
+    required this.raw, required this.bgCard, required this.border,
+    required this.text, required this.muted, required this.accent,
+  });
+
+  Map<String, String> _parse() {
+    final sections = <String, String>{};
+    final labels = ['ÖZET', 'BAŞARILAR', 'GELİŞİM', 'ÖNERİLER'];
+    for (var i = 0; i < labels.length; i++) {
+      final tag = '[${labels[i]}]';
+      final start = raw.indexOf(tag);
+      if (start == -1) continue;
+      final contentStart = start + tag.length;
+      // Bir sonraki etikete kadar al
+      var end = raw.length;
+      for (final other in labels) {
+        if (other == labels[i]) continue;
+        final idx = raw.indexOf('[$other]', contentStart);
+        if (idx != -1 && idx < end) end = idx;
+      }
+      sections[labels[i]] = raw.substring(contentStart, end).trim();
+    }
+    return sections;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sections = _parse();
+
+    // İşaretçi yoksa → düz metin (geriye uyumlu fallback)
+    if (sections.isEmpty) {
+      return Container(
+        decoration: BoxDecoration(
+            color: bgCard, borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: border)),
+        padding: const EdgeInsets.all(16),
+        child: Text(raw, style: TextStyle(fontSize: 14, height: 1.6, color: text)),
+      );
+    }
+
+    final cards = <Widget>[];
+
+    // [ÖZET] — vurgulu üst kart
+    if (sections['ÖZET'] != null) {
+      cards.add(_card(
+        emoji: '📋', title: 'Özet', body: sections['ÖZET']!,
+        tint: accent, isHeader: true,
+      ));
+    }
+    if (sections['BAŞARILAR'] != null) {
+      cards.add(_card(
+        emoji: '💪', title: 'İyi Gidenler', body: sections['BAŞARILAR']!,
+        tint: const Color(0xFF34D399),
+      ));
+    }
+    if (sections['GELİŞİM'] != null) {
+      cards.add(_card(
+        emoji: '⚠️', title: 'Geliştirilebilir', body: sections['GELİŞİM']!,
+        tint: const Color(0xFFFBBF24),
+      ));
+    }
+    if (sections['ÖNERİLER'] != null) {
+      cards.add(_card(
+        emoji: '🎯', title: 'Gelecek Hafta', body: sections['ÖNERİLER']!,
+        tint: accent,
+      ));
+    }
+
+    return Column(children: cards);
+  }
+
+  Widget _card({
+    required String emoji,
+    required String title,
+    required String body,
+    required Color tint,
+    bool isHeader = false,
+  }) {
+    // "- " ile başlayan satırları madde olarak ayır
+    final lines = body.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+    final bullets = lines.where((l) => l.startsWith('- ')).map((l) => l.substring(2).trim()).toList();
+    final plain = lines.where((l) => !l.startsWith('- ')).join(' ');
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isHeader ? tint.withOpacity(0.10) : bgCard,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: isHeader ? tint.withOpacity(0.35) : border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(emoji, style: const TextStyle(fontSize: 16)),
+          const SizedBox(width: 8),
+          Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: tint)),
+        ]),
+        const SizedBox(height: 8),
+        if (plain.isNotEmpty)
+          Text(plain, style: TextStyle(fontSize: 13.5, height: 1.5, color: text)),
+        ...bullets.map((b) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('•  ', style: TextStyle(fontSize: 13.5, color: tint, fontWeight: FontWeight.w900)),
+            Expanded(child: Text(b, style: TextStyle(fontSize: 13.5, height: 1.5, color: text))),
+          ]),
+        )),
+      ]),
     );
   }
 }

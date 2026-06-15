@@ -1,5 +1,7 @@
 // ── sosyal_screen.dart ──────────────────────────────────
 import 'package:dio/dio.dart';
+import '../../core/widgets/celebrate.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
@@ -810,11 +812,19 @@ class _FriendsTab extends ConsumerWidget {
                                   ),
                                   if (status == 'finished') ...[
                                     const SizedBox(height: 6),
-                                    Text(
+                                    GestureDetector(
+                                      onTap: winnerId == me['id']
+                                          ? () {
+                                              // v8: zaferini kutla
+                                              HapticFeedback.heavyImpact();
+                                              Celebrate.burst(context);
+                                            }
+                                          : null,
+                                      child: Text(
                                         winnerId == null
                                             ? '🤝 Berabere bitti!'
                                             : winnerId == me['id']
-                                                ? '🏆 KAZANDIN! Hava atma hakkın saklıdır.'
+                                                ? '🏆 KAZANDIN! (dokun 🎉) Hava atma hakkın saklıdır.'
                                                 : '😤 Bu sefer ${them['name']} aldı — rövanş?',
                                         style: TextStyle(
                                             fontSize: 12,
@@ -822,6 +832,7 @@ class _FriendsTab extends ConsumerWidget {
                                             color: winnerId == me['id']
                                                 ? accent
                                                 : text)),
+                                    ),
                                   ],
                                 ],
                               ],

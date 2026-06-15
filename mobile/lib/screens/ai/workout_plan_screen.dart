@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
+import '../../core/widgets/staged_loader.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/api/api_exceptions.dart';
 import '../../core/utils/date_utils.dart';
@@ -52,6 +53,125 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
     'perşembe': 4,  'cuma': 5, 'cumartesi': 6, 'pazar': 7,
   };
 
+  // v7: Job yanıtını bekler. Cache isabetinde anında, değilse poll ederek.
+  // Dönen nesne eski sync yanıtla AYNI shape'te sarılır (response.data)
+  // — aşağıdaki parse kodu hiç değişmedi.
+  Future<({dynamic data})?> _awaitJob(Response start) async {
+    final body = Map<String, dynamic>.from(start.data);
+    if (body['status'] == 'done' && body['result'] != null) {
+      return (data: body['result']); // cache isabeti — beklemeden
+    }
+    final jobId = body['job_id'] as String?;
+    if (jobId == null) {
+      setState(() => _error = 'İş başlatılamadı, tekrar dene.');
+      return null;
+    }
+    // ~2 dk tavan: 48 x 2.5 sn
+    for (var i = 0; i < 48; i++) {
+      await Future.delayed(const Duration(milliseconds: 2500));
+      if (!mounted) return null; // ekran kapandı — sunucu yine de bitirir,
+                                  // sonuç cache'e düşer, kota boşa yanmaz
+      final poll = await ApiClient.instance.get('${Endpoints.aiJobs}/$jobId');
+      final st = poll.data['status'] as String?;
+      if (st == 'done') return (data: poll.data['result']);
+      if (st == 'error') {
+        setState(() => _error =
+            'Üretim başarısız: ${poll.data['error'] ?? 'bilinmeyen hata'}');
+        return null;
+      }
+    }
+    setState(() => _error = 'Üretim çok uzun sürdü — birazdan tekrar dene, '
+        'sonuç hazırsa anında gelecek.');
+    return null;
+  }
+
+  // ── v7: Hafta ortası plan revizyonu ──────────────────
+  Future<void> _showReviseDialog() async {
+    final controller = TextEditingController();
+    final request = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Planı Revize Et 🔁', style: TextStyle(fontSize: 17)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text(
+            'Neyi değiştirmek istersin? AI planı sıfırdan yazmaz, '
+            'sadece istediğin kısmı düzeltir.',
+            style: TextStyle(fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller,
+            maxLines: 2,
+            maxLength: 300,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'örn: Salı gününü daha hafif yap, squat istemiyorum',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Revize Et'),
+          ),
+        ],
+      ),
+    );
+    if (request == null || request.isEmpty) return;
+    await _revise(request);
+  }
+
+  Future<void> _revise(String request) async {
+    // Mevcut planı previous_plan olarak gönder — revizyon modu
+    final previousPlan = {
+      'plan_title': _planTitle,
+      'weekly_schedule': _schedule,
+      'weekly_notes': _weeklyNotes,
+    };
+    setState(() { _isLoading = true; _error = null; });
+    try {
+      final start = await ApiClient.instance.post(Endpoints.aiJobsWorkout, data: {
+        'workout_location': _location, 'fitness_goal': _goal,
+        'fitness_level': 'intermediate', 'available_days': _daysPerWeek,
+        'previous_plan': previousPlan,
+        'revision_request': request,
+      });
+      final response = await _awaitJob(start);
+      if (response == null) return;
+      final raw = response.data['weekly_schedule'];
+      if (raw is List) _schedule = raw.map((d) => Map<String, dynamic>.from(d)).toList();
+      final quota = response.data['quota'];
+      if (quota is Map) {
+        await RateLimiter.syncFromServer('workout_plan',
+            (quota['used'] as num?)?.toInt() ?? 0);
+      }
+      setState(() {
+        _planTitle   = response.data['plan_title']   as String? ?? _planTitle;
+        _weeklyNotes = response.data['weekly_notes'] as String? ?? _weeklyNotes;
+        _quota       = quota is Map ? Map<String, dynamic>.from(quota) : _quota;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('🔁 Plan isteğine göre revize edildi')));
+      }
+    } on DioException catch (e) {
+      final q = QuotaException.fromDioError(e);
+      if (q != null && mounted) {
+        await showQuotaDialog(context,
+            message: q.message, isPremium: q.isPremium, resetsInDays: q.resetsInDays);
+      } else {
+        setState(() => _error = 'Revizyon başarısız, tekrar dene.');
+      }
+    } catch (_) {
+      setState(() => _error = 'Revizyon başarısız, tekrar dene.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _generate() async {
     // v2: Lokal kontrol sadece UX iyileştirmesi (gereksiz istek atmamak için).
     // Esas otorite backend — 429 dönerse aşağıda yakalanır.
@@ -66,10 +186,17 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
       _schedule = []; _limitReached = false;
     });
     try {
-      final response = await ApiClient.instance.post(Endpoints.aiWorkoutPlan, data: {
+      // ── v7: JOB PATTERN ──
+      // ESKİ: 30-60 sn süren istek açık tutuluyordu; timeout riski +
+      // ekrandan çıkınca sonuç (ve yanan kota) kayboluyordu.
+      // YENİ: İş arka planda koşar, 2.5 sn'de bir yoklarız. Sunucu
+      // cache isabetinde job hiç açılmaz, anında 'done' döner.
+      final start = await ApiClient.instance.post(Endpoints.aiJobsWorkout, data: {
         'workout_location': _location, 'fitness_goal': _goal,
         'fitness_level': 'intermediate', 'available_days': _daysPerWeek,
       });
+      final response = await _awaitJob(start);
+      if (response == null) return; // hata _awaitJob içinde işlendi
       final raw = response.data['weekly_schedule'];
       if (raw is List) _schedule = raw.map((d) => Map<String, dynamic>.from(d)).toList();
       // v2: Lokal sayacı sunucunun döndürdüğü gerçek değerle senkronla.
@@ -199,7 +326,12 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
             child: _limitReached
                 ? _buildLimitCard(accentDim, accent, border, text)
                 : _isLoading
-                    ? aiLoadingState(accent, text, '💪 Antrenman planı hazırlanıyor...')
+                    ? StagedLoader(accent: accent, text: text, stages: const [
+                        '📊 Geçen haftanı inceliyorum...',
+                        '🎯 Hedefine göre ayarlıyorum...',
+                        '🏋️ Egzersizleri seçiyorum...',
+                        '✍️ Planını yazıyorum...',
+                      ])
                     : _error != null
                         ? aiErrorState(_error!, danger, accent, _generate)
                         : hasPlan
@@ -276,7 +408,18 @@ class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
             ])),
           ]),
         ),
-        AiFeedbackBar(feature: 'workout_plan', accent: accent, muted: muted), // v2: 👍/👎
+        Row(children: [
+          AiFeedbackBar(feature: 'workout_plan', accent: accent, muted: muted), // v2: 👍/👎
+          const Spacer(),
+          // v7: hafta ortası revizyon — "beğenmedim, baştan" yerine
+          // "şunu değiştir": daha ucuz, kullanıcı duyulmuş hisseder
+          TextButton.icon(
+            onPressed: _showReviseDialog,
+            icon: Icon(Icons.tune_rounded, size: 15, color: accent),
+            label: Text('Revize et',
+                style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w700)),
+          ),
+        ]),
         const SizedBox(height: 12),
 
         ..._schedule.map((day) {

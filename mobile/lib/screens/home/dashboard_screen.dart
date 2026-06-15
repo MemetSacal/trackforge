@@ -1,9 +1,12 @@
 // ── dashboard_screen.dart ───────────────────────────────
 import 'package:dio/dio.dart';
+import '../health/weekly_checkin_card.dart';
+import '../../core/widgets/pulse_skeleton.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/api/api_client.dart';
+import '../../core/utils/offline_cache.dart';
 import '../../core/api/api_exceptions.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
@@ -44,8 +47,8 @@ class _C {
 // Alt nesne şekilleri tekil endpoint'lerle birebir aynı olduğundan
 // UI kodu hiç değişmeden çalışır.
 final dashSummaryProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
-  final res = await ApiClient.instance.get(Endpoints.reportsDashboardSummary);
-  return Map<String, dynamic>.from(res.data);
+  // v7: offline cache — internet yokken son bilinen dashboard görünür
+  return OfflineCache.getJson(Endpoints.reportsDashboardSummary);
 });
 
 final dashUserProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -310,6 +313,8 @@ class DashboardScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
+                  // v1.1: hafta sonu check-in hatırlatması (sadece Cmt/Paz, yapılmadıysa)
+                  const WeeklyCheckinCard(),
                   gamiAsync.when(
                     data: (gami) => weeklyAsync.when(
                       data: (weekly) => _HeroCard(t: t, gami: gami, weekly: weekly, waterToday: waterToday, sleepToday: sleepToday, mealToday: mealAsync.value),
@@ -364,11 +369,10 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _shimmer(_Theme t, double h) => Container(
-    height: h,
-    decoration: BoxDecoration(color: t.bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: t.border)),
-    child: Center(child: CircularProgressIndicator(color: t.accent, strokeWidth: 2)),
-  );
+  Widget _shimmer(_Theme t, double h) => PulseSkeleton(
+        height: h,
+        radius: BorderRadius.circular(20),
+      );
 }
 
 // ── KALORİ BANKASI NOTU ──────────────────────────────────

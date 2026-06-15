@@ -98,11 +98,28 @@ Widget aiQuotaChip(Map<String, dynamic>? quota, Color accent, Color muted) {
   final remaining = (quota['remaining'] as num?)?.toInt() ?? 0;
   final limit = (quota['limit'] as num?)?.toInt() ?? 0;
   final period = quota['period'] == 'daily' ? 'bugün' : 'bu hafta';
+  // v8 cila: kalan hakkı dolum halkasıyla göster — kısıtlama değil,
+  // değerli bir kaynak hissi. Bittiğinde halka boşalır.
+  final ratio = limit > 0 ? (remaining / limit).clamp(0.0, 1.0) : 0.0;
+  final ringColor = remaining > 0 ? accent : muted;
   return Padding(
     padding: const EdgeInsets.only(top: 8),
     child: Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(Icons.bolt_rounded, size: 14, color: remaining > 0 ? accent : muted),
-      const SizedBox(width: 4),
+      SizedBox(
+        width: 16, height: 16,
+        child: Stack(alignment: Alignment.center, children: [
+          SizedBox(
+            width: 16, height: 16,
+            child: CircularProgressIndicator(
+              value: ratio,
+              strokeWidth: 2.5,
+              backgroundColor: muted.withOpacity(0.25),
+              valueColor: AlwaysStoppedAnimation(ringColor),
+            ),
+          ),
+        ]),
+      ),
+      const SizedBox(width: 6),
       Text('$period $remaining/$limit hakkın kaldı',
           style: TextStyle(fontSize: 11, color: muted, fontWeight: FontWeight.w600)),
     ]),

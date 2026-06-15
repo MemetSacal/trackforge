@@ -1,5 +1,6 @@
 // ── profil_screen.dart ──────────────────────────────────
 import 'package:flutter/material.dart';
+import '../billing/subscription_screen.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -60,6 +61,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
   final _dislikedFoodsController = TextEditingController(); // virgülle ayrılmış
   String _workoutLocation = 'gym';
   String _dietPreference = 'balanced';
+  bool _fastingMode = false; // v6: 🌙 Ramazan/oruç modu
 
   final _activities = [
     {'key': 'sedentary', 'label': 'Sedanter'},
@@ -136,6 +138,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
     _dislikedFoodsController.text = disliked.join(', ');
     _workoutLocation = _safeLocation(prefs['workout_location'] as String? ?? 'gym');
     _dietPreference = _safeDiet(prefs['diet_preference'] as String? ?? 'balanced');
+    _fastingMode = prefs['fasting_mode'] as bool? ?? false; // v6
   }
 
   // ── Kaydet — hangi tab aktifse ona göre payload ──
@@ -188,6 +191,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
               .toList(),
           'workout_location': _workoutLocation,
           'diet_preference': _dietPreference,
+          'fasting_mode': _fastingMode, // v6
            if (_aiNameController.text.isNotEmpty) 'ai_name': _aiNameController.text,
         };
       }
@@ -500,6 +504,28 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                                 Text(email,
                                     style: TextStyle(
                                         fontSize: 12, color: accent)),
+                                const SizedBox(height: 6),
+                                // v8: üyelik rozeti
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: (user['is_premium'] == true)
+                                        ? accent
+                                        : accentDim,
+                                    borderRadius: BorderRadius.circular(99),
+                                    border: Border.all(color: accent.withOpacity(0.5)),
+                                  ),
+                                  child: Text(
+                                    (user['is_premium'] == true) ? '⭐ PRO Üye' : 'Ücretsiz Üye',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: (user['is_premium'] == true)
+                                          ? Colors.black
+                                          : accent,
+                                    ),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -507,6 +533,39 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                       ),
                     );
                   },
+                ),
+                const SizedBox(height: 14),
+
+                // ── Aboneliğim satırı → paywall ekranı ──
+                GestureDetector(
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const SubscriptionScreen())),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [accentDim, Colors.transparent],
+                        begin: Alignment.centerLeft, end: Alignment.centerRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: accent.withOpacity(0.35)),
+                    ),
+                    child: Row(children: [
+                      Container(
+                        width: 42, height: 42,
+                        decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(12)),
+                        child: const Icon(Icons.star_rounded, color: Colors.black, size: 22),
+                      ),
+                      const SizedBox(width: 13),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Aboneliğim',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                        Text('Plan, AI hakkı ve faturalar',
+                            style: TextStyle(fontSize: 11, color: muted)),
+                      ])),
+                      Icon(Icons.chevron_right_rounded, color: muted, size: 18),
+                    ]),
+                  ),
                 ),
                 const SizedBox(height: 14),
 
@@ -682,6 +741,57 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                   activeColor: accent,
                   onChanged: (_) =>
                       ref.read(themeModeProvider.notifier).toggle(),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // ── v6: 🌙 Ramazan/Oruç Modu ──
+          Container(
+            decoration: BoxDecoration(
+                color: bgCard,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: border)),
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Text('🌙', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Ramazan / Oruç Modu',
+                          style: TextStyle(fontSize: 14, color: text)),
+                      const SizedBox(height: 2),
+                      Text('AI öğünleri iftar-sahura, antrenmanı iftar sonrasına göre planlar',
+                          style: TextStyle(fontSize: 11, color: muted)),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _fastingMode,
+                  activeColor: accent,
+                  onChanged: (v) async {
+                    setState(() => _fastingMode = v);
+                    try {
+                      // Anında kaydet — kullanıcı formun kaydet butonunu beklemesin
+                      await ApiClient.instance.put(Endpoints.preferences,
+                          data: {'fasting_mode': v});
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(v
+                                ? '🌙 Oruç modu açık — AI artık iftar/sahura göre planlayacak. Hayırlı Ramazanlar!'
+                                : 'Oruç modu kapatıldı')));
+                      }
+                    } catch (_) {
+                      setState(() => _fastingMode = !v); // geri al
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Kaydedilemedi, tekrar dene')));
+                      }
+                    }
+                  },
                 ),
               ],
             ),

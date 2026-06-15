@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, File, Form, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pydantic import BaseModel as _BaseModel
 from backend.app.application.schemas.ai import (
     WeeklySummaryRequest, WeeklySummaryResponse,
     WorkoutPlanRequest, WorkoutPlanResponse,
@@ -42,6 +43,8 @@ from backend.app.core.ai_rate_limiter import check_quota, consume_and_status
 from backend.app.ai.context_builder import build_user_context, detect_plateau
 from backend.app.ai.analyzers.weekly_analyzer import generate_weekly_summary
 from backend.app.ai.analyzers.calorie_vision_analyzer import analyze_food_calories, analyze_fridge_ingredients, analyze_food_text
+from backend.app.ai.chat_assistant import chat_with_assistant
+from backend.app.infrastructure.db.models.chat_message_model import ChatMessageModel
 from backend.app.ai.generators.workout_generator import generate_workout_plan
 from backend.app.ai.generators.meal_advisor import generate_meal_advice
 from backend.app.ai.generators.recipe_generator import generate_recipe
@@ -50,9 +53,8 @@ from backend.app.ai.generators.calorie_bank_advisor import generate_calorie_bank
 from backend.app.infrastructure.db.models.exercise_session_model import ExerciseSessionModel
 from backend.app.infrastructure.db.models.meal_compliance_model import MealComplianceModel
 from backend.app.infrastructure.db.models.exercise_catalog_model import ExerciseCatalogModel
-from backend.app.core.ai_rate_limiter import record_usage
-# ── POST /ai/calorie-from-text (v6 YENİ) ─────────────────
-from pydantic import BaseModel as _BaseModel
+from backend.app.infrastructure.db.models.ai_job_model import AIJobModel
+from backend.app.infrastructure.db.session import AsyncSessionLocal
 
 router = APIRouter()
 
@@ -499,6 +501,10 @@ async def get_calorie_bank_advice(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Kalori bankası tavsiyesi oluşturulamadı: {str(e)}")
 
+
+# ── POST /ai/calorie-from-text (v6 YENİ) ─────────────────
+
+
 class TextCalorieRequest(_BaseModel):
     description: str
 
@@ -618,6 +624,204 @@ async def get_plateau_status(
     }
 
 
+# ═════════════════════════════════════════════════════════
+# ── v7: JOB PATTERN — uzun AI üretimleri arka planda ──
+# Sync endpoint'ler (geriye uyum için) aynen duruyor; mobil artık
+# bu async yolu kullanıyor: POST iş açar (anında döner), arka plan
+# task üretir, GET /ai/jobs/{id} ile yoklanır. Kullanıcı ekrandan
+# çıksa bile sonuç DB'de bekler — kota boşa yanmaz.
+# Render tek worker + FastAPI async → asyncio.create_task yeterli,
+# ayrı kuyruk servisi (Celery vb.) gerekmez.
+# ═════════════════════════════════════════════════════════
+
+async def _run_workout_job(job_id: str, user_id: str, is_premium: bool, data: WorkoutPlanRequest):
+    """Arka plan task — KENDİ DB session'ını açar (request session'ı kapanmış olur)."""
+    async with AsyncSessionLocal() as db:
+        job = (await db.execute(
+            select(AIJobModel).where(AIJobModel.id == job_id)
+        )).scalar_one_or_none()
+        if not job:
+            return
+        job.status = "running"
+        await db.commit()
+        try:
+            context = await build_user_context(db, user_id)
+            cat_rows = (await db.execute(
+                select(ExerciseCatalogModel).where(
+                    ExerciseCatalogModel.location.in_([data.workout_location, "any"])
+                )
+            )).scalars().all()
+            catalog = [{"name": c.name, "muscle_groups": c.muscle_groups} for c in cat_rows]
+
+            plan = await generate_workout_plan(
+                workout_location=data.workout_location,
+                fitness_goal=data.fitness_goal,
+                fitness_level=data.fitness_level,
+                available_days=data.available_days,
+                user_context=context,
+                previous_plan=data.previous_plan,
+                revision_request=data.revision_request,
+                catalog=catalog,
+            )
+            h = _input_hash({
+                "loc": data.workout_location, "goal": data.fitness_goal,
+                "level": data.fitness_level, "days": data.available_days,
+            })
+            await _cache_put(db, user_id, "workout_plan", h, plan)
+            quota = await consume_and_status(db, user_id, is_premium, "workout_plan")
+            plan["quota"] = quota
+            job.status = "done"
+            job.result_json = json.dumps(plan, ensure_ascii=False, default=str)
+            await db.commit()
+        except Exception as e:
+            job.status = "error"
+            job.error_message = str(e)[:490]
+            await db.commit()
+
+
+async def _run_meal_job(job_id: str, user_id: str, is_premium: bool, calorie_target: int):
+    async with AsyncSessionLocal() as db:
+        job = (await db.execute(
+            select(AIJobModel).where(AIJobModel.id == job_id)
+        )).scalar_one_or_none()
+        if not job:
+            return
+        job.status = "running"
+        await db.commit()
+        try:
+            pref_repo = UserPreferenceRepository(db)
+            prefs = await pref_repo.get_by_user_id(user_id)
+            result = await db.execute(
+                select(MeasurementModel)
+                .where(MeasurementModel.user_id == user_id)
+                .order_by(MeasurementModel.date.desc())
+                .limit(1)
+            )
+            last_m = result.scalar_one_or_none()
+            context = await build_user_context(db, user_id)
+
+            advice = await generate_meal_advice(
+                liked_foods=prefs.liked_foods or [],
+                disliked_foods=prefs.disliked_foods or [],
+                allergies=prefs.allergies or [],
+                diseases=prefs.diseases or [],
+                blood_values=prefs.blood_values or {},
+                fitness_goal=prefs.fitness_goal or "maintenance",
+                calorie_target=calorie_target,
+                height_cm=prefs.height_cm,
+                age=prefs.age,
+                gender=prefs.gender,
+                activity_level=prefs.activity_level,
+                weight_kg=last_m.weight_kg if last_m else None,
+                user_context=context,
+            )
+            h = _input_hash({"target": calorie_target,
+                             "goal": prefs.fitness_goal if prefs else None})
+            await _cache_put(db, user_id, "meal_advice", h, advice)
+            quota = await consume_and_status(db, user_id, is_premium, "meal_advice")
+            advice["quota"] = quota
+            job.status = "done"
+            job.result_json = json.dumps(advice, ensure_ascii=False, default=str)
+            await db.commit()
+        except Exception as e:
+            job.status = "error"
+            job.error_message = str(e)[:490]
+            await db.commit()
+
+
+@router.post("/jobs/workout-plan")
+async def start_workout_job(
+    data: WorkoutPlanRequest,
+    user_info: tuple = Depends(get_current_user_premium),
+    db: AsyncSession = Depends(get_db),
+):
+    """Antrenman planını ARKA PLANDA üret — anında job_id döner."""
+    current_user, is_premium = user_info
+
+    # Cache isabeti varsa job'a hiç gerek yok — anında done döndür
+    h = _input_hash({
+        "loc": data.workout_location, "goal": data.fitness_goal,
+        "level": data.fitness_level, "days": data.available_days,
+    })
+    is_revision = bool(data.previous_plan and data.revision_request)
+    if not data.force_new and not is_revision:
+        cached = await _cache_get(db, current_user, "workout_plan", h)
+        if cached:
+            from backend.app.core.ai_rate_limiter import get_quota_status
+            cached["quota"] = await get_quota_status(db, current_user, is_premium, "workout_plan")
+            return {"job_id": None, "status": "done", "result": cached}
+
+    await check_quota(db, current_user, is_premium, "workout_plan")  # 429 anında döner
+
+    job = AIJobModel(user_id=current_user, feature="workout_plan")
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+
+    import asyncio as _asyncio
+    _asyncio.create_task(_run_workout_job(job.id, current_user, is_premium, data))
+    return {"job_id": job.id, "status": "pending"}
+
+
+@router.post("/jobs/meal-advice")
+async def start_meal_job(
+    data: MealAdviceRequest,
+    user_info: tuple = Depends(get_current_user_premium),
+    db: AsyncSession = Depends(get_db),
+):
+    """Diyet planını ARKA PLANDA üret — anında job_id döner."""
+    current_user, is_premium = user_info
+
+    pref_repo = UserPreferenceRepository(db)
+    prefs = await pref_repo.get_by_user_id(current_user)
+    if not prefs:
+        raise HTTPException(
+            status_code=400,
+            detail="Diyet tavsiyesi için önce kullanıcı tercihlerini (/preferences) doldurun."
+        )
+
+    h = _input_hash({"target": data.calorie_target, "goal": prefs.fitness_goal})
+    cached = await _cache_get(db, current_user, "meal_advice", h)
+    if cached:
+        from backend.app.core.ai_rate_limiter import get_quota_status
+        cached["quota"] = await get_quota_status(db, current_user, is_premium, "meal_advice")
+        return {"job_id": None, "status": "done", "result": cached}
+
+    await check_quota(db, current_user, is_premium, "meal_advice")
+
+    job = AIJobModel(user_id=current_user, feature="meal_advice")
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+
+    import asyncio as _asyncio
+    _asyncio.create_task(_run_meal_job(job.id, current_user, is_premium, data.calorie_target))
+    return {"job_id": job.id, "status": "pending"}
+
+
+@router.get("/jobs/{job_id}")
+async def get_job_status(
+    job_id: str,
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Job durumu — mobil 2.5 sn'de bir yoklar."""
+    job = (await db.execute(
+        select(AIJobModel).where(
+            AIJobModel.id == job_id,
+            AIJobModel.user_id == user_id,  # IDOR: sadece sahibi
+        )
+    )).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="İş bulunamadı")
+    out = {"job_id": job.id, "status": job.status}
+    if job.status == "done" and job.result_json:
+        out["result"] = json.loads(job.result_json)
+    elif job.status == "error":
+        out["error"] = job.error_message
+    return out
+
+
 # ── POST /ai/feedback (v2 YENİ) ──────────────────────────
 @router.post("/feedback", response_model=AIFeedbackResponse)
 async def submit_ai_feedback(
@@ -641,9 +845,99 @@ async def submit_ai_feedback(
         rating=data.rating,
         comment=data.comment,
     ))
+    from backend.app.core.ai_rate_limiter import record_usage
     await record_usage(db, current_user, "ai_feedback")
     await db.commit()
     return AIFeedbackResponse(message="Geri bildirim kaydedildi, teşekkürler!")
+
+
+# ═════════════════════════════════════════════════════════
+# ── v1.1: SOHBET ASİSTANI ──
+# Üç kilitli kapı: (1) plan üretmez, kayıtlı veriyi okur;
+# (2) MAX_TOKENS_CHAT=600 → uzun içerik fiziksel sığmaz;
+# (3) Haiku + ayrı 'chat' kotası → plan bütçesine dokunmaz.
+# ═════════════════════════════════════════════════════════
+
+class ChatMessageRequest(_BaseModel):
+    message: str
+
+
+@router.get("/chat/history")
+async def get_chat_history(
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Son 50 mesajı kronolojik döndürür (eskiden yeniye)."""
+    rows = (await db.execute(
+        select(ChatMessageModel)
+        .where(ChatMessageModel.user_id == user_id)
+        .order_by(ChatMessageModel.created_at.desc())
+        .limit(50)
+    )).scalars().all()
+    rows = list(reversed(rows))  # kronolojik sıra
+    return {
+        "messages": [
+            {"role": m.role, "content": m.content, "created_at": str(m.created_at)}
+            for m in rows
+        ]
+    }
+
+
+@router.post("/chat")
+async def send_chat_message(
+    data: ChatMessageRequest,
+    user_info: tuple = Depends(get_current_user_premium),
+    db: AsyncSession = Depends(get_db),
+):
+    """Kullanıcı mesajını al, asistan yanıtını üret ve ikisini de kaydet."""
+    current_user, is_premium = user_info
+    msg = (data.message or "").strip()
+    if len(msg) < 1:
+        raise HTTPException(status_code=400, detail="Mesaj boş olamaz.")
+    if len(msg) > 1000:
+        raise HTTPException(status_code=400, detail="Mesaj çok uzun — 1000 karakteri geçme.")
+
+    await check_quota(db, current_user, is_premium, "chat")
+
+    # Son birkaç turu bağlam olarak çek (kronolojik)
+    prev = (await db.execute(
+        select(ChatMessageModel)
+        .where(ChatMessageModel.user_id == current_user)
+        .order_by(ChatMessageModel.created_at.desc())
+        .limit(6)
+    )).scalars().all()
+    history = [{"role": m.role, "content": m.content} for m in reversed(prev)]
+
+    try:
+        context = await build_user_context(db, current_user)
+        reply = await chat_with_assistant(
+            user_message=msg, user_context=context, history=history)
+
+        # Kullanıcı mesajı + asistan yanıtını kaydet
+        db.add(ChatMessageModel(user_id=current_user, role="user", content=msg))
+        db.add(ChatMessageModel(user_id=current_user, role="assistant", content=reply))
+        quota = await consume_and_status(db, current_user, is_premium, "chat")
+        await db.commit()
+
+        return {"reply": reply, "quota": quota}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Asistan yanıt veremedi: {str(e)}")
+
+
+@router.delete("/chat/history")
+async def clear_chat_history(
+    user_id: str = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sohbet geçmişini temizle."""
+    from sqlalchemy import delete as _delete
+    await db.execute(
+        _delete(ChatMessageModel).where(ChatMessageModel.user_id == user_id)
+    )
+    await db.commit()
+    return {"message": "Sohbet geçmişi temizlendi"}
 
 
 """

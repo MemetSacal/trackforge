@@ -87,6 +87,16 @@ class Endpoints {
   static const String reportsWrapped = '/reports/wrapped';      // v5: yıl özeti
   static const String socialDuels = '/social/duels';            // v5: adım düellosu
   static const String exerciseCatalog = '/exercises/catalog';   // v5: kanonik egzersiz kataloğu
+  static const String aiCalorieFromText = '/ai/calorie-from-text'; // v6: yazıyla/sesle öğün girişi
+  static const String aiJobsWorkout = '/ai/jobs/workout-plan';     // v7: arka plan üretim
+  static const String aiJobsMeal = '/ai/jobs/meal-advice';         // v7: arka plan üretim
+  static const String aiJobs = '/ai/jobs';                          // v7: + /{id} ile durum
+  static const String reportsHealthPdf = '/reports/health-report.pdf'; // v7: doktor raporu
+  static const String aiChat = '/ai/chat';              // v1.1: sohbet asistanı (POST)
+  static const String aiChatHistory = '/ai/chat/history'; // v1.1: geçmiş (GET) + temizle (DELETE)
+  static const String bloodValues = '/blood-values';       // v1.1: kan değerleri (GET/POST), /{id} DELETE
+  static const String bloodValuesMarkers = '/blood-values/markers'; // v1.1: bilinen marker listesi
+  static const String reportsInsights = '/reports/insights'; // v1.1: veri korelasyonları
   static const aiCycleAdvice = '$baseUrl/ai/cycle-advice';
   static const String aiCalorieBankAdvice = '/ai/calorie-bank-advice';
 }

@@ -188,6 +188,50 @@ async def build_user_context(db: AsyncSession, user_id: str) -> str:
     if len(parts) == 1:
         return ""  # hiç veri yoksa boş bağlam — prompt'u kirletme
 
+    # ── v1.1: Son kan değerleri — AI beslenme önerisini buna göre ayarlasın ──
+    from backend.app.infrastructure.db.models.blood_value_model import BloodValueModel
+    bv_rows = (await db.execute(
+        select(BloodValueModel)
+        .where(BloodValueModel.user_id == user_id)
+        .order_by(BloodValueModel.test_date.desc())
+        .limit(15)
+    )).scalars().all()
+    if bv_rows:
+        # Her marker için en güncel değeri al
+        latest_by_marker: dict = {}
+        for r in bv_rows:
+            if r.marker not in latest_by_marker:
+                latest_by_marker[r.marker] = r
+        items = [
+            f"{m}: {r.value}{(' ' + r.unit) if r.unit else ''} ({r.test_date})"
+            for m, r in latest_by_marker.items()
+        ]
+        parts.append(
+            "Son kan değerleri (beslenme önerilerinde dikkate al, "
+            "düşük/yüksek değerlere uygun besin öner): " + "; ".join(items)
+        )
+
+    # ── v1.1: Son haftalık check-in — kullanıcının kendi sözleri ──
+    from backend.app.infrastructure.db.models.note_model import NoteModel as _NoteModel
+    last_checkin = (await db.execute(
+        select(_NoteModel)
+        .where(_NoteModel.user_id == user_id,
+               _NoteModel.title == "Haftalık Check-in")
+        .order_by(_NoteModel.date.desc())
+        .limit(1)
+    )).scalars().first()
+    if last_checkin:
+        bits = []
+        if last_checkin.energy_level is not None:
+            bits.append(f"enerji {last_checkin.energy_level}/10")
+        if last_checkin.mood_score is not None:
+            bits.append(f"moral {last_checkin.mood_score}/10")
+        meta = (" (" + ", ".join(bits) + ")") if bits else ""
+        parts.append(
+            f"Kullanıcının son haftalık değerlendirmesi{meta}: "
+            f"\"{last_checkin.content}\". Önerilerinde bunu dikkate al."
+        )
+
     return "\n".join(parts)
 
 

@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
 
+  path_provider: ^2.1.4   # v7: PDF raporu geçici klasöre indirmek için
+  open_filex: ^4.5.0      # v7: indirilen PDF'i sistem görüntüleyicide açmak için
   shared_preferences: ^2.3.3
 
   # HTTP Client

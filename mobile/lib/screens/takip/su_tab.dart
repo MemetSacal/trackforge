@@ -82,23 +82,20 @@ class _SuTabState extends ConsumerState<SuTab> {
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
+                    // v8: dolan bardak — düz çubuk yerine sevimli metafor
+                    _WaterGlass(progress: progress, accent: accent),
+                    const SizedBox(height: 16),
                     Text(
                       current > 0 ? '${(current / 1000).toStringAsFixed(1)}L' : '0.0L',
-                      style: TextStyle(fontSize: 48, fontWeight: FontWeight.w900, color: accent, height: 1),
+                      style: TextStyle(fontSize: 40, fontWeight: FontWeight.w900, color: accent, height: 1),
                     ),
                     const SizedBox(height: 4),
                     Text('Günlük hedef: ${(target / 1000).toStringAsFixed(1)}L', style: TextStyle(fontSize: 13, color: textSoft)),
-                    const SizedBox(height: 16),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(99),
-                      child: LinearProgressIndicator(
-                        value: progress, minHeight: 8,
-                        backgroundColor: accent.withOpacity(0.15),
-                        color: accent,
-                      ),
-                    ),
                     const SizedBox(height: 6),
-                    Text('%${(progress * 100).toInt()} tamamlandı', style: TextStyle(fontSize: 12, color: muted)),
+                    Text(
+                      progress >= 1.0 ? '🎉 Hedefe ulaştın!' : '%${(progress * 100).toInt()} tamamlandı',
+                      style: TextStyle(fontSize: 12, color: progress >= 1.0 ? const Color(0xFF34D399) : muted),
+                    ),
                   ],
                 ),
               ),
@@ -222,4 +219,94 @@ class _SuTabState extends ConsumerState<SuTab> {
       },
     );
   }
+}
+// ── v8: Dolan su bardağı — animasyonlu, dalgalı ──────────
+class _WaterGlass extends StatefulWidget {
+  final double progress;
+  final Color accent;
+  const _WaterGlass({required this.progress, required this.accent});
+
+  @override
+  State<_WaterGlass> createState() => _WaterGlassState();
+}
+
+class _WaterGlassState extends State<_WaterGlass>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _wave = AnimationController(
+      vsync: this, duration: const Duration(seconds: 2))
+    ..repeat();
+
+  @override
+  void dispose() { _wave.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 110, height: 140,
+      child: AnimatedBuilder(
+        animation: _wave,
+        builder: (_, __) => CustomPaint(
+          painter: _GlassPainter(
+            progress: widget.progress.clamp(0.0, 1.0),
+            wavePhase: _wave.value * 2 * 3.14159,
+            accent: widget.accent,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassPainter extends CustomPainter {
+  final double progress, wavePhase;
+  final Color accent;
+  _GlassPainter({required this.progress, required this.wavePhase, required this.accent});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    // Bardak gövdesi: hafif daralan trapez
+    final glass = Path()
+      ..moveTo(w * 0.18, 0)
+      ..lineTo(w * 0.82, 0)
+      ..lineTo(w * 0.72, h)
+      ..lineTo(w * 0.28, h)
+      ..close();
+
+    // Cam kenarı
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = accent.withOpacity(0.5);
+
+    // Su seviyesi (alttan dolar)
+    canvas.save();
+    canvas.clipPath(glass);
+    final fillTop = h * (1 - progress);
+    final wave = Path()..moveTo(0, fillTop);
+    for (double x = 0; x <= w; x++) {
+      final y = fillTop + 5 * (1 - progress) *
+          (x == 0 ? 0 : 1) * // sabit küçük dalga
+          (0.5 + 0.5 * (x / w)) *
+          (sinApprox(wavePhase + x / w * 6.28));
+      wave.lineTo(x, y);
+    }
+    wave..lineTo(w, h)..lineTo(0, h)..close();
+    canvas.drawPath(wave, Paint()..color = accent.withOpacity(0.85));
+    canvas.drawPath(wave, Paint()..color = accent.withOpacity(0.3));
+    canvas.restore();
+
+    canvas.drawPath(glass, stroke);
+  }
+
+  // Hafif sinüs (dart:math'a bağımlılık azaltmak için inline)
+  double sinApprox(double x) {
+    while (x > 3.14159) x -= 6.28318;
+    while (x < -3.14159) x += 6.28318;
+    return x - (x * x * x) / 6 + (x * x * x * x * x) / 120;
+  }
+
+  @override
+  bool shouldRepaint(_GlassPainter old) =>
+      old.progress != progress || old.wavePhase != wavePhase;
 }

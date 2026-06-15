@@ -5,7 +5,13 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
+import 'dart:io';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
+import '../../core/api/api_client.dart';
 import 'wrapped_screen.dart'; // v5: yıl özeti
+import '../health/insights_card.dart';
 import '../../app.dart';
 
 final weeklyReportDetailProvider = FutureProvider<Map<String, dynamic>>((ref) async {
@@ -86,6 +92,27 @@ class _RaporlarScreenState extends ConsumerState<RaporlarScreen>
 
   static const _months = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
     'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+
+  // ── v7: PDF raporu indir ve aç ──
+  Future<void> _downloadHealthPdf(BuildContext context) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('🩺 Rapor hazırlanıyor...')));
+    try {
+      final res = await ApiClient.instance.get(
+        Endpoints.reportsHealthPdf,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/trackforge_saglik_raporu.pdf');
+      await file.writeAsBytes(res.data as List<int>);
+      await OpenFilex.open(file.path);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Rapor indirilemedi, tekrar dene')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -230,6 +257,8 @@ class _WeeklyTab extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           child: Column(
             children: [
+              // ── v1.1: Veri korelasyonları ──
+              const InsightsCard(),
               // ── v5: TrackForge Wrapped girişi ──
               GestureDetector(
                 onTap: () => Navigator.push(context,
@@ -255,6 +284,32 @@ class _WeeklyTab extends ConsumerWidget {
                           style: TextStyle(fontSize: 12, color: Color(0xB31A1208))),
                     ])),
                     const Icon(Icons.chevron_right_rounded, color: Color(0xFF1A1208)),
+                  ]),
+                ),
+              ),
+              // ── v7: Doktor/Diyetisyen PDF raporu ──
+              GestureDetector(
+                onTap: () => _downloadHealthPdf(context),
+                child: Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: bgCard,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: border),
+                  ),
+                  child: Row(children: [
+                    const Text('🩺', style: TextStyle(fontSize: 22)),
+                    const SizedBox(width: 12),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Sağlık Raporu (PDF)',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                      const SizedBox(height: 2),
+                      Text('Doktoruna/diyetisyenine götür — son 4 haftanın özeti',
+                          style: TextStyle(fontSize: 11, color: muted)),
+                    ])),
+                    Icon(Icons.download_rounded, size: 18, color: accent),
                   ]),
                 ),
               ),

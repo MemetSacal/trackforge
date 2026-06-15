@@ -12,11 +12,16 @@ def get_claude_client() -> anthropic.Anthropic:
 # Kullanılacak model — en güncel Claude Sonnet
 CLAUDE_MODEL = "claude-sonnet-4-5"
 
+# v1.1: Sohbet asistanı için ucuz/hızlı model — plan üretimindeki ağır
+# Sonnet yerine Haiku. Sohbet sık ve kısa olduğu için maliyet kritik.
+CLAUDE_CHAT_MODEL = "claude-haiku-4-5-20251001"
+
 # Token limitleri
 MAX_TOKENS_SUMMARY = 1500      # Haftalık özet için
 MAX_TOKENS_WORKOUT = 4000      # Antrenman planı için
 MAX_TOKENS_MEAL = 3000         # Diyet tavsiyesi için
 MAX_TOKENS_RECIPE = 1000       # Tarif önerisi için
+MAX_TOKENS_CHAT = 600          # v1.1: Sohbet yanıtı — kısa tutulur (token tavanı = uzun plan dökülemez)
 
 
 """

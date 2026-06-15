@@ -34,6 +34,7 @@ QUOTAS: dict[str, tuple[int, int, str]] = {
     "ai_feedback":     (50, 200, "daily"),    # feedback spam koruması
     "fridge_recipe":   (2,   15, "weekly"),   # v3: buzdolabı foto→tarif (vision + üretim = 2 AI çağrısı, ayrı kota)
     "text_calorie":    (5,   30, "daily"),    # v6: yazıyla/sesle öğün girişi (görsel yok → ucuz → cömert)
+    "chat":            (15, 100, "daily"),    # v1.1: sohbet asistanı (Haiku, ucuz → cömert ama sınırlı; saçma soru kendi hakkını yer)
 }
 
 

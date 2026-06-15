@@ -18,6 +18,7 @@ from backend.app.api.v1.endpoints import (
     social,
     steps,
     cycle,
+    blood_values,
 )
 
 # Tüm v1 endpoint'lerini bir araya toplayan merkezi router
@@ -41,3 +42,4 @@ router.include_router(gamification.router, prefix="/gamification", tags=["gamifi
 router.include_router(social.router, prefix="/social", tags=["social"])
 router.include_router(steps.router, prefix="/steps", tags=["steps"])
 router.include_router(cycle.router, prefix="/cycle", tags=["cycle"])
+router.include_router(blood_values.router, prefix="/blood-values", tags=["blood-values"])
