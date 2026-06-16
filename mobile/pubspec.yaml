@@ -54,6 +54,9 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_svg: ^2.3.0
 
+  # Hata izleme (Sentry) — crash + exception raporlama
+  sentry_flutter: ^9.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
