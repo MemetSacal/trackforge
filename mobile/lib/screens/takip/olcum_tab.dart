@@ -447,7 +447,7 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                           ),
                           const SizedBox(width: 8),
                           GestureDetector(
-                            onTap: () => _showNavySheet(context, profileGender, bgCard, border, text, muted, accent, accentDim, danger),
+                            onTap: () => _showNavySheet(context, profileGender,profileHeight, bgCard, border, text, muted, accent, accentDim, danger),
                             child: Container(
                               height: 52, width: 52,
                               decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12), border: Border.all(color: accent)),

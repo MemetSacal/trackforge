@@ -1156,7 +1156,7 @@ class _BankAdviceSheetState extends State<BankAdviceSheetPublic> {
                     ],
         ],
       ),
-    );
+    ),
     );
   }
 }

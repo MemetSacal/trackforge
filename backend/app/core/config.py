@@ -32,6 +32,10 @@ class Settings(BaseSettings):
 
     ANTHROPIC_API_KEY: str = ""
 
+    # ── Sentry (hata izleme) ──
+    SENTRY_DSN: str = ""
+    ENVIRONMENT: str = "development"
+
 
 @lru_cache()
 def get_settings() -> Settings:

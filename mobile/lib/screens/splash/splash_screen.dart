@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/auth/token_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/api/api_client.dart';
+import '../../core/api/endpoints.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -70,28 +72,48 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
  Future<void> _navigate() async {
-   await Future.delayed(const Duration(milliseconds: 3400));
-   if (!mounted) return;
-   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    await Future.delayed(const Duration(milliseconds: 3400));
+    if (!mounted) return;
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-   final prefs = await SharedPreferences.getInstance();
-   final sessionOnly = prefs.getBool('session_only') ?? false;
-   if (sessionOnly) {
-     await TokenManager.clearTokens();
-     await prefs.remove('session_only');
-     if (!mounted) return;
-     context.go('/login');
-     return;
-   }
+    final prefs = await SharedPreferences.getInstance();
 
-   final isLoggedIn = await TokenManager.isLoggedIn();
-   if (!mounted) return;
-   if (isLoggedIn) {
-     context.go('/home');
-   } else {
-     context.go('/login');
-   }
- }
+    // 1. "Beni hatırla" kapalıyken bırakılmış oturum → temizle, login'e
+    final sessionOnly = prefs.getBool('session_only') ?? false;
+    if (sessionOnly) {
+      await TokenManager.clearTokens();
+      await prefs.remove('session_only');
+      if (!mounted) return;
+      context.go('/login');
+      return;
+    }
+
+    // 2. Cihazda hiç token yoksa direkt login
+    final isLoggedIn = await TokenManager.isLoggedIn();
+    if (!isLoggedIn) {
+      if (!mounted) return;
+      context.go('/login');
+      return;
+    }
+
+    // 3. Token VAR ama gerçekten geçerli mi? Backend'e sorup doğrula.
+    // DB sıfırlandıysa / token expire olduysa burada yakalanır.
+    bool sessionValid = false;
+    try {
+      final res = await ApiClient.instance.get(Endpoints.me);
+      sessionValid = res.statusCode == 200;
+    } catch (_) {
+      sessionValid = false;
+    }
+
+    if (!mounted) return;
+    if (sessionValid) {
+      context.go('/home');
+    } else {
+      await TokenManager.clearTokens();
+      context.go('/login');
+    }
+  }
 
   @override
   void dispose() {

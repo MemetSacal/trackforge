@@ -1,16 +1,15 @@
-// ── raporlar_screen.dart ────────────────────────────────
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../core/api/api_client.dart';
-import '../../core/api/endpoints.dart';
-import '../../core/utils/date_utils.dart';
-import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+
 import '../../core/api/api_client.dart';
-import 'wrapped_screen.dart'; // v5: yıl özeti
+import '../../core/api/endpoints.dart';
+import '../../core/utils/date_utils.dart';
+import 'wrapped_screen.dart';
 import '../health/insights_card.dart';
 import '../../app.dart';
 
@@ -80,21 +79,23 @@ class _RaporlarScreenState extends ConsumerState<RaporlarScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
+  static const _months = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+    'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() => setState(() {}));
   }
 
   @override
-  void dispose() { _tabController.dispose(); super.dispose(); }
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
-  static const _months = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-    'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-
-  // ── v7: PDF raporu indir ve aç ──
-  Future<void> _downloadHealthPdf(BuildContext context) async {
+  // Context sızıntısını önlemek için context parametresi kaldırıldı, mounted kontrolü eklendi
+  Future<void> _downloadHealthPdf() async {
     ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('🩺 Rapor hazırlanıyor...')));
     try {
@@ -105,9 +106,11 @@ class _RaporlarScreenState extends ConsumerState<RaporlarScreen>
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/trackforge_saglik_raporu.pdf');
       await file.writeAsBytes(res.data as List<int>);
+
+      if (!mounted) return;
       await OpenFilex.open(file.path);
     } catch (_) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Rapor indirilemedi, tekrar dene')));
       }
@@ -134,7 +137,6 @@ class _RaporlarScreenState extends ConsumerState<RaporlarScreen>
       backgroundColor: bg,
       body: Column(
         children: [
-          // ── HEADER ──────────────────────────────────
           Container(
             color: bg,
             padding: const EdgeInsets.fromLTRB(16, 56, 16, 0),
@@ -186,14 +188,16 @@ class _RaporlarScreenState extends ConsumerState<RaporlarScreen>
               ],
             ),
           ),
-
           Expanded(
             child: TabBarView(
               controller: _tabController,
               children: [
-                _WeeklyTab(bg: bg, bgCard: bgCard, bgSoft: bgSoft, border: border,
+                _WeeklyTab(
+                  bg: bg, bgCard: bgCard, bgSoft: bgSoft, border: border,
                   text: text, textSoft: textSoft, muted: muted, accent: accent,
-                  accentDim: accentDim, positive: positive, danger: danger, warning: warning, isDark: isDark),
+                  accentDim: accentDim, positive: positive, danger: danger, warning: warning,
+                  isDark: isDark, onPdfTap: _downloadHealthPdf,
+                ),
                 _MonthlyTab(bg: bg, bgCard: bgCard, bgSoft: bgSoft, border: border,
                   text: text, textSoft: textSoft, muted: muted, accent: accent,
                   accentDim: accentDim, positive: positive, danger: danger, warning: warning,
@@ -210,10 +214,17 @@ class _RaporlarScreenState extends ConsumerState<RaporlarScreen>
 class _WeeklyTab extends ConsumerWidget {
   final Color bg, bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim, positive, danger, warning;
   final bool isDark;
-  const _WeeklyTab({required this.bg, required this.bgCard, required this.bgSoft,
+  final VoidCallback onPdfTap;
+
+  const _WeeklyTab({
+    required this.bg, required this.bgCard, required this.bgSoft,
     required this.border, required this.text, required this.textSoft, required this.muted,
     required this.accent, required this.accentDim, required this.positive,
-    required this.danger, required this.warning, required this.isDark});
+    required this.danger, required this.warning, required this.isDark,
+    required this.onPdfTap,
+  });
+
+  static const _shortMonths = ['', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -242,8 +253,9 @@ class _WeeklyTab extends ConsumerWidget {
         final now = DateTime.now();
         final weekStart = now.subtract(Duration(days: now.weekday - 1));
         final weekEnd   = weekStart.add(const Duration(days: 6));
-        final dateLabel = '${weekStart.day}–${weekEnd.day} ${_monthShort(weekStart.month)} ${weekStart.year}';
+        final dateLabel = '${weekStart.day}–${weekEnd.day} ${_shortMonths[weekStart.month]} ${weekStart.year}';
 
+        // Güvenli cast işlemleriyle stats listesi oluşturuldu
         final stats = [
           ['Kilo Değişimi',  meas['weight_change'] != null ? '${(meas['weight_change'] as num) < 0 ? "" : "+"}${meas['weight_change']} kg' : '-', meas['weight_change'] != null && (meas['weight_change'] as num) <= 0],
           ['Diyet Uyumu',    meal['compliance_rate'] != null ? '%${(meal['compliance_rate'] as num).toStringAsFixed(0)}' : '-', meal['compliance_rate'] != null && (meal['compliance_rate'] as num) >= 70],
@@ -257,12 +269,9 @@ class _WeeklyTab extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
           child: Column(
             children: [
-              // ── v1.1: Veri korelasyonları ──
               const InsightsCard(),
-              // ── v5: TrackForge Wrapped girişi ──
               GestureDetector(
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const WrappedScreen())),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WrappedScreen())),
                 child: Container(
                   width: double.infinity,
                   margin: const EdgeInsets.only(bottom: 12),
@@ -277,19 +286,16 @@ class _WeeklyTab extends ConsumerWidget {
                     const Text('🏆', style: TextStyle(fontSize: 26)),
                     const SizedBox(width: 12),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
-                      Text('TrackForge Wrapped hazır! 🎁',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1A1208))),
+                      Text('TrackForge Wrapped hazır! 🎁', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1A1208))),
                       SizedBox(height: 2),
-                      Text('Yılının özetini gör, arkadaşlarına göster',
-                          style: TextStyle(fontSize: 12, color: Color(0xB31A1208))),
+                      Text('Yılının özetini gör, arkadaşlarına göster', style: TextStyle(fontSize: 12, color: Color(0xB31A1208))),
                     ])),
                     const Icon(Icons.chevron_right_rounded, color: Color(0xFF1A1208)),
                   ]),
                 ),
               ),
-              // ── v7: Doktor/Diyetisyen PDF raporu ──
               GestureDetector(
-                onTap: () => _downloadHealthPdf(context),
+                onTap: onPdfTap,
                 child: Container(
                   width: double.infinity,
                   margin: const EdgeInsets.only(bottom: 12),
@@ -303,11 +309,9 @@ class _WeeklyTab extends ConsumerWidget {
                     const Text('🩺', style: TextStyle(fontSize: 22)),
                     const SizedBox(width: 12),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Sağlık Raporu (PDF)',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                      Text('Sağlık Raporu (PDF)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
                       const SizedBox(height: 2),
-                      Text('Doktoruna/diyetisyenine götür — son 4 haftanın özeti',
-                          style: TextStyle(fontSize: 11, color: muted)),
+                      Text('Doktoruna/diyetisyenine götür — son 4 haftanın özeti', style: TextStyle(fontSize: 11, color: muted)),
                     ])),
                     Icon(Icons.download_rounded, size: 18, color: accent),
                   ]),
@@ -329,23 +333,24 @@ class _WeeklyTab extends ConsumerWidget {
                       mainAxisSpacing: 8,
                       crossAxisSpacing: 8,
                       childAspectRatio: 1.8,
-                      children: stats.map((s) => Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(14)),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(s[0] as String, style: TextStyle(fontSize: 10, color: muted, overflow: TextOverflow.ellipsis)),
-                            const SizedBox(height: 2),
-                            Text(s[1] as String, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: text, overflow: TextOverflow.ellipsis)),
-                            Text((s[2] as bool) ? '✔ hedefte' : '⚠ düşük',
-                              style: TextStyle(fontSize: 10, color: (s[2] as bool) ? positive : warning,
-                              overflow: TextOverflow.ellipsis)),
-
-                          ],
-                        ),
-                      )).toList(),
+                      children: stats.map((s) {
+                        final isTarget = s[2] as bool? ?? false; // Null-safe koruma
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(color: bgSoft, borderRadius: BorderRadius.circular(14)),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(s[0] as String, style: TextStyle(fontSize: 10, color: muted, overflow: TextOverflow.ellipsis)),
+                              const SizedBox(height: 2),
+                              Text(s[1] as String, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: text, overflow: TextOverflow.ellipsis)),
+                              Text(isTarget ? '✔ hedefte' : '⚠ düşük',
+                                style: TextStyle(fontSize: 10, color: isTarget ? positive : warning, overflow: TextOverflow.ellipsis)),
+                            ],
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ],
                 ),
@@ -359,27 +364,26 @@ class _WeeklyTab extends ConsumerWidget {
                   children: [
                     Text('AI Yorumu', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
                     const SizedBox(height: 10),
-                    Text(_buildAiComment(water, sleep, exercise, meas),
-                      style: TextStyle(fontSize: 13, color: text, height: 1.6)),
+                    Text(_buildAiComment(water, sleep, exercise, meas), style: TextStyle(fontSize: 13, color: text, height: 1.6)),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
               if (measLogs.isNotEmpty) ...[
-                              _ChartCard(title: '⚖️ Kilo Trendi', bgCard: bgCard, border: border, text: text,
-                                child: _WeightChart(measurements: measLogs, accent: accent, bgSoft: bgSoft)),
-                              const SizedBox(height: 12),
-                            ],
-                            if (waterLogs.isNotEmpty) ...[
-                              _ChartCard(title: '💧 Su Tüketimi', bgCard: bgCard, border: border, text: text,
-                                child: _WaterChart(waterLogs: waterLogs, accent: accent)),
-                              const SizedBox(height: 12),
-                            ],
-                            if (sleepLogs.isNotEmpty) ...[
-                              _ChartCard(title: '😴 Uyku Süresi', bgCard: bgCard, border: border, text: text,
-                                child: _SleepChart(sleepLogs: sleepLogs, accent: accent, bgSoft: bgSoft)),
-                            ],
-                            if (measLogs.isEmpty && waterLogs.isEmpty && sleepLogs.isEmpty)
+                _ChartCard(title: '⚖️ Kilo Trendi', bgCard: bgCard, border: border, text: text,
+                  child: _WeightChart(measurements: measLogs, accent: accent, bgSoft: bgSoft)),
+                const SizedBox(height: 12),
+              ],
+              if (waterLogs.isNotEmpty) ...[
+                _ChartCard(title: '💧 Su Tüketimi', bgCard: bgCard, border: border, text: text,
+                  child: _WaterChart(waterLogs: waterLogs, accent: accent)),
+                const SizedBox(height: 12),
+              ],
+              if (sleepLogs.isNotEmpty) ...[
+                _ChartCard(title: '😴 Uyku Süresi', bgCard: bgCard, border: border, text: text,
+                  child: _SleepChart(sleepLogs: sleepLogs, accent: accent, bgSoft: bgSoft)),
+              ],
+              if (measLogs.isEmpty && waterLogs.isEmpty && sleepLogs.isEmpty)
                 Container(
                   decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
                   padding: const EdgeInsets.symmetric(vertical: 40),
@@ -408,11 +412,6 @@ class _WeeklyTab extends ConsumerWidget {
     if (totalSess != null) parts.add(totalSess >= 3 ? '$totalSess antrenmanla güçlü bir hafta geçirdin.' : 'Antrenman sayısını artırmaya çalış.');
     if (parts.isEmpty) return 'Veri girdikçe kişisel AI yorumun burada görünecek.';
     return parts.join(' ');
-  }
-
-  String _monthShort(int m) {
-    const s = ['', 'Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-    return s[m];
   }
 }
 

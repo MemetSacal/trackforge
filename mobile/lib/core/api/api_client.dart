@@ -73,28 +73,45 @@ class _AuthInterceptor extends Interceptor {
   // Sunucudan hata yanıtı geldiğinde burası çalışır.
   // 401 Unauthorized gelirse token refresh dener.
   @override
-  void onError(DioException err, ErrorInterceptorHandler handler) async {
-    // Sadece 401 hatasında refresh dene
-    if (err.response?.statusCode == 401) {
-      try {
-        // Refresh token ile yeni access token al
-        final refreshed = await _refreshToken();
+    void onError(DioException err, ErrorInterceptorHandler handler) async {
+      // ── SONSUZ DÖNGÜ KORUMASI ────────────────────────────
+      // Hata veren istek, refresh isteğinin KENDİSİ mi?
+      // (skipInterceptor flag'i _refreshToken içinde set ediliyor;
+      //  path kontrolü de ek güvenlik.)
+      final isRefreshCall =
+          err.requestOptions.extra['skipInterceptor'] == true ||
+          err.requestOptions.path.contains(Endpoints.refresh);
 
-        if (refreshed) {
-          // Yeni token ile başarısız isteği tekrar gönder
-          final response = await _retry(err.requestOptions);
-          handler.resolve(response); // Başarılı yanıtı döndür
-          return;
+      // Refresh isteğinin kendisi hata verdiyse ASLA tekrar refresh deneme.
+      // 401 ise token kesin geçersizdir → temizle, hatayı yukarı ilet.
+      if (isRefreshCall) {
+        if (err.response?.statusCode == 401) {
+          await TokenManager.clearTokens();
         }
-      } catch (_) {
-        // Refresh da başarısız — token'ları sil, login'e yönlendir
+        handler.next(err);
+        return;
+      }
+
+      // Normal isteklerde 401 → bir kez refresh dene
+      if (err.response?.statusCode == 401) {
+        try {
+          final refreshed = await _refreshToken();
+
+          if (refreshed) {
+            final response = await _retry(err.requestOptions);
+            handler.resolve(response);
+            return;
+          }
+        } catch (_) {
+          // refresh sırasında exception fırlarsa aşağıda temizlenecek
+        }
+
+        // Refresh başarısız → oturum geçersiz, token'ları sil
         await TokenManager.clearTokens();
       }
-    }
 
-    // Diğer hatalar için normal hata akışına devam et
-    handler.next(err);
-  }
+      handler.next(err);
+    }
 
   /// Refresh token kullanarak yeni access token alır.
   /// Başarılıysa true, başarısızsa false döner.

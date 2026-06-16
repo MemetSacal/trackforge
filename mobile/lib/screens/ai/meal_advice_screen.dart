@@ -104,6 +104,63 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen>
     );
   }
 
+  // ─────────────────────────────────────────────────────────
+  // v7: JOB PATTERN — uzun diyet üretimi arka planda yoklanır.
+  // workout_plan_screen._awaitJob ile AYNI mantık:
+  //  • Cache isabetinde POST anında {status:'done', result:{...}} döner
+  //    → hiç beklemeden sonucu kullanırız (job_id null'dır, bu HATA DEĞİL).
+  //  • Aksi halde job başlar; durumu /ai/jobs/{id} ile 2.5 sn'de bir yoklarız.
+  // ─────────────────────────────────────────────────────────
+  Future<Map<String, dynamic>?> _awaitMealJob(Response startResponse) async {
+    try {
+      final body = Map<String, dynamic>.from(startResponse.data);
+
+      // 1) CACHE İSABETİ — sonuç POST yanıtında hazır geldi (job_id == null normal)
+      if (body['status'] == 'done' && body['result'] != null) {
+        return Map<String, dynamic>.from(body['result']);
+      }
+
+      // 2) Arka plan job'u başlatıldı — job_id ile yoklayacağız
+      final jobId = body['job_id'] as String?;
+      if (jobId == null) {
+        setState(() => _error = 'İş başlatılamadı, tekrar dene.');
+        return null;
+      }
+
+      // ~2 dk tavan: 48 x 2.5 sn (workout ekranıyla birebir aynı)
+      for (int i = 0; i < 48; i++) {
+        await Future.delayed(const Duration(milliseconds: 2500));
+        if (!mounted) return null; // ekran kapandı — sunucu yine de bitirir,
+                                    // sonuç cache'e düşer, kota boşa yanmaz
+
+        // KRİTİK: durum sorgusu /ai/jobs/{id} adresine gider → aiJobs sabiti.
+        // (aiJobsMeal = /ai/jobs/meal-advice; o YALNIZCA job başlatan POST içindir.
+        //  Eski kod buraya aiJobsMeal koyduğu için /ai/jobs/meal-advice/{id} → 404 oluyordu.)
+        final poll =
+            await ApiClient.instance.get('${Endpoints.aiJobs}/$jobId');
+        final status = poll.data['status'] as String?;
+
+        // Backend yalnızca 'pending' | 'running' | 'done' | 'error' döndürür
+        if (status == 'done') {
+          return Map<String, dynamic>.from(poll.data['result']);
+        }
+        if (status == 'error') {
+          setState(() => _error =
+              'Diyet planı oluşturulamadı: ${poll.data['error'] ?? 'bilinmeyen hata'}');
+          return null;
+        }
+        // 'pending' / 'running' → döngü devam eder
+      }
+
+      setState(() => _error = 'İşlem çok uzun sürdü — birazdan tekrar dene, '
+          'sonuç hazırsa anında gelecek.');
+      return null;
+    } catch (_) {
+      setState(() => _error = 'Job takibi sırasında hata oluştu.');
+      return null;
+    }
+  }
+
   Future<void> _getAdvice(Map<String, dynamic>? prefs) async {
     final canUse = await RateLimiter.canUseMealAdvice();
     if (!canUse) {
