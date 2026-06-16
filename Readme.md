@@ -163,7 +163,7 @@ Most fitness apps treat AI as a chatbot bolted on top. TrackForge's AI operates 
 ![Gamification](docs/images/gamification.png)
 
 ### Onboarding
-![Onboarding](docs/images/onboarding.png)
+![Meal Plan](docs/images/meal_plan.png)
 
 ---
 
