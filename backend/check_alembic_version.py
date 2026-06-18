@@ -115,6 +115,6 @@ else:
     print("  ✗ completed kolonu YOK")
 
 
-section("BİTTİ — yukarıdaki tüm çıktıyı Claude'a yapıştır")
+section("BİTTİ")
 cur.close()
 conn.close()
