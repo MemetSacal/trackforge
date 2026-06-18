@@ -13,7 +13,7 @@ import 'wrapped_screen.dart';
 import '../health/insights_card.dart';
 import '../../app.dart';
 
-final weeklyReportDetailProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+final weeklyReportDetailProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final response = await ApiClient.instance.get(
     Endpoints.reportsWeekly,
     queryParameters: {'reference_date': TFDateUtils.today()},
@@ -21,7 +21,7 @@ final weeklyReportDetailProvider = FutureProvider<Map<String, dynamic>>((ref) as
   return Map<String, dynamic>.from(response.data);
 });
 
-final weeklyLogsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+final weeklyLogsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   try {
     final response = await ApiClient.instance.get(
       '${Endpoints.reportsWeekly}/logs',
@@ -33,7 +33,7 @@ final weeklyLogsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   }
 });
 
-final monthlyReportProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+final monthlyReportProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final now = DateTime.now();
   final response = await ApiClient.instance.get(
     Endpoints.reportsMonthly,

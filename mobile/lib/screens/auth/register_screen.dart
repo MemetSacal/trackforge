@@ -47,12 +47,25 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         'email':    _emailController.text.trim(),
         'password': _passwordController.text,
       });
+
+      // ── HESAP DEĞİŞİMİ KORUMASI ──────────────────────────────────
+      // Yeni token'ı yazmadan ÖNCE önceki user_id'yi oku. Yeni kayıt olan
+      // kullanıcı, cihazda kalmış başka birinin cache'ini miras almamalı.
+      final previousUserId = await TokenManager.getCurrentUserId();
+      final newUserId = (loginResponse.data['user_id'] ?? '').toString();
+
       await TokenManager.saveTokens(
         accessToken:  loginResponse.data['access_token'],
         refreshToken: loginResponse.data['refresh_token'],
         userId:       loginResponse.data['user_id'] ?? '',
         isPremium:    loginResponse.data['is_premium'] ?? false,
       );
+
+      // Önceki kullanıcı farklıysa eski lokal cache'i temizle (sızma önlemi).
+      if (previousUserId != null && previousUserId != newUserId) {
+        await TokenManager.clearUserScopedCache();
+      }
+
       if (!mounted) return;
       context.go('/onboarding');
     } on ApiException catch (e) {

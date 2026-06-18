@@ -11,7 +11,7 @@ import '../../app.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 
-final progressPhotosProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final progressPhotosProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   try {
     final res = await ApiClient.instance.get(Endpoints.photos);
     final list = (res.data as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList();

@@ -9,14 +9,14 @@ import '../../app.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 
-final bloodMarkersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final bloodMarkersProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   try {
     final res = await ApiClient.instance.get(Endpoints.bloodValuesMarkers);
     return (res.data as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList();
   } catch (_) { return []; }
 });
 
-final bloodValuesProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+final bloodValuesProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   try {
     final res = await ApiClient.instance.get(Endpoints.bloodValues);
     // {"grouped": {marker: [ {id, marker, value, unit, test_date, label} ]}}

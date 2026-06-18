@@ -17,7 +17,12 @@ import '../ai/ai_helpers.dart';
 
 final profileUserProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final response = await ApiClient.instance.get(Endpoints.me);
-  return Map<String, dynamic>.from(response.data);
+  final me = Map<String, dynamic>.from(response.data);
+  // Profil her açıldığında /auth/me taze geldiği için, prefs premium cache'ini
+  // de burada senkronla. Böylece app'i yeniden başlatmadan da (sadece profile
+  // girip çıkarak) PRO durumu güncellenir — splash dışındaki 2. senkron noktası.
+  await TokenManager.syncFromMe(me);
+  return me;
 });
 
 final profilePrefsProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {

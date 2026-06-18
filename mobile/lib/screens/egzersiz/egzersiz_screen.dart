@@ -12,7 +12,7 @@ import 'seans_detay_screen.dart';
 
 // ── Seanslar provider — egzersizleri de içeriyor ────────
 // Her seans için ayrı /exercises endpoint'i çekiyoruz
-final sessionsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final sessionsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   try {
     final response = await ApiClient.instance.get(
       Endpoints.exerciseSessions,

@@ -102,6 +102,15 @@ class _SplashScreenState extends State<SplashScreen>
     try {
       final res = await ApiClient.instance.get(Endpoints.me);
       sessionValid = res.statusCode == 200;
+
+      // ── KRİTİK: cevabın gövdesini SENKRONLA ──────────────────────
+      // Önceden sadece statusCode bakılıp body atılıyordu. Oysa /auth/me
+      // taze 'is_premium' ve 'id' döndürüyor. set_premium.py DB'yi
+      // değiştirdiğinde uygulama açılışında premium burada güncellenir;
+      // yoksa cache login anındaki eski değerde kalıp PRO'yu kilitli tutuyordu.
+      if (sessionValid && res.data is Map) {
+        await TokenManager.syncFromMe(Map<String, dynamic>.from(res.data));
+      }
     } catch (_) {
       sessionValid = false;
     }

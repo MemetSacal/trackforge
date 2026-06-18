@@ -12,7 +12,7 @@ import '../../core/auth/token_manager.dart';
 import '../ai/calorie_vision_screen.dart'; // v2: foto-kalori kısayolu
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
-final todayMealProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+final todayMealProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
     final response = await ApiClient.instance.get('${Endpoints.mealCompliance}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(response.data);

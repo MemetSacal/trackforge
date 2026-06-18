@@ -58,6 +58,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         'password': _passwordController.text,
       });
 
+      // ── HESAP DEĞİŞİMİ KORUMASI ──────────────────────────────────
+      // Yeni token'ları yazmadan ÖNCE cihazda kayıtlı önceki user_id'yi oku.
+      // saveTokens birazdan bunu üzerine yazacak, o yüzden şimdi yakalıyoruz.
+      final previousUserId = await TokenManager.getCurrentUserId();
+      final newUserId = (response.data['user_id'] ?? '').toString();
+
       final prefs = await SharedPreferences.getInstance();
 
       if (_rememberMe) {
@@ -83,6 +89,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await prefs.setBool('remember_me', false);
         // Session flag → splash'te kontrol edilecek
         await prefs.setBool('session_only', true);
+      }
+
+      // ── Token'lar yazıldı. Önceki kullanıcı FARKLIYSA eski cache'i temizle ──
+      // Bu, "logout etmeden başka hesaba geçince eski kullanıcının diyet/öğün/
+      // bildirim verisinin görünmesi" bug'ının kök çözümü. Aynı kullanıcı tekrar
+      // giriş yaparsa (previousUserId == newUserId) kendi cache'i korunur.
+      if (previousUserId != null && previousUserId != newUserId) {
+        await TokenManager.clearUserScopedCache();
       }
 
       if (!mounted) return;

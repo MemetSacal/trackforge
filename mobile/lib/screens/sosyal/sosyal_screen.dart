@@ -9,7 +9,7 @@ import '../../core/api/endpoints.dart';
 import '../../app.dart';
 
 // ── Kabul edilmiş arkadaşlar ──
-final friendsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final friendsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.friends);
     final data = response.data as List? ?? [];
@@ -20,7 +20,7 @@ final friendsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
 });
 
 // ── Gelen bekleyen istekler ──
-final pendingRequestsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final pendingRequestsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   try {
     final response = await ApiClient.instance.get('/social/friends/pending');
     final data = response.data as List? ?? [];
@@ -31,7 +31,7 @@ final pendingRequestsProvider = FutureProvider<List<Map<String, dynamic>>>((ref)
 });
 
 // ── Leaderboard ──
-final leaderboardProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final leaderboardProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.leaderboard);
     final data = response.data as List? ?? [];
@@ -42,7 +42,7 @@ final leaderboardProvider = FutureProvider<List<Map<String, dynamic>>>((ref) asy
 });
 
 // ── v5: Düellolar ──
-final duelsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final duelsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.socialDuels);
     final data = response.data as List? ?? [];

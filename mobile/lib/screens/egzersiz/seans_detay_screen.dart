@@ -10,7 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'egzersiz_screen.dart';
 
 final sessionExercisesProvider =
-    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, sessionId) async {
+    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, sessionId) async {
   try {
     final response = await ApiClient.instance.get('${Endpoints.exerciseSessions}/$sessionId/exercises');
     final list = response.data as List;

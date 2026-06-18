@@ -14,7 +14,7 @@ import '../../core/utils/rate_limiter.dart';
 import 'dart:convert';
 import '../../core/auth/token_manager.dart';
 
-final preferencesProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+final preferencesProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.preferences);
     return Map<String, dynamic>.from(response.data);

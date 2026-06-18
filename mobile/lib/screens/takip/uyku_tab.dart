@@ -5,7 +5,7 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 
-final todaySleepProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+final todaySleepProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
     final response = await ApiClient.instance.get('${Endpoints.sleep}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(response.data);

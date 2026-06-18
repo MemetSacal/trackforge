@@ -14,7 +14,7 @@ import '../../core/widgets/count_up_text.dart';
 import '../../core/widgets/pulse_skeleton.dart';
 
 // v8: son 7 günün adımları — mini grafik için
-final weekStepsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final weekStepsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.steps);
     final list = (response.data as List? ?? [])
@@ -24,7 +24,7 @@ final weekStepsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async
   } catch (_) { return []; }
 });
 
-final todayStepsProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+final todayStepsProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
     final response = await ApiClient.instance.get('${Endpoints.steps}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(response.data);

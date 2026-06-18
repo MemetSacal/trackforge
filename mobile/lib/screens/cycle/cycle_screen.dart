@@ -10,7 +10,7 @@ import '../../core/utils/date_utils.dart';
 import '../../app.dart';
 
 // ── PROVIDER ────────────────────────────────────────────
-final cycleProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+final cycleProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.cycle);
     return Map<String, dynamic>.from(response.data);
