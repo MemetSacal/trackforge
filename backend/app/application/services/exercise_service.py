@@ -61,8 +61,8 @@ class ExerciseService:
         if existing.user_id != user_id:
             raise NotFoundException("Seans bulunamadı")
         existing.duration_minutes = data.duration_minutes if data.duration_minutes is not None else existing.duration_minutes
-        existing.calories_burned  = data.calories_burned  if data.calories_burned  is not None else existing.calories_burned
-        existing.notes            = data.notes            if data.notes            is not None else existing.notes
+        existing.calories_burned = data.calories_burned if data.calories_burned is not None else existing.calories_burned
+        existing.notes = data.notes if data.notes is not None else existing.notes
         if data.is_completed is not None:       # #19
             existing.is_completed = data.is_completed
         return await self.session_repository.update(existing)

@@ -1,0 +1,90 @@
+diff --git a/backend/app/ai/client.py b/backend/app/ai/client.py
+index 68cc59e..5d8e7d0 100644
+--- a/backend/app/ai/client.py
++++ b/backend/app/ai/client.py
+@@ -23,9 +23,7 @@ CLAUDE_CHAT_MODEL = "claude-haiku-4-5-20251001"
+ MAX_TOKENS_SUMMARY = 1500      # Haftalık özet için
+ MAX_TOKENS_WORKOUT = 4000      # Antrenman planı için
+ MAX_TOKENS_MEAL = 3000         # Diyet tavsiyesi için
+-MAX_TOKENS_RECIPE = 2200       # Tarif önerisi için (1000 düşüktü: malzeme+adım
+-                               # listesi uzun tarifte JSON'u kesip parse/zorunlu
+-                               # alan hatası → 500 yapıyordu)
++MAX_TOKENS_RECIPE = 2200       # Tarif önerisi için (1000 düşüktü — uzun tarifte JSON kesilip parse hatası 500 veriyordu)
+ MAX_TOKENS_CHAT = 600          # v1.1: Sohbet yanıtı — kısa tutulur (token tavanı = uzun plan dökülemez)
+ 
+ 
+diff --git a/backend/app/application/services/auth_service.py b/backend/app/application/services/auth_service.py
+index 1137467..837c2de 100644
+--- a/backend/app/application/services/auth_service.py
++++ b/backend/app/application/services/auth_service.py
+@@ -83,7 +83,7 @@ class AuthService:
+         created_user = await self.user_repository.create(user)
+ 
+         # Email doğrulama token'ı oluştur ve gönder
+-        ev_token  = generate_email_token()
++        ev_token = generate_email_token()
+         ev_expiry = token_expiry()
+         await self.user_repository.set_email_token(created_user.id, ev_token, ev_expiry)
+         await send_verification_email(created_user.email, created_user.full_name, ev_token)
+@@ -131,7 +131,7 @@ class AuthService:
+             raise BadRequestException("Kullanıcı bulunamadı.")
+         if getattr(user, "email_verified", False):
+             return {"message": "Email zaten doğrulanmış."}
+-        ev_token  = generate_email_token()
++        ev_token = generate_email_token()
+         ev_expiry = token_expiry()
+         await self.user_repository.set_email_token(user.id, ev_token, ev_expiry)
+         sent = await send_verification_email(user.email, user.full_name, ev_token)
+diff --git a/backend/app/application/services/exercise_service.py b/backend/app/application/services/exercise_service.py
+index 1132fca..1aab80b 100644
+--- a/backend/app/application/services/exercise_service.py
++++ b/backend/app/application/services/exercise_service.py
+@@ -61,8 +61,8 @@ class ExerciseService:
+         if existing.user_id != user_id:
+             raise NotFoundException("Seans bulunamadı")
+         existing.duration_minutes = data.duration_minutes if data.duration_minutes is not None else existing.duration_minutes
+-        existing.calories_burned  = data.calories_burned  if data.calories_burned  is not None else existing.calories_burned
+-        existing.notes            = data.notes            if data.notes            is not None else existing.notes
++        existing.calories_burned = data.calories_burned if data.calories_burned is not None else existing.calories_burned
++        existing.notes = data.notes if data.notes is not None else existing.notes
+         if data.is_completed is not None:       # #19
+             existing.is_completed = data.is_completed
+         return await self.session_repository.update(existing)
+diff --git a/backend/app/application/services/meal_compliance_service.py b/backend/app/application/services/meal_compliance_service.py
+index 5104421..945bd86 100644
+--- a/backend/app/application/services/meal_compliance_service.py
++++ b/backend/app/application/services/meal_compliance_service.py
+@@ -74,11 +74,11 @@ class MealComplianceService:
+         today: Optional[date] = None,
+     ) -> float:
+         goal_adjustments = {
+-            "weight_loss":  -500,
+-            "weight_gain":  +300,
+-            "muscle_gain":  +250,
+-            "maintenance":  0,
+-            "health":       0,
++            "weight_loss": -500,
++            "weight_gain": +300,
++            "muscle_gain": +250,
++            "maintenance": 0,
++            "health": 0,
+         }
+         goal_offset = goal_adjustments.get(fitness_goal or "maintenance", 0)
+         final_target = tdee + goal_offset
+diff --git a/backend/app/infrastructure/repositories/exercise_session_repository.py b/backend/app/infrastructure/repositories/exercise_session_repository.py
+index ff224d9..090de85 100644
+--- a/backend/app/infrastructure/repositories/exercise_session_repository.py
++++ b/backend/app/infrastructure/repositories/exercise_session_repository.py
+@@ -58,9 +58,9 @@ class ExerciseSessionRepository(IExerciseSessionRepository):
+             return None
+         # id, user_id, date değişmez — sadece içerik alanları güncellenir
+         db_obj.duration_minutes = exercise_session.duration_minutes
+-        db_obj.calories_burned  = exercise_session.calories_burned
+-        db_obj.notes            = exercise_session.notes
+-        db_obj.is_completed     = getattr(exercise_session, 'is_completed', db_obj.is_completed)
++        db_obj.calories_burned = exercise_session.calories_burned
++        db_obj.notes = exercise_session.notes
++        db_obj.is_completed = getattr(exercise_session, 'is_completed', db_obj.is_completed)
+         await self.session.flush()
+         return self._to_entity(db_obj)
+ 

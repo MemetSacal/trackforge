@@ -83,7 +83,7 @@ class AuthService:
         created_user = await self.user_repository.create(user)
 
         # Email doğrulama token'ı oluştur ve gönder
-        ev_token  = generate_email_token()
+        ev_token = generate_email_token()
         ev_expiry = token_expiry()
         await self.user_repository.set_email_token(created_user.id, ev_token, ev_expiry)
         await send_verification_email(created_user.email, created_user.full_name, ev_token)
@@ -131,7 +131,7 @@ class AuthService:
             raise BadRequestException("Kullanıcı bulunamadı.")
         if getattr(user, "email_verified", False):
             return {"message": "Email zaten doğrulanmış."}
-        ev_token  = generate_email_token()
+        ev_token = generate_email_token()
         ev_expiry = token_expiry()
         await self.user_repository.set_email_token(user.id, ev_token, ev_expiry)
         sent = await send_verification_email(user.email, user.full_name, ev_token)

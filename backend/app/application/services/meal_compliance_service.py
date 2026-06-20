@@ -74,11 +74,11 @@ class MealComplianceService:
         today: Optional[date] = None,
     ) -> float:
         goal_adjustments = {
-            "weight_loss":  -500,
-            "weight_gain":  +300,
-            "muscle_gain":  +250,
-            "maintenance":  0,
-            "health":       0,
+            "weight_loss": -500,
+            "weight_gain": +300,
+            "muscle_gain": +250,
+            "maintenance": 0,
+            "health": 0,
         }
         goal_offset = goal_adjustments.get(fitness_goal or "maintenance", 0)
         final_target = tdee + goal_offset

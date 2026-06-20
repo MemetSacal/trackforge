@@ -23,9 +23,7 @@ CLAUDE_CHAT_MODEL = "claude-haiku-4-5-20251001"
 MAX_TOKENS_SUMMARY = 1500      # Haftalık özet için
 MAX_TOKENS_WORKOUT = 4000      # Antrenman planı için
 MAX_TOKENS_MEAL = 3000         # Diyet tavsiyesi için
-MAX_TOKENS_RECIPE = 2200       # Tarif önerisi için (1000 düşüktü: malzeme+adım
-                               # listesi uzun tarifte JSON'u kesip parse/zorunlu
-                               # alan hatası → 500 yapıyordu)
+MAX_TOKENS_RECIPE = 2200       # Tarif önerisi için (1000 düşüktü — uzun tarifte JSON kesilip parse hatası 500 veriyordu)
 MAX_TOKENS_CHAT = 600          # v1.1: Sohbet yanıtı — kısa tutulur (token tavanı = uzun plan dökülemez)
 
 
