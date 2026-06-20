@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision: str = "0003_add_email_verification"
-down_revision: Union[str, None] = "0001_baseline"
+down_revision: Union[str, None] = "0002_add_is_completed"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
