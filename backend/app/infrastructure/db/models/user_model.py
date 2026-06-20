@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     from backend.app.infrastructure.db.models.friendship_model import FriendshipModel
     from backend.app.infrastructure.db.models.step_log_model import StepLogModel
     from backend.app.infrastructure.db.models.menstrual_cycle_model import MenstrualCycleModel
+    from backend.app.infrastructure.db.models.device_token_model import DeviceTokenModel
+    from backend.app.infrastructure.db.models.notification_model import NotificationModel
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -113,6 +115,12 @@ class UserModel(Base):
     )
     menstrual_cycles: Mapped[List["MenstrualCycleModel"]] = relationship(
         "MenstrualCycleModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    device_tokens: Mapped[List["DeviceTokenModel"]] = relationship(
+        "DeviceTokenModel", back_populates="user", cascade="all, delete-orphan"
+    )
+    notifications: Mapped[List["NotificationModel"]] = relationship(
+        "NotificationModel", back_populates="user", cascade="all, delete-orphan"
     )
 """
 DOSYA AKIŞI:

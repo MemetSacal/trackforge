@@ -1,0 +1,12 @@
+diff --git a/lib/screens/auth/login_screen.dart b/lib/screens/auth/login_screen.dart
+index 982b69e..0498882 100644
+--- a/lib/screens/auth/login_screen.dart
++++ b/lib/screens/auth/login_screen.dart
+@@ -72,6 +72,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
+           userId:       response.data['user_id'] ?? '',
+           isPremium:    response.data['is_premium'] ?? false,
+         );
++        await FcmService.registerTokenWithBackend();
+         await prefs.setString('saved_email', _emailController.text.trim());
+         await prefs.setBool('remember_me', true);
+       } else {

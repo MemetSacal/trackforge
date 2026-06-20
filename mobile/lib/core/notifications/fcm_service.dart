@@ -1,0 +1,218 @@
+// ── fcm_service.dart ─────────────────────────────────────
+// lib/core/notifications/fcm_service.dart
+//
+// Firebase Cloud Messaging (FCM) — backend-tetiklemeli push bildirimleri.
+//
+// NOT: Bu dosya notification_service.dart'ın YERİNE GEÇMEZ.
+// İkisi birlikte çalışır (hibrit mimari):
+//   - notification_service.dart → su/öğün/uyku/antrenman gibi YEREL,
+//     zamanlı hatırlatmalar (cihaz kendi zamanlıyor, backend'in haberi yok)
+//   - fcm_service.dart (BU DOSYA) → arkadaşlık isteği, AI rapor hazır,
+//     premium duyurusu gibi SUNUCU KAYNAKLI, olay bazlı bildirimler
+//
+// Akış:
+//   1) init() çağrılır (main.dart'ta, Firebase.initializeApp()'ten SONRA)
+//   2) İzin istenir
+//   3) FCM token alınır → backend'e gönderilir (registerTokenWithBackend)
+//   4) onTokenRefresh dinlenir → token değişirse backend'e tekrar gönderilir
+//   5) Foreground/background/terminated mesaj dinleyicileri kurulur
+
+import 'dart:io' show Platform;
+
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
+
+import '../api/api_client.dart';
+import '../api/endpoints.dart';
+
+// ── Background mesaj handler ─────────────────────────────
+// ÖNEMLİ: Bu fonksiyon TOP-LEVEL (sınıf dışında) ve @pragma ile
+// işaretli olmak ZORUNDA. Firebase, uygulama arka plandayken veya
+// kapalıyken gelen mesajları bu fonksiyon üzerinden işler. Sınıf
+// içine taşınırsa veya pragma kaldırılırsa Android'de çalışmaz.
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Burada ağır iş yapılmaz (DB bağlantısı, UI güncelleme vb. mümkün değil).
+  // Bildirim zaten sistem tarafından otomatik gösterilir (notification payload'ı
+  // varsa). Burası sadece log/debug veya hafif veri senkronizasyonu içindir.
+  if (kDebugMode) {
+    debugPrint('🔔 [FCM-Background] ${message.notification?.title}: ${message.notification?.body}');
+  }
+}
+
+class FcmService {
+  FcmService._(); // Dışarıdan new FcmService() yapılamaz
+
+  static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  static bool _initialized = false;
+
+  // ── Başlatma ──────────────────────────────────────────
+  // main.dart'ta Firebase.initializeApp()'ten SONRA, login akışından
+  // BAĞIMSIZ olarak çağrılmalı (izin isteme + listener kurulumu login'i
+  // beklemez). Token'ın backend'e gönderilmesi ise login sonrası,
+  // ayrıca registerTokenWithBackend() ile tetiklenir.
+  static Future<void> init() async {
+    if (_initialized) return;
+    _initialized = true;
+
+    // Background handler'ı kaydet (Firebase.initializeApp() sonrası,
+    // runApp() öncesi çağrılması gerekiyor — main.dart'ta dikkat edilmeli)
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
+    // ── Foreground mesajları dinle ──
+    // Uygulama açıkken bildirim gelirse OS otomatik göstermez,
+    // bu yüzden kendimiz handle ediyoruz.
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (kDebugMode) {
+        debugPrint('🔔 [FCM-Foreground] ${message.notification?.title}: ${message.notification?.body}');
+        debugPrint('🔔 [FCM-Data] ${message.data}');
+      }
+      // TODO: İstersen burada flutter_local_notifications ile foreground'da
+      // da bir banner gösterebilirsin (FCM foreground'da otomatik göstermiyor).
+      // Şimdilik sadece log + data işleme (deep-link router'a iletmek gibi).
+      _handleMessageData(message.data);
+    });
+
+    // ── Bildirime tıklanıp uygulama açıldığında ──
+    // (Uygulama arka plandaydı, kullanıcı bildirime dokundu)
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (kDebugMode) {
+        debugPrint('🔔 [FCM-Opened] ${message.data}');
+      }
+      _handleMessageData(message.data);
+    });
+
+    // ── Token yenilenirse backend'e tekrar gönder ──
+    // FCM token zamanla değişebilir (örn. uygulama yeniden yüklendiğinde).
+    // Bu dinleyici olmadan eski token backend'de kalır ve bildirimler gitmez.
+    _messaging.onTokenRefresh.listen((newToken) {
+      if (kDebugMode) {
+        debugPrint('🔔 [FCM] Token yenilendi, backend güncelleniyor...');
+      }
+      registerTokenWithBackend(newToken);
+    });
+  }
+
+  // ── İzin iste ─────────────────────────────────────────
+  // iOS'ta zorunlu, Android 13+ (API 33+) için de gerekli.
+  static Future<bool> requestPermission() async {
+    final settings = await _messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    return settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+  }
+
+  // ── Mevcut FCM token'ı al ─────────────────────────────
+  static Future<String?> getToken() async {
+    try {
+      return await _messaging.getToken();
+    } catch (e) {
+      if (kDebugMode) debugPrint('🔔 [FCM] Token alınamadı: $e');
+      return null;
+    }
+  }
+
+  // ── Token'ı backend'e gönder ──────────────────────────
+  // Login sonrası ve onTokenRefresh tetiklendiğinde çağrılır.
+  // token parametresi verilmezse mevcut token otomatik alınır.
+  static Future<void> registerTokenWithBackend([String? token]) async {
+    try {
+      final fcmToken = token ?? await getToken();
+      if (fcmToken == null) {
+        if (kDebugMode) debugPrint('🔔 [FCM] Token yok, register atlandı.');
+        return;
+      }
+
+      final deviceType = Platform.isIOS ? 'ios' : 'android';
+
+      await ApiClient.instance.post(
+        Endpoints.notificationsRegisterToken,
+        data: {
+          'token': fcmToken,
+          'device_type': deviceType,
+          // app_version istersen package_info_plus ile doldurulabilir,
+          // şimdilik opsiyonel olduğu için boş bırakılabilir.
+        },
+      );
+
+      if (kDebugMode) debugPrint('🔔 [FCM] Token backend\'e kaydedildi.');
+    } on DioException catch (e) {
+      // Backend ulaşılamaz olsa bile uygulama çökmemeli — sessizce logla.
+      if (kDebugMode) debugPrint('🔔 [FCM] Token register hatası: ${e.message}');
+    } catch (e) {
+      if (kDebugMode) debugPrint('🔔 [FCM] Beklenmeyen hata: $e');
+    }
+  }
+
+  // ── Logout'ta token'ı deaktive et ─────────────────────
+  // Eski cihaza bildirim gitmeye devam etmesin diye logout akışında çağrılmalı.
+  static Future<void> deactivateTokenOnBackend() async {
+    try {
+      final fcmToken = await getToken();
+      if (fcmToken == null) return;
+
+      await ApiClient.instance.patch(
+        Endpoints.notificationsDeactivateToken,
+        data: {
+          'token': fcmToken,
+          'device_type': Platform.isIOS ? 'ios' : 'android',
+        },
+      );
+
+      if (kDebugMode) debugPrint('🔔 [FCM] Token deaktive edildi.');
+    } catch (e) {
+      // Logout akışını bloklamamalı — hata olsa bile devam.
+      if (kDebugMode) debugPrint('🔔 [FCM] Token deaktive hatası: $e');
+    }
+  }
+
+  // ── Data payload işleme (deep-link mantığı) ───────────
+  // Backend'den gelen data: {"type": "friend_request", "request_id": "91", ...}
+  // Şu an sadece log basıyor — router entegrasyonu (go_router ile yönlendirme)
+  // ayrı bir adımda eklenecek, çünkü context/navigator'a erişim gerektiriyor.
+  static void _handleMessageData(Map<String, dynamic> data) {
+    final type = data['type'];
+    if (type == null) return;
+
+    switch (type) {
+      case 'friend_request':
+      case 'friend_accepted':
+        // TODO: go_router ile /social ekranına yönlendir
+        break;
+      case 'ai_report':
+        // TODO: go_router ile rapor ekranına yönlendir
+        break;
+      case 'streak_warning':
+        // TODO: go_router ile dashboard'a yönlendir
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+/*
+DOSYA AKIŞI:
+FcmService, backend-tetiklemeli push bildirimlerinin TEK giriş noktası.
+
+Kullanım sırası (main.dart):
+  1. WidgetsFlutterBinding.ensureInitialized()
+  2. await Firebase.initializeApp()
+  3. await FcmService.init()              // listener'ları kurar
+  4. await FcmService.requestPermission() // izin ister
+  5. runApp(...)
+
+Login sonrası (auth akışında, başarılı login/register sonrasında):
+  await FcmService.registerTokenWithBackend();
+
+Logout akışında (mevcut logout fonksiyonunun İÇİNDE, token temizlenmeden ÖNCE):
+  await FcmService.deactivateTokenOnBackend();
+
+Spring Boot karşılığı: Bir @Service sınıfı + harici bir SDK'nın
+uygulama başlangıcında initialize edilip event listener'larının
+kaydedildiği bir yapı (örn. bir message broker consumer'ı gibi düşünebilirsin).
+*/

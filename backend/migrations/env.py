@@ -25,6 +25,8 @@ from backend.app.infrastructure.db.models import friendship_model  # noqa
 from backend.app.infrastructure.db.models import step_log_model  # noqa
 from backend.app.infrastructure.db.models import menstrual_cycle_model  # noqa
 from backend.app.infrastructure.db.models import ai_usage_model  # noqa
+from backend.app.infrastructure.db.models import device_token_model  # noqa
+from backend.app.infrastructure.db.models import notification_model  # noqa
 
 # Alembic config objesi — alembic.ini dosyasını okur
 config = context.config

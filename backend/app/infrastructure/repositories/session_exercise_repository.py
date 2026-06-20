@@ -22,6 +22,7 @@ class SessionExerciseRepository(ISessionExerciseRepository):
             weight_kg=exercise.weight_kg,
             notes=exercise.notes,
             completed=getattr(exercise, "completed", False),  # v5 FIX
+            muscle_groups=getattr(exercise, "muscle_groups", None) or [],  # v8.1 FIX (TC-005)
             created_at=exercise.created_at,
         )
         self.session.add(db_obj)
@@ -59,6 +60,8 @@ class SessionExerciseRepository(ISessionExerciseRepository):
         db_obj.weight_kg = exercise.weight_kg
         db_obj.notes = exercise.notes
         db_obj.completed = getattr(exercise, "completed", False)  # v5 FIX: işaret artık DB'ye yazılıyor
+        if getattr(exercise, "muscle_groups", None) is not None:  # v8.1 FIX (TC-005)
+            db_obj.muscle_groups = exercise.muscle_groups
         await self.session.flush()
         return self._to_entity(db_obj)
 
@@ -85,6 +88,7 @@ class SessionExerciseRepository(ISessionExerciseRepository):
             notes=db_obj.notes,
             created_at=db_obj.created_at,
             completed=getattr(db_obj, "completed", False),  # v5 FIX: işaret artık okunuyor
+            muscle_groups=getattr(db_obj, "muscle_groups", None) or [],  # v8.1 FIX (TC-005)
         )
 
 """

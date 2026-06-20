@@ -1,0 +1,280 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart'; // v8.1 FIX (TC-001)
+import 'package:go_router/go_router.dart';
+import '../../core/auth/token_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/api/api_client.dart';
+import '../../core/api/endpoints.dart';
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _imgScale;
+  late Animation<double> _imgOpacity;
+  late Animation<double> _textOpacity;
+  late Animation<double> _barWidth;
+
+  static const _bg     = Color(0xFF0C0D10);
+  static const _accent = Color(0xFFFFB020);
+  static const _sub    = Color(0xFF8A88A8);
+  static const _track  = Color(0xFF1E2030);
+
+  @override
+  void initState() {
+    super.initState();
+
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    // v8.1 FIX (TC-001): native splash'i SADECE bu widget'ın ilk frame'i
+    // ekrana çizildikten sonra kapat. Eskiden main.dart'ta runApp()'tan
+    // önce kapatılıyordu — native splash ile bu widget'ın kendi logo/
+    // başlık render'ı arasında çakışma/duplikasyon oluyordu.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FlutterNativeSplash.remove();
+    });
+
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2800),
+    );
+
+    // Görsel: 0.0 → 0.5 arası scale + opacity
+    _imgScale = Tween<double>(begin: 0.75, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.0, 0.55, curve: Curves.easeOutCubic),
+      ),
+    );
+    _imgOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.0, 0.4, curve: Curves.easeIn),
+      ),
+    );
+
+    // Metin + bar: 0.5 → 1.0 arası
+    _textOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.5, 0.85, curve: Curves.easeIn),
+      ),
+    );
+
+    // Bar genişliği 0 → 1 (progress simülasyonu)
+    _barWidth = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.55, 1.0, curve: Curves.easeInOut),
+      ),
+    );
+
+    _ctrl.forward();
+    _navigate();
+  }
+
+ Future<void> _navigate() async {
+    await Future.delayed(const Duration(milliseconds: 3400));
+    if (!mounted) return;
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+    final prefs = await SharedPreferences.getInstance();
+
+    // 1. "Beni hatırla" kapalıyken bırakılmış oturum → temizle, login'e
+    final sessionOnly = prefs.getBool('session_only') ?? false;
+    if (sessionOnly) {
+      await TokenManager.clearTokens();
+      await prefs.remove('session_only');
+      if (!mounted) return;
+      context.go('/login');
+      return;
+    }
+
+    // 2. Cihazda hiç token yoksa direkt login
+    final isLoggedIn = await TokenManager.isLoggedIn();
+    if (!isLoggedIn) {
+      if (!mounted) return;
+      context.go('/login');
+      return;
+    }
+
+    // 3. Token VAR ama gerçekten geçerli mi? Backend'e sorup doğrula.
+    bool sessionValid = false;
+    try {
+      final res = await ApiClient.instance.get(Endpoints.me);
+      sessionValid = res.statusCode == 200;
+    } catch (_) {
+      sessionValid = false;
+    }
+
+    if (!mounted) return;
+    if (!sessionValid) {
+      await TokenManager.clearTokens();
+      context.go('/login');
+      return;
+    }
+
+    // 4. Oturum geçerli ama onboarding tamamlanmamış olabilir.
+    // FIX #1: uygulama yeniden açılınca onboarding atlanıyordu çünkü
+    // splash sadece token varlığına bakıp /home'a gidiyordu.
+    // Şimdi /onboarding endpoint'i kontrol ediliyor; is_completed false
+    // ise (ya da kayıt yoksa) onboarding ekranına yönlendirilir.
+    try {
+      final ob = await ApiClient.instance.get(Endpoints.onboarding);
+      final isCompleted = ob.data?['is_completed'] == true;
+      if (!mounted) return;
+      if (isCompleted) {
+        context.go('/home');
+      } else {
+        context.go('/onboarding');
+      }
+    } catch (_) {
+      // Endpoint hata verirse (ör. 404 — kayıt yok) onboarding'e gönder
+      if (!mounted) return;
+      context.go('/onboarding');
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sw = MediaQuery.of(context).size.width;
+    final sh = MediaQuery.of(context).size.height;
+
+    return Scaffold(
+      backgroundColor: _bg,
+      body: Stack(
+        children: [
+
+          // ── 1. SPLASH GÖRSELİ ────────────────────────────────────────────
+          Positioned(
+            top: sh * 0.06,
+            left: 0,
+            right: 0,
+            child: AnimatedBuilder(
+              animation: _ctrl,
+              builder: (_, __) => Opacity(
+                opacity: _imgOpacity.value,
+                child: Transform.scale(
+                  scale: _imgScale.value,
+                  child: SizedBox(
+                    height: sh * 0.75,
+                    child: Image.asset(
+                      'assets/images/splash_bg.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ── 2. ALT İÇERİK (metin + bar) ─────────────────────────────────
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: AnimatedBuilder(
+              animation: _ctrl,
+              builder: (_, __) => Opacity(
+                opacity: _textOpacity.value,
+                child: Container(
+                  padding: EdgeInsets.fromLTRB(
+                    sw * 0.10, 24, sw * 0.10, sh * 0.06),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0x00000000),
+                        Color(0xDD0C0D10),
+                        Color(0xFF0C0D10),
+                      ],
+                      stops: [0.0, 0.3, 1.0],
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+
+                      // APP ADI
+                      const Text(
+                        'TrackForge',
+                        style: TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w800,
+                          color: _accent,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // SLOGAN
+                      const Text(
+                        'Unlock Your Performance.\nAI-Powered Personal Health.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _sub,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+
+                      // PROGRESS BAR
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: SizedBox(
+                          height: 3,
+                          child: Stack(
+                            children: [
+                              // track
+                              Container(color: _track),
+                              // fill
+                              FractionallySizedBox(
+                                widthFactor: _barWidth.value,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: _accent,
+                                    borderRadius: BorderRadius.circular(99),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // LOADING YAZI
+                      const Text(
+                        'Initializing Your Health Journey...',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _sub,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

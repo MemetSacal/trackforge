@@ -37,13 +37,13 @@ async def send_verification_email(to_email: str, full_name: str, token: str) -> 
 
     if not cfg.RESEND_API_KEY:
         # Geliştirme ortamı — konsola yaz, gönderme
-        link = f"{cfg.APP_BASE_URL}/auth/verify-email?token={token}"
+        link = f"{cfg.APP_BASE_URL}/api/v1/auth/verify-email?token={token}"
         logger.warning(
             "RESEND_API_KEY tanımlı değil. Doğrulama linki (DEV): %s", link
         )
         return False
 
-    verify_url = f"{cfg.APP_BASE_URL}/auth/verify-email?token={token}"
+    verify_url = f"{cfg.APP_BASE_URL}/api/v1/auth/verify-email?token={token}"
 
     html_body = f"""
 <!DOCTYPE html>

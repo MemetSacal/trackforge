@@ -1,0 +1,208 @@
+diff --git a/backend/app/ai/chat_assistant.py b/backend/app/ai/chat_assistant.py
+index b6fa4c0..54b2d4e 100644
+--- a/backend/app/ai/chat_assistant.py
++++ b/backend/app/ai/chat_assistant.py
+@@ -19,8 +19,9 @@ Kullanıcıyla samimi, kısa ve motive edici konuşursun (Türkçe).
+ KURALLARIN:
+ - Kullanıcının aşağıda verilen GERÇEK verilerine dayanarak konuş. Veri yoksa uydurma.
+ - Cevapların KISA olsun (en fazla birkaç cümle). Uzun listeler, 7 günlük planlar YAZMA.
+-- Kullanıcı tam bir antrenman planı isterse: "Bunu senin için Antrenman Planı ekranında üretelim, oradaki hakkınla en iyisini hazırlarım" de ve YÖNLENDİR. Sohbette plan üretme.
+-- Kullanıcı tam haftalık diyet listesi isterse: "Diyet Planı ekranından üretelim" diye yönlendir.
++- Kullanıcı tam bir antrenman planı isterse: "Bunu senin için Antrenman Planı ekranında üretelim, oradaki hakkınla en iyisini hazırlarım" de ve cevabının EN SONUNA yeni bir satırda tam olarak [NAV:workout] etiketini ekle.
++- Kullanıcı tam haftalık diyet listesi isterse: "Diyet Planı ekranından üretelim" diye yönlendir ve cevabının EN SONUNA yeni bir satırda tam olarak [NAV:meal] etiketini ekle.
++- [NAV:...] etiketini SADECE bu iki yönlendirme durumunda kullan, başka hiçbir cevapta kullanma. Etiketi cümle içine gömme, ayrı satırda ve tam olarak köşeli parantezle yaz.
+ - Tıbbi teşhis KOYMA. Sağlık endişesinde "bir doktora danışmanı öneririm" de.
+ - Fitness/sağlık/beslenme dışı konularda (genel sohbet, ödev, kod vb.) kibarca reddet: "Ben senin fitness koçunum, o konuda yardımcı olamam ama antrenman/beslenme konusunda buradayım 💪"
+ - Emoji kullanabilirsin ama abartma."""
+diff --git a/backend/app/api/v1/endpoints/ai.py b/backend/app/api/v1/endpoints/ai.py
+index abef7e1..116cd07 100644
+--- a/backend/app/api/v1/endpoints/ai.py
++++ b/backend/app/api/v1/endpoints/ai.py
+@@ -58,7 +58,9 @@ from backend.app.infrastructure.db.session import AsyncSessionLocal
+ 
+ router = APIRouter()
+ 
+-CACHE_TTL_HOURS = 24  # workout + meal yanıtları için
++CACHE_TTL_HOURS = 24 * 7  # v8.1 FIX (TC-004/006): 24 saatti — bir gün sonra plan
++# "kaybolmuş" gibi görünüyordu çünkü server-side cache süresi dolmuştu.
++# Mimaride zaten "workout/meal/weekly=7gün" olarak dokümante edilmişti, kod buna uydurulda.
+ 
+ 
+ def get_report_service(db: AsyncSession = Depends(get_db)) -> ReportService:
+@@ -195,6 +197,25 @@ async def get_workout_plan(
+         raise HTTPException(status_code=500, detail=f"Antrenman planı oluşturulamadı: {str(e)}")
+ 
+ 
++async def _cache_get_latest(db: AsyncSession, user_id: str, feature: str) -> dict | None:
++    # v8.1 — yeni (TC-004/006): input_hash bilmeden, sadece user+feature için
++    # en son (TTL içindeki) cache kaydını getirir. _cache_get'ten farkı:
++    # o input_hash eşleşmesi ister (duplicate-request önleme), bu sadece
++    # "kullanıcının en son ürettiği plan neydi" sorusuna cevap verir —
++    # local SharedPrefs silinse bile (logout, yeni cihaz, reinstall) planı
++    # geri getirebilmek için.
++    cutoff = datetime.now(timezone.utc) - timedelta(hours=CACHE_TTL_HOURS)
++    row = (await db.execute(
++        select(AIResponseCacheModel)
++        .where(AIResponseCacheModel.user_id == user_id,
++               AIResponseCacheModel.feature == feature,
++               AIResponseCacheModel.created_at >= cutoff)
++        .order_by(AIResponseCacheModel.created_at.desc())
++        .limit(1)
++    )).scalar_one_or_none()
++    return json.loads(row.response_json) if row else None
++
++
+ # ── POST /ai/meal-advice ─────────────────────────────────
+ @router.post("/meal-advice", response_model=MealAdviceResponse)
+ async def get_meal_advice(
+@@ -259,6 +280,23 @@ async def get_meal_advice(
+         raise HTTPException(status_code=500, detail=f"Diyet tavsiyesi oluşturulamadı: {str(e)}")
+ 
+ 
++# ── GET /ai/meal-advice/latest ───────────────────────────
++# v8.1 — yeni (TC-004/006 fix): Flutter'ın local SharedPrefs cache'i
++# logout/yeni cihaz/reinstall ile silindiğinde, kullanıcının son ürettiği
++# haftalık diyet planını backend'den (ai_response_cache, 7 gün TTL) geri
++# getirir. input_hash bilmeye gerek yok — sadece user+feature ile en yeni kayıt.
++@router.get("/meal-advice/latest")
++async def get_latest_meal_advice(
++    user_info: tuple = Depends(get_current_user_premium),
++    db: AsyncSession = Depends(get_db),
++):
++    current_user, _is_premium = user_info
++    cached = await _cache_get_latest(db, current_user, "meal_advice")
++    if not cached:
++        raise HTTPException(status_code=404, detail="Kayıtlı bir diyet planı bulunamadı.")
++    return cached
++
++
+ # ── POST /ai/recipe ──────────────────────────────────────
+ @router.post("/recipe", response_model=RecipeResponse)
+ async def get_recipe_suggestion(
+diff --git a/backend/app/application/schemas/exercise.py b/backend/app/application/schemas/exercise.py
+index 7414fe5..7958cdf 100644
+--- a/backend/app/application/schemas/exercise.py
++++ b/backend/app/application/schemas/exercise.py
+@@ -1,6 +1,6 @@
+ from pydantic import BaseModel, Field
+ from datetime import date, datetime
+-from typing import Optional
++from typing import Optional, List
+ 
+ 
+ # ── SESSION EXERCISE SCHEMAS ─────────────────────────────────────
+@@ -12,6 +12,7 @@ class SessionExerciseCreateRequest(BaseModel):
+     reps: Optional[int] = Field(None, ge=1)         # Kaç tekrar — en az 1
+     weight_kg: Optional[float] = Field(None, ge=0)  # Ağırlık — 0 veya üzeri
+     notes: Optional[str] = None                     # Opsiyonel not
++    muscle_groups: Optional[List[str]] = None        # v8.1 FIX (TC-005) — "Göğüs", "Triceps" vb.
+ 
+ 
+ class SessionExerciseUpdateRequest(BaseModel):
+@@ -21,6 +22,7 @@ class SessionExerciseUpdateRequest(BaseModel):
+     weight_kg: Optional[float] = Field(None, ge=0)
+     notes: Optional[str] = None
+     completed: Optional[bool] = None
++    muscle_groups: Optional[List[str]] = None        # v8.1 FIX (TC-005)
+ 
+ 
+ class SessionExerciseResponse(BaseModel):
+@@ -33,6 +35,7 @@ class SessionExerciseResponse(BaseModel):
+     notes: Optional[str]
+     completed: bool = False
+     created_at: datetime
++    muscle_groups: Optional[List[str]] = None         # v8.1 FIX (TC-005) — eskiden response'ta hiç yoktu
+ 
+     class Config:
+         from_attributes = True
+diff --git a/backend/app/application/services/exercise_service.py b/backend/app/application/services/exercise_service.py
+index 1aab80b..b78d19a 100644
+--- a/backend/app/application/services/exercise_service.py
++++ b/backend/app/application/services/exercise_service.py
+@@ -112,6 +112,7 @@ class ExerciseService:
+             weight_kg=data.weight_kg,
+             notes=data.notes,
+             created_at=datetime.now(timezone.utc),
++            muscle_groups=getattr(data, "muscle_groups", None) or [],  # v8.1 FIX (TC-005)
+         )
+         return await self.exercise_repository.create(exercise)
+ 
+@@ -143,6 +144,8 @@ class ExerciseService:
+         existing.reps = data.reps if data.reps is not None else existing.reps
+         existing.weight_kg = data.weight_kg if data.weight_kg is not None else existing.weight_kg
+         existing.notes = data.notes if data.notes is not None else existing.notes
++        if getattr(data, "muscle_groups", None) is not None:  # v8.1 FIX (TC-005)
++            existing.muscle_groups = data.muscle_groups
+         if data.completed is not None:
+             existing.completed = data.completed
+         return await self.exercise_repository.update(existing)
+diff --git a/backend/app/core/email_service.py b/backend/app/core/email_service.py
+index 26bbaca..4531e4d 100644
+--- a/backend/app/core/email_service.py
++++ b/backend/app/core/email_service.py
+@@ -37,13 +37,13 @@ async def send_verification_email(to_email: str, full_name: str, token: str) ->
+ 
+     if not cfg.RESEND_API_KEY:
+         # Geliştirme ortamı — konsola yaz, gönderme
+-        link = f"{cfg.APP_BASE_URL}/auth/verify-email?token={token}"
++        link = f"{cfg.APP_BASE_URL}/api/v1/auth/verify-email?token={token}"
+         logger.warning(
+             "RESEND_API_KEY tanımlı değil. Doğrulama linki (DEV): %s", link
+         )
+         return False
+ 
+-    verify_url = f"{cfg.APP_BASE_URL}/auth/verify-email?token={token}"
++    verify_url = f"{cfg.APP_BASE_URL}/api/v1/auth/verify-email?token={token}"
+ 
+     html_body = f"""
+ <!DOCTYPE html>
+diff --git a/backend/app/domain/entities/session_exercise.py b/backend/app/domain/entities/session_exercise.py
+index 852f5a9..b6a1389 100644
+--- a/backend/app/domain/entities/session_exercise.py
++++ b/backend/app/domain/entities/session_exercise.py
+@@ -1,4 +1,4 @@
+-from dataclasses import dataclass
++from dataclasses import dataclass, field
+ from datetime import datetime
+ from typing import Optional
+ from backend.app.domain.entities.exercise_session import ExerciseSession  # noqa — referans için
+@@ -18,6 +18,9 @@ class SessionExercise:
+     notes: Optional[str]                    # Egzersiz notu — "Son sette zorlandım" gibi
+     created_at: datetime
+     completed: bool = False                 # v5 FIX: tamamlanma — zincirin kopuk halkasıydı
++    muscle_groups: Optional[list] = field(default_factory=list)
++    # v8.1 FIX (TC-005): DB kolonu zaten vardı ama entity/repository/şema
++    # zincirinin hiçbir halkasında taşınmıyordu — kas grubu grafiği hep boştu.
+ 
+ 
+     # Bkz ExerciseSession
+\ No newline at end of file
+diff --git a/backend/app/infrastructure/repositories/session_exercise_repository.py b/backend/app/infrastructure/repositories/session_exercise_repository.py
+index 2cacc77..7519020 100644
+--- a/backend/app/infrastructure/repositories/session_exercise_repository.py
++++ b/backend/app/infrastructure/repositories/session_exercise_repository.py
+@@ -22,6 +22,7 @@ class SessionExerciseRepository(ISessionExerciseRepository):
+             weight_kg=exercise.weight_kg,
+             notes=exercise.notes,
+             completed=getattr(exercise, "completed", False),  # v5 FIX
++            muscle_groups=getattr(exercise, "muscle_groups", None) or [],  # v8.1 FIX (TC-005)
+             created_at=exercise.created_at,
+         )
+         self.session.add(db_obj)
+@@ -59,6 +60,8 @@ class SessionExerciseRepository(ISessionExerciseRepository):
+         db_obj.weight_kg = exercise.weight_kg
+         db_obj.notes = exercise.notes
+         db_obj.completed = getattr(exercise, "completed", False)  # v5 FIX: işaret artık DB'ye yazılıyor
++        if getattr(exercise, "muscle_groups", None) is not None:  # v8.1 FIX (TC-005)
++            db_obj.muscle_groups = exercise.muscle_groups
+         await self.session.flush()
+         return self._to_entity(db_obj)
+ 
+@@ -85,6 +88,7 @@ class SessionExerciseRepository(ISessionExerciseRepository):
+             notes=db_obj.notes,
+             created_at=db_obj.created_at,
+             completed=getattr(db_obj, "completed", False),  # v5 FIX: işaret artık okunuyor
++            muscle_groups=getattr(db_obj, "muscle_groups", None) or [],  # v8.1 FIX (TC-005)
+         )
+ 
+ """

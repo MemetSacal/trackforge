@@ -101,4 +101,11 @@ class Endpoints {
   static const String reportsInsights = '/reports/insights'; // v1.1: veri korelasyonları
   static const aiCycleAdvice = '$baseUrl/ai/cycle-advice';
   static const String aiCalorieBankAdvice = '/ai/calorie-bank-advice';
+
+  // ── Notifications (FCM) ──────────────────────────────
+  static const String notificationsRegisterToken = '/notifications/register-token';
+  static const String notificationsDeactivateToken = '/notifications/token/deactivate';
+  static const String notifications = '/notifications/';
+  static const String notificationsReadAll = '/notifications/read-all';
+  // Tekil okundu işaretleme: '$notifications$notificationId/read' şeklinde kullanılır
 }

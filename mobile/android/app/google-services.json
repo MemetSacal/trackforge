@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "91114385651",
+    "project_id": "trackforge-6d746",
+    "storage_bucket": "trackforge-6d746.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:91114385651:android:48ab02b44f9fc635180786",
+        "android_client_info": {
+          "package_name": "com.memetsacal.trackforge"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyASZ65weOVHb35c73E_YUf8ft8_-JN0f1c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

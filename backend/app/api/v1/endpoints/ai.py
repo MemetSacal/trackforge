@@ -58,7 +58,9 @@ from backend.app.infrastructure.db.session import AsyncSessionLocal
 
 router = APIRouter()
 
-CACHE_TTL_HOURS = 24  # workout + meal yanıtları için
+CACHE_TTL_HOURS = 24 * 7  # v8.1 FIX (TC-004/006): 24 saatti — bir gün sonra plan
+# "kaybolmuş" gibi görünüyordu çünkü server-side cache süresi dolmuştu.
+# Mimaride zaten "workout/meal/weekly=7gün" olarak dokümante edilmişti, kod buna uydurulda.
 
 
 def get_report_service(db: AsyncSession = Depends(get_db)) -> ReportService:
@@ -195,6 +197,25 @@ async def get_workout_plan(
         raise HTTPException(status_code=500, detail=f"Antrenman planı oluşturulamadı: {str(e)}")
 
 
+async def _cache_get_latest(db: AsyncSession, user_id: str, feature: str) -> dict | None:
+    # v8.1 — yeni (TC-004/006): input_hash bilmeden, sadece user+feature için
+    # en son (TTL içindeki) cache kaydını getirir. _cache_get'ten farkı:
+    # o input_hash eşleşmesi ister (duplicate-request önleme), bu sadece
+    # "kullanıcının en son ürettiği plan neydi" sorusuna cevap verir —
+    # local SharedPrefs silinse bile (logout, yeni cihaz, reinstall) planı
+    # geri getirebilmek için.
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=CACHE_TTL_HOURS)
+    row = (await db.execute(
+        select(AIResponseCacheModel)
+        .where(AIResponseCacheModel.user_id == user_id,
+               AIResponseCacheModel.feature == feature,
+               AIResponseCacheModel.created_at >= cutoff)
+        .order_by(AIResponseCacheModel.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    return json.loads(row.response_json) if row else None
+
+
 # ── POST /ai/meal-advice ─────────────────────────────────
 @router.post("/meal-advice", response_model=MealAdviceResponse)
 async def get_meal_advice(
@@ -257,6 +278,23 @@ async def get_meal_advice(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Diyet tavsiyesi oluşturulamadı: {str(e)}")
+
+
+# ── GET /ai/meal-advice/latest ───────────────────────────
+# v8.1 — yeni (TC-004/006 fix): Flutter'ın local SharedPrefs cache'i
+# logout/yeni cihaz/reinstall ile silindiğinde, kullanıcının son ürettiği
+# haftalık diyet planını backend'den (ai_response_cache, 7 gün TTL) geri
+# getirir. input_hash bilmeye gerek yok — sadece user+feature ile en yeni kayıt.
+@router.get("/meal-advice/latest")
+async def get_latest_meal_advice(
+    user_info: tuple = Depends(get_current_user_premium),
+    db: AsyncSession = Depends(get_db),
+):
+    current_user, _is_premium = user_info
+    cached = await _cache_get_latest(db, current_user, "meal_advice")
+    if not cached:
+        raise HTTPException(status_code=404, detail="Kayıtlı bir diyet planı bulunamadı.")
+    return cached
 
 
 # ── POST /ai/recipe ──────────────────────────────────────

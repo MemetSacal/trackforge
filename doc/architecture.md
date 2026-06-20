@@ -852,4 +852,4 @@ flake8 backend/app/ --max-line-length=500
 *Son güncelleme: 20 Haziran 2026 — v8.1*
 *Prod canlı · 26 tablo · 122 route · 37 mobil ekran · tek migration head (0003_add_email_verification)*
 *Bu sprintte: 23 bug fix + email doğrulama + egzersiz completion + 57 testlik suite + CI/migration düzeltmeleri*
-*Sonraki: FCM push notification → RevenueCat → Health Connect → Apple Developer → Play Store submit*
+*Sonraki: FCM push notification → RevenueCat → Health Connect → Apple Developerrobocopy "C:\TrackForge" "C:\Users\Memet Saçal\Desktop\PyCharmProject\TrackForge\mobile" /E /IS /IT → Play Store submit*

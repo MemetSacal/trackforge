@@ -2,28 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'app.dart';
 import 'core/notifications/notification_service.dart';
-import 'core/notifications/fcm_service.dart';
 
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-  // Firebase, FcmService.init()'ten ÖNCE initialize edilmeli —
-  // aksi halde background handler kaydı ve token alma başarısız olur.
-  await Firebase.initializeApp();
-
   await NotificationService.init();
-  await FcmService.init();
-  // İzin isteme akışı ayrı tutuldu: kullanıcıya açılışta hemen izin
-  // sorusu sormak yerine (örn. onboarding sonrası, dashboard'a ilk
-  // girişte) sormak isteyebilirsin. İstersen burada doğrudan da
-  // çağrılabilir: await FcmService.requestPermission();
 
-  FlutterNativeSplash.remove();
+  // v8.1 FIX (TC-001): remove() burada (runApp'tan ÖNCE) çağrılıyordu —
+  // native splash hemen kapanıp Flutter'ın kendi SplashScreen widget'ı
+  // mount olana kadar bir render boşluğu/çakışması oluyordu, "TrackForge"
+  // ismi+sloganı üst üste iki kez görünüyordu. remove() artık SplashScreen
+  // widget'ının ilk frame'i çizildikten SONRA çağrılıyor (bkz. splash_screen.dart).
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
   runApp(

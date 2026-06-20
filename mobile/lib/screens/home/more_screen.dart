@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:go_router/go_router.dart'; // FIX: GoRouter importu eklendi
 import '../../app.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
@@ -56,13 +57,14 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
     await RateLimiter.clearUserLimits();
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
+    await FcmService.deactivateTokenOnBackend();
     await TokenManager.clearTokens();
     if (!mounted) return;
     ref.read(bottomNavIndexProvider.notifier).state = 0;
     context.go('/login');
   }
 
-  void _showNotifications(BuildContext context, WidgetRef ref, bool isDark,
+  void _showNotifications(BuildContext context, bool isDark,
       Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent) {
     showModalBottomSheet(
       context: context,
@@ -147,7 +149,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) { // FIX: "WidgetRef ref" parametresi kaldırıldı
     final isDark   = ref.watch(themeModeProvider) == ThemeMode.dark;
     final bg       = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
     final bgCard   = isDark ? const Color(0xFF141620) : Colors.white;
@@ -157,7 +159,6 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
     final textSoft = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
     final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
     final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
-    final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
 
     final gender = ref.watch(_genderProvider).value ?? 'male';
 
@@ -197,7 +198,6 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
         'items': [
           _Item('👤', 'Profil', 'Sağlık bilgileri ve tercihler', const Color(0xFF34D399), () => _push(context, const ProfilScreen())),
           _Item('🔔', 'Bildirimler', 'Hatırlatıcı ayarları', const Color(0xFFFFB020), () => _push(context, const NotificationScreen())),
-          // FIX #7: Çıkış yap More'a taşındı (profil → More → profile → scroll yolculuğu kalktı)
           _Item('🚪', 'Çıkış Yap', 'Hesabından güvenli çıkış yap', const Color(0xFFEF4444), _logout),
         ],
       },
@@ -232,7 +232,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                   ),
                   const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: () => _showNotifications(context, ref, isDark, bgCard, bgSoft, border, text, textSoft, muted, accent),
+                    onTap: () => _showNotifications(context, isDark, bgCard, bgSoft, border, text, textSoft, muted, accent),
                     child: Container(
                       width: 36, height: 36,
                       decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),

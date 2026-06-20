@@ -1,0 +1,631 @@
+// ── workout_plan_screen.dart ────────────────────────────
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/api/api_client.dart';
+import '../../core/widgets/staged_loader.dart';
+import '../../core/api/endpoints.dart';
+import '../../core/api/api_exceptions.dart';
+import '../../core/utils/date_utils.dart';
+import '../../app.dart';
+import '../egzersiz/seans_detay_screen.dart';
+import '../egzersiz/egzersiz_screen.dart';
+import 'ai_helpers.dart';
+import '../../core/utils/rate_limiter.dart';
+
+class WorkoutPlanScreen extends ConsumerStatefulWidget {
+  const WorkoutPlanScreen({super.key});
+  @override
+  ConsumerState<WorkoutPlanScreen> createState() => _WorkoutPlanScreenState();
+}
+
+class _WorkoutPlanScreenState extends ConsumerState<WorkoutPlanScreen> {
+  String _goal     = 'muscle_gain';
+  String _location = 'gym';
+  int _daysPerWeek     = 3;
+  int _sessionDuration = 60;
+  Map<String, dynamic>? _quota; // v2: sunucudan dönen kalan hak bilgisi
+
+  String? _planTitle;
+  String? _weeklyNotes;
+  List<Map<String, dynamic>> _schedule = [];
+  bool _isLoading          = false;
+  bool _isCreatingSession  = false;
+  String? _error;
+  bool _limitReached       = false;
+
+  final _goals = [
+    {'key': 'muscle_gain',     'label': '💪 Kas Kazanmak'},
+    {'key': 'weight_loss',     'label': '⚡ Yağ Yakmak'},
+    {'key': 'endurance',       'label': '🏃 Dayanıklılık'},
+    {'key': 'strength',        'label': '🏋️ Güç'},
+    {'key': 'general_fitness', 'label': '⭐ Genel Fitness'},
+  ];
+
+  final _locations = [
+    {'key': 'gym',     'label': '🏋️ Spor Salonu'},
+    {'key': 'home',    'label': '🏠 Ev'},
+    {'key': 'outdoor', 'label': '🌳 Dışarısı'},
+  ];
+
+  final _turkishDays = {
+    'pazartesi': 1, 'salı': 2, 'çarşamba': 3,
+    'perşembe': 4,  'cuma': 5, 'cumartesi': 6, 'pazar': 7,
+  };
+
+  // v7: Job yanıtını bekler. Cache isabetinde anında, değilse poll ederek.
+  // Dönen nesne eski sync yanıtla AYNI shape'te sarılır (response.data)
+  // — aşağıdaki parse kodu hiç değişmedi.
+  Future<({dynamic data})?> _awaitJob(Response start) async {
+    final body = Map<String, dynamic>.from(start.data);
+    if (body['status'] == 'done' && body['result'] != null) {
+      return (data: body['result']); // cache isabeti — beklemeden
+    }
+    final jobId = body['job_id'] as String?;
+    if (jobId == null) {
+      setState(() => _error = 'İş başlatılamadı, tekrar dene.');
+      return null;
+    }
+    // ~2 dk tavan: 48 x 2.5 sn
+    for (var i = 0; i < 48; i++) {
+      await Future.delayed(const Duration(milliseconds: 2500));
+      if (!mounted) return null; // ekran kapandı — sunucu yine de bitirir,
+                                  // sonuç cache'e düşer, kota boşa yanmaz
+      final poll = await ApiClient.instance.get('${Endpoints.aiJobs}/$jobId');
+      final st = poll.data['status'] as String?;
+      if (st == 'done') return (data: poll.data['result']);
+      if (st == 'error') {
+        setState(() => _error =
+            'Üretim başarısız: ${poll.data['error'] ?? 'bilinmeyen hata'}');
+        return null;
+      }
+    }
+    setState(() => _error = 'Üretim çok uzun sürdü — birazdan tekrar dene, '
+        'sonuç hazırsa anında gelecek.');
+    return null;
+  }
+
+  // ── v7: Hafta ortası plan revizyonu ──────────────────
+  Future<void> _showReviseDialog() async {
+    final controller = TextEditingController();
+    final request = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Planı Revize Et 🔁', style: TextStyle(fontSize: 17)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text(
+            'Neyi değiştirmek istersin? AI planı sıfırdan yazmaz, '
+            'sadece istediğin kısmı düzeltir.',
+            style: TextStyle(fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller,
+            maxLines: 2,
+            maxLength: 300,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'örn: Salı gününü daha hafif yap, squat istemiyorum',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Vazgeç')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Revize Et'),
+          ),
+        ],
+      ),
+    );
+    if (request == null || request.isEmpty) return;
+    await _revise(request);
+  }
+
+  Future<void> _revise(String request) async {
+    // Mevcut planı previous_plan olarak gönder — revizyon modu
+    final previousPlan = {
+      'plan_title': _planTitle,
+      'weekly_schedule': _schedule,
+      'weekly_notes': _weeklyNotes,
+    };
+    setState(() { _isLoading = true; _error = null; });
+    try {
+      final start = await ApiClient.instance.post(Endpoints.aiJobsWorkout, data: {
+        'workout_location': _location, 'fitness_goal': _goal,
+        'fitness_level': 'intermediate', 'available_days': _daysPerWeek,
+        'previous_plan': previousPlan,
+        'revision_request': request,
+      });
+      final response = await _awaitJob(start);
+      if (response == null) return;
+      final raw = response.data['weekly_schedule'];
+      if (raw is List) _schedule = raw.map((d) => Map<String, dynamic>.from(d)).toList();
+      final quota = response.data['quota'];
+      if (quota is Map) {
+        await RateLimiter.syncFromServer('workout_plan',
+            (quota['used'] as num?)?.toInt() ?? 0);
+      }
+      setState(() {
+        _planTitle   = response.data['plan_title']   as String? ?? _planTitle;
+        _weeklyNotes = response.data['weekly_notes'] as String? ?? _weeklyNotes;
+        _quota       = quota is Map ? Map<String, dynamic>.from(quota) : _quota;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('🔁 Plan isteğine göre revize edildi')));
+      }
+    } on DioException catch (e) {
+      final q = QuotaException.fromDioError(e);
+      if (q != null && mounted) {
+        await showQuotaDialog(context,
+            message: q.message, isPremium: q.isPremium, resetsInDays: q.resetsInDays);
+      } else {
+        setState(() => _error = 'Revizyon başarısız, tekrar dene.');
+      }
+    } catch (_) {
+      setState(() => _error = 'Revizyon başarısız, tekrar dene.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _generate() async {
+    // v2: Lokal kontrol sadece UX iyileştirmesi (gereksiz istek atmamak için).
+    // Esas otorite backend — 429 dönerse aşağıda yakalanır.
+    final canUse = await RateLimiter.canUseWorkoutPlan();
+    if (!canUse) {
+      setState(() => _limitReached = true);
+      return;
+    }
+    setState(() {
+      _isLoading = true; _error = null;
+      _planTitle = null; _weeklyNotes = null;
+      _schedule = []; _limitReached = false;
+    });
+    try {
+      // ── v7: JOB PATTERN ──
+      // ESKİ: 30-60 sn süren istek açık tutuluyordu; timeout riski +
+      // ekrandan çıkınca sonuç (ve yanan kota) kayboluyordu.
+      // YENİ: İş arka planda koşar, 2.5 sn'de bir yoklarız. Sunucu
+      // cache isabetinde job hiç açılmaz, anında 'done' döner.
+      final start = await ApiClient.instance.post(Endpoints.aiJobsWorkout, data: {
+        'workout_location': _location, 'fitness_goal': _goal,
+        'fitness_level': 'intermediate', 'available_days': _daysPerWeek,
+      });
+      final response = await _awaitJob(start);
+      if (response == null) return; // hata _awaitJob içinde işlendi
+      final raw = response.data['weekly_schedule'];
+      if (raw is List) _schedule = raw.map((d) => Map<String, dynamic>.from(d)).toList();
+      // v2: Lokal sayacı sunucunun döndürdüğü gerçek değerle senkronla.
+      // Sunucu cache'den döndüyse kota tüketilmemiştir — lokal sayaç şişmez.
+      final quota = response.data['quota'];
+      if (quota is Map) {
+        await RateLimiter.syncFromServer('workout_plan',
+            (quota['used'] as num?)?.toInt() ?? 0);
+      } else {
+        await RateLimiter.recordWorkoutPlanUse();
+      }
+      setState(() {
+        _planTitle   = response.data['plan_title']   as String? ?? '';
+        _weeklyNotes = response.data['weekly_notes'] as String? ?? '';
+        _quota       = quota is Map ? Map<String, dynamic>.from(quota) : null;
+      });
+    } on DioException catch (e) {
+      // v2: Sunucu kotası — yapılandırılmış 429
+      final q = QuotaException.fromDioError(e);
+      if (q != null) {
+        setState(() => _limitReached = true);
+        if (mounted) {
+          await showQuotaDialog(context,
+              message: q.message, isPremium: q.isPremium,
+              resetsInDays: q.resetsInDays);
+        }
+      } else {
+        setState(() => _error = 'Plan oluşturulurken hata oluştu: ${e.message}');
+      }
+    } catch (e) {
+      setState(() => _error = 'Plan oluşturulurken hata oluştu: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // v8.1 — yeni (TC-005 fix): AI'ın ürettiği TÜM günleri (sadece bugünü değil)
+  // egzersiz takvimine aktarır. Her gün kendi gerçek tarihine (bu haftanın
+  // ilgili günü) yazılır — eskiden sadece tek gün aktarılabiliyordu, diğerleri
+  // "kayboluyordu".
+  Future<void> _transferAllDaysToExercise() async {
+    if (_schedule.isEmpty) return;
+    setState(() => _isCreatingSession = true);
+
+    final monday = DateTime.parse(TFDateUtils.weekStart());
+    int created = 0;
+    int skipped = 0;
+
+    try {
+      for (final day in _schedule) {
+        final dow = (day['day_of_week'] as num?)?.toInt()
+            ?? _turkishDays[(day['day'] as String? ?? '').toLowerCase().trim()];
+        if (dow == null || dow < 1 || dow > 7) { skipped++; continue; }
+
+        final sessionDate = monday.add(Duration(days: dow - 1));
+        final dateStr  = TFDateUtils.toApiDate(sessionDate);
+        final dayName  = day['day'] as String? ?? 'Antrenman';
+        final focus    = day['focus'] as String? ?? '';
+        final duration = day['estimated_duration_minutes'] as int? ?? _sessionDuration;
+        final calories = (day['estimated_calories'] as num?)?.toDouble();
+        final exercises = day['exercises'] as List? ?? [];
+
+        try {
+          final sessionRes = await ApiClient.instance.post(Endpoints.exerciseSessions, data: {
+            'source': 'ai_plan',
+            'date': dateStr, 'duration_minutes': duration,
+            'calories_burned': calories, 'notes': '$dayName — $focus',
+          });
+          final session   = Map<String, dynamic>.from(sessionRes.data);
+          final sessionId = session['id'] as String;
+
+          for (final rawEx in exercises) {
+            try {
+              final ex   = rawEx is Map ? Map<String, dynamic>.from(rawEx) : {'name': rawEx.toString()};
+              final name = ex['name'] as String? ?? ex['exercise_name'] as String? ?? 'Egzersiz';
+              final sets = (ex['sets'] as num?)?.toInt();
+              final repsRaw = ex['reps'];
+              int? reps;
+              if (repsRaw is int) reps = repsRaw;
+              else if (repsRaw is String) reps = int.tryParse(repsRaw.split('-').first.trim().split(' ').first);
+              final muscleGroups = ex['muscle_groups'];
+              await ApiClient.instance.post('${Endpoints.exerciseSessions}/$sessionId/exercises', data: {
+                'exercise_name': name, 'sets': sets, 'reps': reps,
+                'weight_kg': null, 'notes': ex['notes'] as String?,
+                'muscle_groups': muscleGroups is List ? muscleGroups : null,
+              });
+            } catch (_) { continue; }
+          }
+          created++;
+        } catch (_) { skipped++; continue; }
+      }
+
+      ref.invalidate(sessionsProvider);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(skipped == 0
+            ? '$created günlük antrenman egzersiz takvimine aktarıldı 🎉'
+            : '$created gün aktarıldı, $skipped gün atlandı'),
+      ));
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const EgzersizScreen()),
+        (route) => route.isFirst,
+      );
+    } finally {
+      if (mounted) setState(() => _isCreatingSession = false);
+    }
+  }
+
+  Future<void> _startTodayWorkout() async {
+    if (_schedule.isEmpty) return;
+    final todayWd = DateTime.now().weekday;
+    Map<String, dynamic>? todaySchedule;
+    for (final day in _schedule) {
+      // ── v2: Backend artık day_of_week (1=Pzt...7=Paz) tamsayısı döndürüyor.
+      // Türkçe gün adı eşleştirme ("Pzt"/"1. Gün" yazınca kırılıyordu)
+      // sadece ESKİ plan yanıtları için yedek olarak duruyor.
+      final dow = (day['day_of_week'] as num?)?.toInt()
+          ?? _turkishDays[(day['day'] as String? ?? '').toLowerCase().trim()];
+      if (dow == todayWd) { todaySchedule = day; break; }
+    }
+    if (todaySchedule == null) {
+      // v8.1 fix (TC-005): AI plan available_days kadar gün üretir (örn. 4/7),
+      // geri kalan günler bilerek dinlenme günüdür. Eskiden burada sessizce
+      // _schedule.first'e (genelde Pazartesi) düşülüp "bugünmüş gibi" yanlış
+      // etiketle gösteriliyordu. Artık net mesaj veriyoruz, session oluşturmuyoruz.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Bugün planında dinlenme günü — planlı antrenman yok 💤'),
+        ));
+      }
+      return;
+    }
+
+    final dayName  = todaySchedule['day'] as String? ?? 'Antrenman';
+    final focus    = todaySchedule['focus'] as String? ?? '';
+    final duration = todaySchedule['estimated_duration_minutes'] as int? ?? _sessionDuration;
+    final calories = (todaySchedule['estimated_calories'] as num?)?.toDouble();
+    final exercises = todaySchedule['exercises'] as List? ?? [];
+
+    setState(() => _isCreatingSession = true);
+    try {
+      final sessionRes = await ApiClient.instance.post(Endpoints.exerciseSessions, data: {
+        'source': 'ai_plan', // v4: AI planı seansı — serbest seanstan ayrışır
+        'date': TFDateUtils.today(), 'duration_minutes': duration,
+        'calories_burned': calories, 'notes': '$dayName — $focus',
+      });
+      final session   = Map<String, dynamic>.from(sessionRes.data);
+      final sessionId = session['id'] as String;
+
+      for (final rawEx in exercises) {
+        try {
+          final ex   = rawEx is Map ? Map<String, dynamic>.from(rawEx) : {'name': rawEx.toString()};
+          final name = ex['name'] as String? ?? ex['exercise_name'] as String? ?? 'Egzersiz';
+          final sets = (ex['sets'] as num?)?.toInt();
+          final repsRaw = ex['reps'];
+          int? reps;
+          if (repsRaw is int) reps = repsRaw;
+          else if (repsRaw is String) reps = int.tryParse(repsRaw.split('-').first.trim().split(' ').first);
+          final muscleGroups = ex['muscle_groups'];
+          await ApiClient.instance.post('${Endpoints.exerciseSessions}/$sessionId/exercises', data: {
+            'exercise_name': name, 'sets': sets, 'reps': reps,
+            'weight_kg': null, 'notes': ex['notes'] as String?,
+            'muscle_groups': muscleGroups is List ? muscleGroups : null,
+          });
+        } catch (_) { continue; }
+      }
+
+      // sessionsProvider'ı invalidate et — egzersiz ekranında görünsün
+      ref.invalidate(sessionsProvider);
+
+      if (!mounted) return;
+
+      // Haftalık plan ekranını navigation stack'ten temizle,
+      // direkt seans detay ekranına git
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => SeansDetayScreen(session: session)),
+        (route) => route.isFirst, // Sadece home_screen'i bırak
+      );
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Seans oluşturulurken hata oluştu')));
+    } finally {
+      if (mounted) setState(() => _isCreatingSession = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark   = ref.watch(themeModeProvider) == ThemeMode.dark;
+    final bg       = isDark ? const Color(0xFF0C0D10) : const Color(0xFFF0F2F6);
+    final bgCard   = isDark ? const Color(0xFF141620) : Colors.white;
+    final bgSoft   = isDark ? const Color(0xFF0F1016) : const Color(0xFFE8EBF2);
+    final border   = isDark ? const Color(0x12FFFFFF) : const Color(0x12000000);
+    final text     = isDark ? const Color(0xFFF0EEF8) : const Color(0xFF111318);
+    final textSoft = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
+    final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
+    final accent   = isDark ? const Color(0xFFFFB020) : const Color(0xFFFF6B2B);
+    final accentDim= isDark ? const Color(0x1FFFB020) : const Color(0x1AFF6B2B);
+    final danger   = isDark ? const Color(0xFFFF5555) : const Color(0xFFDC2626);
+
+    final hasPlan = _planTitle != null;
+
+    return Scaffold(
+      backgroundColor: bg,
+      body: Column(
+        children: [
+          aiHeader(context, ref, isDark, bg, bgCard, border, text, textSoft, muted, accent, 'Antrenman Planı'),
+          Expanded(
+            child: _limitReached
+                ? _buildLimitCard(accentDim, accent, border, text)
+                : _isLoading
+                    ? StagedLoader(accent: accent, text: text, stages: const [
+                        '📊 Geçen haftanı inceliyorum...',
+                        '🎯 Hedefine göre ayarlıyorum...',
+                        '🏋️ Egzersizleri seçiyorum...',
+                        '✍️ Planını yazıyorum...',
+                      ])
+                    : _error != null
+                        ? aiErrorState(_error!, danger, accent, _generate)
+                        : hasPlan
+                            ? _planResult(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim)
+                            : _planForm(bgCard, bgSoft, border, text, textSoft, muted, accent, accentDim),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _planForm(Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Nerede antrenman yapacaksın?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+        const SizedBox(height: 10),
+        Row(children: _locations.map((l) {
+          final sel = _location == l['key'];
+          return Expanded(child: GestureDetector(
+            onTap: () => setState(() => _location = l['key']!),
+            child: Container(
+              margin: const EdgeInsets.only(right: 6),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: sel ? accentDim : bgCard,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: sel ? accent : border, width: sel ? 1.5 : 1),
+              ),
+              child: Text(l['label']!, textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, fontWeight: sel ? FontWeight.w700 : FontWeight.w500, color: sel ? accent : text)),
+            ),
+          ));
+        }).toList()),
+        const SizedBox(height: 20),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('Haftada kaç gün?', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: text)),
+          Text('$_daysPerWeek gün', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
+        ]),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(activeTrackColor: accent, thumbColor: accent, inactiveTrackColor: accent.withOpacity(0.2)),
+          child: Slider(value: _daysPerWeek.toDouble(), min: 2, max: 6, divisions: 4, label: '$_daysPerWeek', onChanged: (v) => setState(() => _daysPerWeek = v.toInt())),
+        ),
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('Seans süresi?', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: text)),
+          Text('$_sessionDuration dk', style: TextStyle(color: accent, fontWeight: FontWeight.w700)),
+        ]),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(activeTrackColor: accent, thumbColor: accent, inactiveTrackColor: accent.withOpacity(0.2)),
+          child: Slider(value: _sessionDuration.toDouble(), min: 30, max: 120, divisions: 6, label: '$_sessionDuration dk', onChanged: (v) => setState(() => _sessionDuration = v.toInt())),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _generate, child: const Text('🤖  Plan Oluştur'))),
+      ]),
+    );
+  }
+
+  Widget _planResult(Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent, Color accentDim) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+      child: Column(children: [
+        Container(
+          decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            const Text('💪', style: TextStyle(fontSize: 32)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                _planTitle!.isNotEmpty ? _planTitle! : 'Kişisel Antrenman Planın',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: text),
+              ),
+              aiQuotaChip(_quota, accent, muted), // v2: kalan hak
+            ])),
+          ]),
+        ),
+        Row(children: [
+          AiFeedbackBar(feature: 'workout_plan', accent: accent, muted: muted), // v2: 👍/👎
+          const Spacer(),
+          // v7: hafta ortası revizyon — "beğenmedim, baştan" yerine
+          // "şunu değiştir": daha ucuz, kullanıcı duyulmuş hisseder
+          TextButton.icon(
+            onPressed: _showReviseDialog,
+            icon: Icon(Icons.tune_rounded, size: 15, color: accent),
+            label: Text('Revize et',
+                style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+        const SizedBox(height: 12),
+
+        ..._schedule.map((day) {
+          final dayName  = day['day']    as String? ?? '';
+          final focus    = day['focus']  as String? ?? '';
+          final duration = day['estimated_duration_minutes'];
+          final calories = day['estimated_calories'];
+          final exercises = day['exercises'] as List? ?? [];
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(99), border: Border.all(color: accent)),
+                  child: Text(dayName.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: accent)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(focus, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: text))),
+              ]),
+              if (duration != null || calories != null) ...[
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, children: [
+                  if (duration != null) _chip2('⏱️ $duration dk', bgSoft, border, text),
+                  if (calories != null) _chip2('🔥 $calories kcal', bgSoft, border, text),
+                ]),
+              ],
+              if (exercises.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Divider(color: border, height: 1),
+                const SizedBox(height: 12),
+                ...exercises.map((rawEx) {
+                  final ex   = rawEx is Map ? Map<String, dynamic>.from(rawEx) : {'name': rawEx.toString()};
+                  final name = ex['name'] as String? ?? ex['exercise_name'] as String? ?? 'Egzersiz';
+                  final sets = ex['sets'];
+                  final reps = ex['reps'];
+                  final notes = ex['notes'] as String?;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Container(width: 6, height: 6, margin: const EdgeInsets.only(top: 7, right: 10),
+                        decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(name, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: text)),
+                        if (sets != null || reps != null)
+                          Text([if (sets != null) '$sets set', if (reps != null) '$reps tekrar'].join(' × '),
+                            style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w500)),
+                        if (notes != null && notes.isNotEmpty)
+                          Text(notes, style: TextStyle(fontSize: 11, color: muted)),
+                      ])),
+                    ]),
+                  );
+                }),
+              ],
+            ]),
+          );
+        }),
+
+        if (_weeklyNotes != null && _weeklyNotes!.isNotEmpty) ...[
+          Container(
+            decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+            padding: const EdgeInsets.all(16),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('📝', style: TextStyle(fontSize: 18)),
+              const SizedBox(width: 10),
+              Expanded(child: Text(_weeklyNotes!, style: TextStyle(fontSize: 13, color: text, height: 1.5))),
+            ]),
+          ),
+          const SizedBox(height: 10),
+        ],
+
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: _isCreatingSession ? null : _startTodayWorkout,
+            child: _isCreatingSession
+                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                : const Text('🚀  Bugün Antrenmana Başla'),
+          ),
+        ),
+        const SizedBox(height: 10),
+        // v8.1 — yeni: tüm haftayı tek seferde egzersiz takvimine aktarır (TC-005)
+        SizedBox(
+          width: double.infinity,
+          child: aiOutlineBtn('📅  Tüm Haftayı Egzersize Aktar', Icons.calendar_month, accent, border,
+            _isCreatingSession ? null : _transferAllDaysToExercise),
+        ),
+        const SizedBox(height: 10),
+        aiOutlineBtn('Yeni Plan Oluştur', Icons.refresh, accent, border,
+          () => setState(() { _planTitle = null; _weeklyNotes = null; _schedule = []; })),
+      ]),
+    );
+  }
+
+  Widget _buildLimitCard(Color accentDim, Color accent, Color border, Color text) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(20), border: Border.all(color: accent)),
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('⏳', style: TextStyle(fontSize: 48)),
+            const SizedBox(height: 16),
+            Text('Haftalık Limit', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: accent)),
+            const SizedBox(height: 8),
+            Text('Bu haftaki antrenman planı hakkını kullandın.\nYeni hafta başında tekrar kullanılabilir.',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: text, height: 1.5)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _chip2(String label, Color bg, Color border, Color text) =>
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8), border: Border.all(color: border)),
+      child: Text(label, style: TextStyle(fontSize: 11, color: text)),
+    );
+}

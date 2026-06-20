@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 
 
 # ── SESSION EXERCISE SCHEMAS ─────────────────────────────────────
@@ -12,6 +12,7 @@ class SessionExerciseCreateRequest(BaseModel):
     reps: Optional[int] = Field(None, ge=1)         # Kaç tekrar — en az 1
     weight_kg: Optional[float] = Field(None, ge=0)  # Ağırlık — 0 veya üzeri
     notes: Optional[str] = None                     # Opsiyonel not
+    muscle_groups: Optional[List[str]] = None        # v8.1 FIX (TC-005) — "Göğüs", "Triceps" vb.
 
 
 class SessionExerciseUpdateRequest(BaseModel):
@@ -21,6 +22,7 @@ class SessionExerciseUpdateRequest(BaseModel):
     weight_kg: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
     completed: Optional[bool] = None
+    muscle_groups: Optional[List[str]] = None        # v8.1 FIX (TC-005)
 
 
 class SessionExerciseResponse(BaseModel):
@@ -33,6 +35,7 @@ class SessionExerciseResponse(BaseModel):
     notes: Optional[str]
     completed: bool = False
     created_at: datetime
+    muscle_groups: Optional[List[str]] = None         # v8.1 FIX (TC-005) — eskiden response'ta hiç yoktu
 
     class Config:
         from_attributes = True

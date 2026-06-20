@@ -1,3 +1,14 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Firebase için gerekli olan Google Services aracını Kotlin formatına uygun olarak ekledik:
+        classpath("com.google.gms:google-services:4.4.1")
+    }
+}
+
 allprojects {
     repositories {
         google()

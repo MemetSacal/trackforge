@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     ENVIRONMENT: str = "development"
 
+    # ── Firebase Cloud Messaging (push notification) ─────────────
+    # Render'da Environment Variables'a ekle:
+    #   FIREBASE_CREDENTIALS_JSON → Firebase Console > Project Settings >
+    #     Service Accounts > Generate new private key ile inen JSON dosyasının
+    #     İÇERİĞİ (tek satır, env var olarak). Dosya yolu değil, JSON metni.
+    # Render'da çok satırlı/JSON env var girerken tek satıra sıkıştırılmış
+    # (escape edilmiş) hali yapıştırılmalı.
+    FIREBASE_CREDENTIALS_JSON: str = ""
+
 
 @lru_cache()
 def get_settings() -> Settings:

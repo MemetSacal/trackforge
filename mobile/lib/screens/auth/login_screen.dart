@@ -72,6 +72,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           userId:       response.data['user_id'] ?? '',
           isPremium:    response.data['is_premium'] ?? false,
         );
+        await FcmService.registerTokenWithBackend();
         await prefs.setString('saved_email', _emailController.text.trim());
         await prefs.setBool('remember_me', true);
       } else {
@@ -81,6 +82,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           userId:       response.data['user_id'] ?? '',
           isPremium:    response.data['is_premium'] ?? false,
         );
+        await FcmService.registerTokenWithBackend();
         await prefs.remove('saved_email');
         await prefs.setBool('remember_me', false);
         await prefs.setBool('session_only', true);

@@ -19,6 +19,7 @@ from backend.app.api.v1.endpoints import (
     steps,
     cycle,
     blood_values,
+    notifications,
 )
 
 # Tüm v1 endpoint'lerini bir araya toplayan merkezi router
@@ -43,3 +44,4 @@ router.include_router(social.router, prefix="/social", tags=["social"])
 router.include_router(steps.router, prefix="/steps", tags=["steps"])
 router.include_router(cycle.router, prefix="/cycle", tags=["cycle"])
 router.include_router(blood_values.router, prefix="/blood-values", tags=["blood-values"])
+router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])

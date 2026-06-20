@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 from backend.app.domain.entities.exercise_session import ExerciseSession  # noqa — referans için
@@ -18,6 +18,9 @@ class SessionExercise:
     notes: Optional[str]                    # Egzersiz notu — "Son sette zorlandım" gibi
     created_at: datetime
     completed: bool = False                 # v5 FIX: tamamlanma — zincirin kopuk halkasıydı
+    muscle_groups: Optional[list] = field(default_factory=list)
+    # v8.1 FIX (TC-005): DB kolonu zaten vardı ama entity/repository/şema
+    # zincirinin hiçbir halkasında taşınmıyordu — kas grubu grafiği hep boştu.
 
 
     # Bkz ExerciseSession

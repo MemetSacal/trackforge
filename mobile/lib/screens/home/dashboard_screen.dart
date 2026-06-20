@@ -1064,7 +1064,6 @@ class _BankAdviceSheetState extends State<BankAdviceSheetPublic> {
 
   @override
   void initState() { super.initState(); _load(); }
-
   Future<void> _load() async {
     try {
       final response = await ApiClient.instance.post(Endpoints.aiCalorieBankAdvice, data: {});

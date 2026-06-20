@@ -112,6 +112,7 @@ class ExerciseService:
             weight_kg=data.weight_kg,
             notes=data.notes,
             created_at=datetime.now(timezone.utc),
+            muscle_groups=getattr(data, "muscle_groups", None) or [],  # v8.1 FIX (TC-005)
         )
         return await self.exercise_repository.create(exercise)
 
@@ -143,6 +144,8 @@ class ExerciseService:
         existing.reps = data.reps if data.reps is not None else existing.reps
         existing.weight_kg = data.weight_kg if data.weight_kg is not None else existing.weight_kg
         existing.notes = data.notes if data.notes is not None else existing.notes
+        if getattr(data, "muscle_groups", None) is not None:  # v8.1 FIX (TC-005)
+            existing.muscle_groups = data.muscle_groups
         if data.completed is not None:
             existing.completed = data.completed
         return await self.exercise_repository.update(existing)
