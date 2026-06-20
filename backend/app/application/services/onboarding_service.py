@@ -105,12 +105,13 @@ class OnboardingService:
 
         # fitness_goal — goals listesinin ilk elemanından belirle
         goal_map = {
-            "weight_loss":   "weight_loss",
-            "gain_weight":   "muscle_gain",
-            "muscle_gain":   "muscle_gain",
+            "weight_loss":     "weight_loss",
+            "gain_weight":     "weight_gain",   # FIX #4: "kilo almak" muscle_gain'e yanlış mapleniyor
+            "build_muscle":    "muscle_gain",   # "kas kazanmak" → muscle_gain (bu doğruydu)
+            "muscle_gain":     "muscle_gain",
             "maintain_weight": "maintenance",
-            "change_diet":   "health",
-            "stay_active":   "health",
+            "change_diet":     "health",
+            "stay_active":     "health",
         }
         if data.goals:
             primary_goal = data.goals[0]

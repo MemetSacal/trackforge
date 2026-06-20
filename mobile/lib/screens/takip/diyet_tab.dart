@@ -12,7 +12,7 @@ import '../../core/auth/token_manager.dart';
 import '../ai/calorie_vision_screen.dart'; // v2: foto-kalori kısayolu
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
-final todayMealProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+final todayMealProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   try {
     final response = await ApiClient.instance.get('${Endpoints.mealCompliance}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(response.data);
@@ -192,22 +192,40 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
     if (_shoppingList.isEmpty || _exportingShopping) return;
     setState(() => _exportingShopping = true);
     var added = 0;
+    var skipped = 0;
     try {
+      // FIX #18: idempotency — mevcut listeyi çek, aynı isimde ürün varsa atla.
+      // Önceden her basışta aynı 25 malzeme yeniden eklenerek duplicate oluşuyordu.
+      Set<String> existing = {};
+      try {
+        final res = await ApiClient.instance.get(Endpoints.shopping);
+        final items = res.data['items'] as List? ?? [];
+        existing = items
+            .map((e) => ((e as Map)['name'] as String?)?.toLowerCase().trim() ?? '')
+            .where((n) => n.isNotEmpty)
+            .toSet();
+      } catch (_) {}
+
       for (final item in _shoppingList) {
         final m = item is Map ? item : {};
         final name = (m['name'] as String?)?.trim();
         if (name == null || name.isEmpty) continue;
+        if (existing.contains(name.toLowerCase())) { skipped++; continue; }
         await ApiClient.instance.post(Endpoints.shopping, data: {
           'name': name,
           'quantity': (m['quantity'] as String?)?.trim() ?? '1',
           'notes': 'AI diyet planından',
         });
+        existing.add(name.toLowerCase()); // tekrar eklemeye karşı lokal güncelle
         added++;
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('🛒 $added malzeme alışveriş listene eklendi'),
-        ));
+        final msg = added == 0
+            ? '🛒 Tüm malzemeler zaten listende var'
+            : skipped > 0
+                ? '🛒 $added malzeme eklendi, $skipped zaten vardı'
+                : '🛒 $added malzeme alışveriş listene eklendi';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       }
     } catch (_) {
       if (mounted) {
@@ -220,6 +238,91 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
     } finally {
       if (mounted) setState(() => _exportingShopping = false);
     }
+  }
+
+  // ── FIX #13: Besin tercihleri inline bottom sheet ─────
+  // Kullanıcı diyet tabından çıkmadan liked/disliked besinlerini güncelleyebilir.
+  // Kaydet → /preferences PUT → toast "Yeni diyet planı oluştururken tercihler güncellendi"
+  Future<void> _showFoodPrefsSheet(BuildContext ctx, Color accent, Color bgCard, Color border, Color text, Color muted) async {
+    // Mevcut tercihleri çek
+    String liked = '', disliked = '';
+    try {
+      final res = await ApiClient.instance.get(Endpoints.preferences);
+      final likedList  = (res.data['liked_foods']    as List?)?.cast<String>() ?? [];
+      final dislikedList = (res.data['disliked_foods'] as List?)?.cast<String>() ?? [];
+      liked    = likedList.join(', ');
+      disliked = dislikedList.join(', ');
+    } catch (_) {}
+
+    final likedCtrl    = TextEditingController(text: liked);
+    final dislikedCtrl = TextEditingController(text: disliked);
+
+    await showModalBottomSheet(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: bgCard,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(sheetCtx).viewInsets.bottom + 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 36, height: 4,
+            decoration: BoxDecoration(color: border, borderRadius: BorderRadius.circular(99)))),
+          const SizedBox(height: 16),
+          Text('Besin Tercihlerini Güncelle',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: text)),
+          const SizedBox(height: 4),
+          Text('Virgülle ayırarak yaz. AI koçun bir sonraki diyet planında kullanacak.',
+            style: TextStyle(fontSize: 12, color: muted)),
+          const SizedBox(height: 14),
+          TextField(controller: likedCtrl,
+            style: TextStyle(color: text),
+            maxLines: 2,
+            decoration: InputDecoration(
+              labelText: '✅ Sevdiğin besinler',
+              hintText: 'örn: tavuk, yumurta, brokoli',
+              hintStyle: TextStyle(color: muted, fontSize: 12),
+            )),
+          const SizedBox(height: 10),
+          TextField(controller: dislikedCtrl,
+            style: TextStyle(color: text),
+            maxLines: 2,
+            decoration: InputDecoration(
+              labelText: '❌ Sevmediğin / alerjin',
+              hintText: 'örn: zeytin, deniz ürünleri',
+              hintStyle: TextStyle(color: muted, fontSize: 12),
+            )),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () async {
+                try {
+                  final likedList    = likedCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+                  final dislikedList = dislikedCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+                  await ApiClient.instance.put(Endpoints.preferences, data: {
+                    'liked_foods':    likedList,
+                    'disliked_foods': dislikedList,
+                  });
+                  if (ctx.mounted) {
+                    Navigator.pop(sheetCtx);
+                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                      content: Text('✅ Tercihler güncellendi — yeni diyet planında geçerli olacak'),
+                    ));
+                  }
+                } catch (_) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Kaydedilemedi')));
+                  }
+                }
+              },
+              child: const Text('Kaydet'),
+            ),
+          ),
+        ]),
+      ),
+    );
+    likedCtrl.dispose();
+    dislikedCtrl.dispose();
   }
 
   Future<void> _loadAdvice() async {
@@ -566,11 +669,32 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                         child: Row(children: [
                           const Text('🛒', style: TextStyle(fontSize: 20)),
                           const SizedBox(width: 10),
-                          Expanded(child: Text(
-                            _exportingShopping
-                                ? 'Aktarılıyor...'
-                                : 'Alışveriş listesine aktar (${_shoppingList.length} kalem)',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text),
+                          Expanded(child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _exportingShopping ? 'Aktarılıyor...' : 'Alışveriş listesine aktar',
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text),
+                              ),
+                              if (!_exportingShopping) ...[
+                                const SizedBox(height: 3),
+                                // FIX #18: "25 kalem" yerine gerçek ürün isimleri
+                                Builder(builder: (_) {
+                                  final names = _shoppingList
+                                      .map((e) => (e is Map ? e['name'] as String? : null) ?? '')
+                                      .where((n) => n.isNotEmpty)
+                                      .toList();
+                                  final preview = names.take(3).join(', ');
+                                  final extra = names.length > 3 ? ' +${names.length - 3} daha' : '';
+                                  return Text(
+                                    '$preview$extra',
+                                    style: TextStyle(fontSize: 11, color: muted),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  );
+                                }),
+                              ],
+                            ],
                           )),
                           _exportingShopping
                               ? SizedBox(width: 16, height: 16,
@@ -608,7 +732,20 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('✅ Önerilen Besinler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: text)),
+                          Row(children: [
+                            Text('✅ Önerilen Besinler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: text)),
+                            const SizedBox(width: 4),
+                            // FIX #13: ? tooltip — nereden geldiğini açıkla
+                            Tooltip(
+                              message: 'AI koçun profildeki sevilen besinlerine göre belirledi.\nDeğiştirmek için "Düzenle"ye bas.',
+                              child: Icon(Icons.info_outline, size: 14, color: muted),
+                            ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () => _showFoodPrefsSheet(context, accent, bgCard, border, text, muted),
+                              child: Text('Düzenle', style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600)),
+                            ),
+                          ]),
                           const SizedBox(height: 10),
                           Wrap(
                             spacing: 6, runSpacing: 6,
@@ -636,7 +773,19 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('❌ Kaçınılacak Besinler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: text)),
+                          Row(children: [
+                            Text('❌ Kaçınılacak Besinler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: text)),
+                            const SizedBox(width: 4),
+                            Tooltip(
+                              message: 'AI koçun profildeki sevilmeyen besinlere/alerjilere göre belirledi.\nDeğiştirmek için "Düzenle"ye bas.',
+                              child: Icon(Icons.info_outline, size: 14, color: muted),
+                            ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () => _showFoodPrefsSheet(context, accent, bgCard, border, text, muted),
+                              child: Text('Düzenle', style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600)),
+                            ),
+                          ]),
                           const SizedBox(height: 10),
                           Wrap(
                             spacing: 6, runSpacing: 6,

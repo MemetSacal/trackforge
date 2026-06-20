@@ -80,7 +80,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // Step 4 — Kalori alışkanlığı ← YENİ
   String _calorieHabit = '1500_2000';
   final _calorieHabits = [
-      {'key': 'under_1500', 'label': '1500 kcal altı',    'desc': 'Çok az yiyorum, genelde tok hissetmiyorum', 'emoji': '🥗'},
+      {'key': 'under_1500', 'label': '1500 kcal altı',    'desc': 'Çok az yiyorum, genelde aç hissediyorum', 'emoji': '🥗'},
       {'key': '1500_2000',  'label': '1500–2000 kcal',    'desc': 'Ortalama, dengeli beslenirim',              'emoji': '🍽️'},
       {'key': '2000_2500',  'label': '2000–2500 kcal',    'desc': 'Aktif biriyim, iyi iştahım var',           'emoji': '🍖'},
       {'key': '2500_3000',  'label': '2500–3000 kcal',    'desc': 'Çok yerim veya çok spor yaparım',          'emoji': '🥩'},

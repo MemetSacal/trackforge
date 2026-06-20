@@ -91,8 +91,26 @@ class TrackForgeApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: themeMode, // artık provider'dan geliyor
+      themeMode: themeMode,
       routerConfig: _router,
+      // FIX #8: responsive overflow guard.
+      // Chrome device mode %75 zoom gibi "sanal küçük ekranlarda" sistem
+      // textScaleFactor'ü 1.0'ın üstüne çıkarıyor → sabit boyutlu Card/Row
+      // taşıyor. Burada 1.15 tavanı koyuyoruz: erişilebilirliği bozmaz ama
+      // layout'u korur. Ayrıca visualDensity.compact padding/spacing'i
+      // ~8px daraltır; küçük ekranda kart içi nefes alanı açar.
+      builder: (context, child) {
+        final mq = MediaQuery.of(context);
+        return MediaQuery(
+          data: mq.copyWith(
+            textScaler: mq.textScaler.clamp(
+              minScaleFactor: 0.85,
+              maxScaleFactor: 1.15,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
   }
 }

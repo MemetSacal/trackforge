@@ -279,22 +279,50 @@ class _GlassPainter extends CustomPainter {
       ..strokeWidth = 3
       ..color = accent.withOpacity(0.5);
 
-    // Su seviyesi (alttan dolar)
+    // FIX: bardak ağzına kadar dolmasın — %100'de bile görsel tavan %85.
+    // Üstte bir miktar "hava payı" kalır, daha gerçekçi durur.
+    const fillCap = 0.85;
+    final visualFill = (progress.clamp(0.0, 1.0)) * fillCap;
+    // Hedef (günlük su hedefi) çizgisi: %100'ün denk geldiği seviye.
+    final targetY = h * (1 - fillCap);
+
+    // Su seviyesi (alttan dolar) — iki dalga katmanı ile akış hissi
     canvas.save();
     canvas.clipPath(glass);
-    final fillTop = h * (1 - progress);
+    final fillTop = h * (1 - visualFill);
+
+    // Arka (açık) dalga
+    final backWave = Path()..moveTo(0, fillTop);
+    for (double x = 0; x <= w; x++) {
+      final y = fillTop + 4 * sinApprox(wavePhase * 1.3 + x / w * 6.28 + 1.6);
+      backWave.lineTo(x, y);
+    }
+    backWave..lineTo(w, h)..lineTo(0, h)..close();
+    canvas.drawPath(backWave, Paint()..color = accent.withOpacity(0.35));
+
+    // Ön (koyu) dalga
     final wave = Path()..moveTo(0, fillTop);
     for (double x = 0; x <= w; x++) {
-      final y = fillTop + 5 * (1 - progress) *
-          (x == 0 ? 0 : 1) * // sabit küçük dalga
-          (0.5 + 0.5 * (x / w)) *
-          (sinApprox(wavePhase + x / w * 6.28));
+      final y = fillTop + 5 * (0.5 + 0.5 * (x / w)) * sinApprox(wavePhase + x / w * 6.28);
       wave.lineTo(x, y);
     }
     wave..lineTo(w, h)..lineTo(0, h)..close();
     canvas.drawPath(wave, Paint()..color = accent.withOpacity(0.85));
-    canvas.drawPath(wave, Paint()..color = accent.withOpacity(0.3));
     canvas.restore();
+
+    // Hedef çizgisi (kesik kesik) — bardağın içinde, camın üstünde çizilir
+    final dashPaint = Paint()
+      ..color = accent.withOpacity(0.9)
+      ..strokeWidth = 1.6;
+    const dashW = 5.0, gapW = 4.0;
+    double dx = w * 0.22;
+    final lineEnd = w * 0.78;
+    while (dx < lineEnd) {
+      canvas.drawLine(Offset(dx, targetY), Offset((dx + dashW).clamp(0, lineEnd), targetY), dashPaint);
+      dx += dashW + gapW;
+    }
+    // Küçük "hedef" etiketi (bayrak noktası)
+    canvas.drawCircle(Offset(w * 0.78, targetY), 2.5, Paint()..color = accent);
 
     canvas.drawPath(glass, stroke);
   }

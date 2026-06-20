@@ -86,6 +86,18 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
     super.dispose();
   }
 
+  // ── Kas kütlesi tahmini: kimse net bilmez, yağsız kütleden hesapla ──
+  // Yağsız Vücut Kütlesi (LBM) = kilo × (1 − yağ%/100).
+  // İskelet kası ≈ LBM'nin ~%50'si (yetişkin ortalaması). Bu yüzden:
+  //   tahmini kas kütlesi ≈ kilo × (1 − yağ%/100) × 0.5
+  double? _estimateMuscleMass() {
+    final w  = double.tryParse(_weightController.text);
+    final bf = double.tryParse(_bodyFatController.text);
+    if (w == null || bf == null || bf <= 0 || bf >= 100) return null;
+    final leanMass = w * (1 - bf / 100); // yağsız vücut kütlesi
+    return double.parse((leanMass * 0.5).toStringAsFixed(1));
+  }
+
   // ── Navy Method yağ oranı hesaplama ──────────────────
   double? _navyBodyFat({
     required bool isMale,
@@ -345,6 +357,28 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
 
+              // FIX (boş state): hiç ölçüm yokken kullanıcıya net bilgi ver.
+              if (latest == null) ...[
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                  padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+                  child: Column(
+                    children: [
+                      Icon(Icons.straighten, size: 40, color: muted),
+                      const SizedBox(height: 10),
+                      Text('Henüz ölçüm yok',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
+                      const SizedBox(height: 4),
+                      Text('İlk ölçümünü ekle; zamanla değişimini grafiklerle takip edelim.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: muted)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
               if (latest != null) ...[
                 GridView.count(
                   shrinkWrap: true,
@@ -394,19 +428,24 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                       ]),
                       const SizedBox(height: 14),
                       ...([
-                        ['Göğüs', latest['chest_cm'],  88.0],
-                        ['Kalça', latest['hip_cm'],    82.0],
-                        ['Kol',   latest['arm_cm'],    55.0],
-                        ['Bacak', latest['leg_cm'],    65.0],
+                        // 3. değer artık SABİT dolum değil, görsel ölçek için REFERANS tavan.
+                        ['Göğüs', latest['chest_cm'],  120.0],
+                        ['Kalça', latest['hip_cm'],    120.0],
+                        ['Kol',   latest['arm_cm'],     50.0],
+                        ['Bacak', latest['leg_cm'],     80.0],
                       ].map((row) {
                         final val = (row[1] as num?)?.toDouble();
-                        final pct = row[2] as double;
+                        final refMax = row[2] as double;
+                        // FIX (boş state): önceden bar her zaman sabit %88/%82... doluyordu;
+                        // ölçüm girilmese bile "veri varmış gibi" görünüyordu. Artık değer
+                        // yoksa bar boş (0), varsa referansa oranlı dolar.
+                        final barValue = val != null ? (val / refMax).clamp(0.0, 1.0) : 0.0;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: Row(children: [
                             SizedBox(width: 60, child: Text(row[0] as String, style: TextStyle(fontSize: 12, color: textSoft))),
                             Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(99),
-                              child: LinearProgressIndicator(value: pct / 100, minHeight: 6, backgroundColor: bgSoft, color: accent))),
+                              child: LinearProgressIndicator(value: barValue, minHeight: 6, backgroundColor: bgSoft, color: accent))),
                             const SizedBox(width: 10),
                             SizedBox(width: 60, child: Text(val != null ? '$val cm' : '--',
                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: text), textAlign: TextAlign.right)),
@@ -456,8 +495,42 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
                           ),
                         ]),
                       ),
+                      // ── Kas Kütlesi + "hesapla" butonu (yağsız kütleden tahmin) ──
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          Expanded(
+                            child: TextField(controller: _muscleMassController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              style: TextStyle(color: text),
+                              decoration: const InputDecoration(
+                                labelText: 'Kas Kütlesi (kg)',
+                                prefixIcon: Icon(Icons.fitness_center, size: 18))),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () {
+                              final est = _estimateMuscleMass();
+                              if (est == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                                  content: Text('Önce kilo ve vücut yağ % gir, sonra hesaplayalım.'),
+                                  duration: Duration(seconds: 2)));
+                                return;
+                              }
+                              setState(() => _muscleMassController.text = est.toString());
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                content: Text('Yağsız kütleden tahmin: ~$est kg (düzenleyebilirsin)'),
+                                duration: const Duration(seconds: 2)));
+                            },
+                            child: Container(
+                              height: 52, width: 52,
+                              decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12), border: Border.all(color: accent)),
+                              child: Icon(Icons.calculate_outlined, size: 22, color: accent),
+                            ),
+                          ),
+                        ]),
+                      ),
                       ...[
-                        [_muscleMassController, 'Kas Kütlesi (kg)', Icons.fitness_center],
                         [_waistController,      'Bel (cm)',         Icons.straighten],
                         [_chestController,      'Göğüs (cm)',       Icons.straighten],
                         [_hipController,        'Kalça (cm)',       Icons.straighten],

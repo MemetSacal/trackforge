@@ -102,6 +102,19 @@ async def delete_session(
     return {"message": "Seans ve tüm egzersizler silindi"}
 
 
+@router.patch("/sessions/{session_id}/complete", response_model=ExerciseSessionResponse)
+async def complete_session(
+    session_id: str,
+    user_id: str = Depends(get_current_user),
+    service: ExerciseService = Depends(get_exercise_service),
+):
+    """#19: Seansı tamamlandı (is_completed=True) olarak işaretle.
+    Flutter tüm egzersizler done'a gelince otomatik çağırır.
+    Response'da is_completed=True döner, seans listesi badge'i güncellenir.
+    """
+    return await service.complete_session(user_id, session_id)
+
+
 # ── SESSION EXERCISE CRUD ────────────────────────────────────────
 
 @router.post("/sessions/{session_id}/exercises", response_model=SessionExerciseResponse)

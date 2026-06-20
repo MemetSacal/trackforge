@@ -12,6 +12,7 @@ import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 import '../../app.dart';
 import '../takip/takip_screen.dart';
+import '../ai/workout_plan_screen.dart';
 import 'home_screen.dart';
 
 class _C {
@@ -669,7 +670,9 @@ class _StatGrid extends StatelessWidget {
       crossAxisCount: 2,
       mainAxisSpacing: 8,
       crossAxisSpacing: 8,
-      childAspectRatio: 1.5,
+      // FIX (taşma): 1.5 kartları kısa bırakıp 6-7px dikey overflow'a yol açıyordu.
+      // 1.35 ile kart yüksekliği içeriğe (başlık+değer+delta+bar) yetiyor.
+      childAspectRatio: 1.35,
       children: items.map((item) => _StatMiniCard(t: t, item: item)).toList(),
     );
   }
@@ -1153,6 +1156,21 @@ class _BankAdviceSheetState extends State<BankAdviceSheetPublic> {
                           ]),
                         ),
                       ],
+                      // FIX (UX): koç metni "antrenman planına git" diyordu ama tıklanamıyordu.
+                      // Artık net bir CTA: sheet'i kapat, doğrudan Antrenman Planı ekranına götür.
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            final nav = Navigator.of(context);
+                            nav.pop(); // koç sheet'ini kapat
+                            nav.push(MaterialPageRoute(builder: (_) => const WorkoutPlanScreen()));
+                          },
+                          icon: const Icon(Icons.fitness_center, size: 18),
+                          label: const Text('Antrenman Planına Git'),
+                        ),
+                      ),
                     ],
         ],
       ),

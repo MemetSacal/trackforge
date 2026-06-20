@@ -5,7 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../app.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
+import '../../core/auth/token_manager.dart';
+import '../../core/utils/rate_limiter.dart';
 import '../home/dashboard_screen.dart'; // notificationsProvider için
+import '../home/home_screen.dart'; // bottomNavIndexProvider için
 import '../raporlar/raporlar_screen.dart';
 import '../sosyal/sosyal_screen.dart';
 import '../alisveris/alisveris_screen.dart';
@@ -25,8 +28,39 @@ final _genderProvider = FutureProvider.autoDispose<String>((ref) async {
   } catch (_) { return 'male'; }
 });
 
-class MoreScreen extends ConsumerWidget {
+class MoreScreen extends ConsumerStatefulWidget {
   const MoreScreen({super.key});
+  @override
+  ConsumerState<MoreScreen> createState() => _MoreScreenState();
+}
+
+class _MoreScreenState extends ConsumerState<MoreScreen> {
+
+  Future<void> _logout() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Çıkış Yap'),
+        content: const Text('Hesabından çıkmak istediğine emin misin?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Çıkış Yap', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try { await ApiClient.instance.post(Endpoints.authLogout); } catch (_) {}
+    await RateLimiter.clearUserLimits();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    await TokenManager.clearTokens();
+    if (!mounted) return;
+    ref.read(bottomNavIndexProvider.notifier).state = 0;
+    context.go('/login');
+  }
 
   void _showNotifications(BuildContext context, WidgetRef ref, bool isDark,
       Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent) {
@@ -163,6 +197,8 @@ class MoreScreen extends ConsumerWidget {
         'items': [
           _Item('👤', 'Profil', 'Sağlık bilgileri ve tercihler', const Color(0xFF34D399), () => _push(context, const ProfilScreen())),
           _Item('🔔', 'Bildirimler', 'Hatırlatıcı ayarları', const Color(0xFFFFB020), () => _push(context, const NotificationScreen())),
+          // FIX #7: Çıkış yap More'a taşındı (profil → More → profile → scroll yolculuğu kalktı)
+          _Item('🚪', 'Çıkış Yap', 'Hesabından güvenli çıkış yap', const Color(0xFFEF4444), _logout),
         ],
       },
     ];

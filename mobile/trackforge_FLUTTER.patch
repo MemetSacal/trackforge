@@ -1,0 +1,1666 @@
+diff --git a/lib/app.dart b/lib/app.dart
+index 017b19c..d04fcbe 100644
+--- a/lib/app.dart
++++ b/lib/app.dart
+@@ -91,8 +91,26 @@ class TrackForgeApp extends ConsumerWidget {
+       debugShowCheckedModeBanner: false,
+       theme: AppTheme.light,
+       darkTheme: AppTheme.dark,
+-      themeMode: themeMode, // artık provider'dan geliyor
++      themeMode: themeMode,
+       routerConfig: _router,
++      // FIX #8: responsive overflow guard.
++      // Chrome device mode %75 zoom gibi "sanal küçük ekranlarda" sistem
++      // textScaleFactor'ü 1.0'ın üstüne çıkarıyor → sabit boyutlu Card/Row
++      // taşıyor. Burada 1.15 tavanı koyuyoruz: erişilebilirliği bozmaz ama
++      // layout'u korur. Ayrıca visualDensity.compact padding/spacing'i
++      // ~8px daraltır; küçük ekranda kart içi nefes alanı açar.
++      builder: (context, child) {
++        final mq = MediaQuery.of(context);
++        return MediaQuery(
++          data: mq.copyWith(
++            textScaler: mq.textScaler.clamp(
++              minScaleFactor: 0.85,
++              maxScaleFactor: 1.15,
++            ),
++          ),
++          child: child!,
++        );
++      },
+     );
+   }
+ }
+diff --git a/lib/core/api/endpoints.dart b/lib/core/api/endpoints.dart
+index 8a9acde..a4a1628 100644
+--- a/lib/core/api/endpoints.dart
++++ b/lib/core/api/endpoints.dart
+@@ -40,6 +40,7 @@ class Endpoints {
+ 
+   // ── Exercises ────────────────────────────────────────
+   static const String exerciseSessions = '/exercises/sessions';
++  static String exerciseSessionComplete(String id) => '/exercises/sessions/$id/complete';
+ 
+   // ── Files ────────────────────────────────────────────
+   static const String photos = '/files/photos';
+@@ -81,7 +82,8 @@ class Endpoints {
+   static const String aiFeedback = '/ai/feedback';  // v2: 👍/👎 geri bildirim
+   static const String aiRecipeFromPhoto = '/ai/recipe-from-photo';  // v3: buzdolabı→tarif
+   static const String aiPlateauStatus = '/ai/plateau-status';       // v3: plato kontrolü (kotasız)
+-  static const String authLogout = '/auth/logout';                  // v3: sunucu tarafı logout
++  static const String authLogout             = '/auth/logout';
++  static const String authResendVerification = '/auth/resend-verification';                  // v3: sunucu tarafı logout
+   static const String authDeleteMe = '/auth/me';                    // v3: hesap silme (DELETE)
+   static const String reportsDashboardSummary = '/reports/dashboard-summary'; // v4: tek istekte dashboard
+   static const String reportsWrapped = '/reports/wrapped';      // v5: yıl özeti
+diff --git a/lib/core/auth/token_manager.dart b/lib/core/auth/token_manager.dart
+index 14395b7..a1b2e96 100644
+--- a/lib/core/auth/token_manager.dart
++++ b/lib/core/auth/token_manager.dart
+@@ -41,85 +41,35 @@ class TokenManager {
+     return prefs.getBool(_isPremiumKey) ?? false;
+   }
+ 
+-  // ── YENİ: token'a dokunmadan SADECE premium durumunu güncelle ──
+-  // /auth/me'den gelen taze değeri prefs cache'ine yazmak için.
+-  // set_premium.py DB'yi değiştirdiğinde uygulama açılışında bununla senkronlanır.
+-  static Future<void> setPremium(bool value) async {
++  static Future<void> clearTokens() async {
+     final prefs = await SharedPreferences.getInstance();
+-    await prefs.setBool(_isPremiumKey, value);
++    await prefs.remove(_accessTokenKey);
++    await prefs.remove(_refreshTokenKey);
++    await prefs.remove(_currentUserIdKey);
++    await prefs.remove(_isPremiumKey);
+   }
+ 
+-  // ── YENİ: token'a dokunmadan SADECE user_id güncelle ──
+-  // Splash'te /auth/me doğrulaması sırasında kimliği teyit/senkron etmek için.
+-  static Future<void> setCurrentUserId(String userId) async {
+-    final prefs = await SharedPreferences.getInstance();
+-    await prefs.setString(_currentUserIdKey, userId);
++  static Future<bool> isLoggedIn() async {
++    final token = await getAccessToken();
++    return token != null && token.isNotEmpty;
+   }
+ 
+-  // ── YENİ: /auth/me cevabından kimlik + premium'u tek seferde senkronla ──
+-  // res.data map'ini alıp 'id' ve 'is_premium' alanlarını cache'e işler.
+-  // Eksik alan varsa o alanı atlar (mevcut değeri bozmaz).
++  // ── /auth/me cevabını prefs cache'ine tek seferde senkronla ──────
+   static Future<void> syncFromMe(Map<String, dynamic> me) async {
+     final prefs = await SharedPreferences.getInstance();
+-    final id = me['id'];
+-    if (id != null) {
+-      await prefs.setString(_currentUserIdKey, id.toString());
++    if (me['id'] != null) {
++      await prefs.setString(_currentUserIdKey, me['id'].toString());
+     }
+     if (me.containsKey('is_premium')) {
+       await prefs.setBool(_isPremiumKey, me['is_premium'] == true);
+     }
+-  }
+-
+-  static Future<void> clearTokens() async {
+-    final prefs = await SharedPreferences.getInstance();
+-    await prefs.remove(_accessTokenKey);
+-    await prefs.remove(_refreshTokenKey);
+-    await prefs.remove(_currentUserIdKey);
+-    await prefs.remove(_isPremiumKey);
+-  }
+-
+-  // ── YENİ: Kullanıcıya özel TÜM lokal cache anahtarlarının prefix listesi ──
+-  // Bu anahtarlar diyet_tab / meal_advice_screen tarafında
+-  // 'last_weekly_meal_plan_<userId>' gibi userId suffix'iyle yazılıyor.
+-  // Suffix'i ne olursa olsun (geçerli id / 'guest' / boş) hepsini yakalamak
+-  // için prefix eşleşmesi kullanıyoruz.
+-  static const _userScopedPrefixes = <String>[
+-    'last_meal_advice',       // last_meal_advice_<id> + last_meal_advice_date_<id>
+-    'last_weekly_meal_plan',  // last_weekly_meal_plan_<id>
+-    'last_shopping_list',     // last_shopping_list_<id>
+-    'last_recommended_foods', // last_recommended_foods_<id>
+-    'last_foods_to_avoid',    // last_foods_to_avoid_<id>
+-  ];
+-
+-  // ── YENİ: Aktif kullanıcıya ait tüm lokal cache'i sil ──────────
+-  // Hesap değişiminde (login'de farklı kullanıcı tespit edilince) çağrılır.
+-  // Önceki kullanıcının diyet/öğün/bildirim cache'inin yeni kullanıcıya
+-  // sızmasını engeller.
+-  //
+-  // ÖNEMLİ: Auth token'larına, user_id'ye, premium / tema / "beni hatırla"
+-  // tercihlerine DOKUNMAZ — sadece kullanıcıya özel veri cache'ini temizler.
+-  static Future<void> clearUserScopedCache() async {
+-    final prefs = await SharedPreferences.getInstance();
+-
+-    // getKeys() o anki TÜM anahtarları verir. Eski sürümlerden kalmış
+-    // 'guest' veya boş-suffix'li kalıntılar dahil hepsini prefix ile yakalarız.
+-    final keys = prefs.getKeys().toList();
+-    for (final key in keys) {
+-      final isUserScoped =
+-          _userScopedPrefixes.any((prefix) => key.startsWith(prefix));
+-      if (isUserScoped) {
+-        await prefs.remove(key);
+-      }
++    if (me.containsKey('email_verified')) {
++      await prefs.setBool('email_verified', me['email_verified'] == true);
+     }
+-
+-    // Bildirim listesi user-scoped DEĞİL (global 'in_app_notifications'),
+-    // bu yüzden hesap değişiminde mutlaka sıfırlanmalı — yoksa eski
+-    // kullanıcının bildirimleri yeni kullanıcıda görünür.
+-    await prefs.remove('in_app_notifications');
+   }
+ 
+-  static Future<bool> isLoggedIn() async {
+-    final token = await getAccessToken();
+-    return token != null && token.isNotEmpty;
++  static Future<bool> isEmailVerified() async {
++    final prefs = await SharedPreferences.getInstance();
++    return prefs.getBool('email_verified') ?? true; // default: doğrulanmış say
+   }
+ }
+\ No newline at end of file
+diff --git a/lib/screens/ai/meal_advice_screen.dart b/lib/screens/ai/meal_advice_screen.dart
+index 424c86b..3e7f89f 100644
+--- a/lib/screens/ai/meal_advice_screen.dart
++++ b/lib/screens/ai/meal_advice_screen.dart
+@@ -14,7 +14,7 @@ import '../../core/utils/rate_limiter.dart';
+ import 'dart:convert';
+ import '../../core/auth/token_manager.dart';
+ 
+-final preferencesProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
++final preferencesProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+   try {
+     final response = await ApiClient.instance.get(Endpoints.preferences);
+     return Map<String, dynamic>.from(response.data);
+@@ -315,43 +315,77 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen>
+                           .toList(),
+                     ),
+                     const SizedBox(height: 10),
+-                    Row(children: [
+-                      Expanded(
+-                          child: TextField(
+-                              controller: addRecommCtrl,
+-                              style: TextStyle(color: text, fontSize: 13),
+-                              decoration: InputDecoration(
+-                                  hintText: 'Besin ekle (örn: ceviz)',
+-                                  hintStyle:
+-                                      TextStyle(color: muted, fontSize: 13),
++                    // FIX #14: Serbest giriş kısıtlaması — özelliğin amacı
++                    // istenmeyen besini sağlıklı alternatifle DEĞİŞTİRMEK,
++                    // cips/burger gibi diyet dışı gıda eklemek değil.
++                    // Bilinen junk food anahtar kelimelerini reddedip kullanıcıya
++                    // amacı hatırlatıyoruz; meşru besinler serbestçe girilebilir.
++                    Builder(builder: (bCtx) {
++                      String? errorMsg;
++                      const _junkKeywords = [
++                        'cips','chips','burger','hamburger','pizza','hot dog','hotdog',
++                        'kızarmış tavuk','fried chicken','nugget','sosisli','sosis',
++                        'patates kızartma','french fry','fries','çikolata','chocolate',
++                        'gofret','wafer','bisküvi','kurabiye','kek','pasta','tatlı',
++                        'şeker','candy','şekerleme','gummy','limonata','kola','soda',
++                        'enerji içeceği','energy drink','alkol','beer','bira','şarap',
++                        'wine','viski','vodka','rakı',
++                      ];
++                      return StatefulBuilder(builder: (_, setErr) => Column(
++                        crossAxisAlignment: CrossAxisAlignment.start,
++                        children: [
++                          Row(children: [
++                            Expanded(
++                              child: TextField(
++                                controller: addRecommCtrl,
++                                style: TextStyle(color: text, fontSize: 13),
++                                decoration: InputDecoration(
++                                  hintText: 'Alternatif sağlıklı besin ekle (örn: ceviz)',
++                                  hintStyle: TextStyle(color: muted, fontSize: 13),
+                                   isDense: true,
+-                                  contentPadding:
+-                                      const EdgeInsets.symmetric(
+-                                          horizontal: 12, vertical: 10),
++                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                   border: OutlineInputBorder(
+-                                      borderRadius: BorderRadius.circular(12),
+-                                      borderSide:
+-                                          BorderSide(color: border))))),
+-                      const SizedBox(width: 8),
+-                      GestureDetector(
+-                        onTap: () {
+-                          final v = addRecommCtrl.text.trim();
+-                          if (v.isNotEmpty) {
+-                            setModal(() {
+-                              recommended.add(v);
+-                              addRecommCtrl.clear();
+-                            });
+-                          }
+-                        },
+-                        child: Container(
+-                            padding: const EdgeInsets.all(10),
+-                            decoration: BoxDecoration(
+-                                color: accent,
+-                                borderRadius: BorderRadius.circular(12)),
+-                            child: const Icon(Icons.add,
+-                                color: Colors.black, size: 18)),
+-                      ),
+-                    ]),
++                                    borderRadius: BorderRadius.circular(12),
++                                    borderSide: BorderSide(color: errorMsg != null ? danger : border),
++                                  ),
++                                ),
++                              ),
++                            ),
++                            const SizedBox(width: 8),
++                            GestureDetector(
++                              onTap: () {
++                                final v = addRecommCtrl.text.trim();
++                                if (v.isEmpty) return;
++                                final lower = v.toLowerCase();
++                                final isJunk = _junkKeywords.any((k) => lower.contains(k));
++                                if (isJunk) {
++                                  setErr(() => errorMsg = 'Bu alan diyet planına uygun alternatif besinler içindir. Lütfen sağlıklı bir seçenek gir.');
++                                  return;
++                                }
++                                setErr(() => errorMsg = null);
++                                setModal(() {
++                                  recommended.add(v);
++                                  addRecommCtrl.clear();
++                                });
++                              },
++                              child: Container(
++                                padding: const EdgeInsets.all(10),
++                                decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(12)),
++                                child: const Icon(Icons.add, color: Colors.black, size: 18),
++                              ),
++                            ),
++                          ]),
++                          if (errorMsg != null) ...[
++                            const SizedBox(height: 4),
++                            Row(children: [
++                              Icon(Icons.info_outline, size: 13, color: danger),
++                              const SizedBox(width: 4),
++                              Expanded(child: Text(errorMsg!, style: TextStyle(fontSize: 11, color: danger))),
++                            ]),
++                          ],
++                        ],
++                      ));
++                    }),
+                     const SizedBox(height: 20),
+                     Text('❌ Kaçınılacak Besinler',
+                         style: TextStyle(
+diff --git a/lib/screens/alisveris/alisveris_screen.dart b/lib/screens/alisveris/alisveris_screen.dart
+index eb467e1..f5d2a10 100644
+--- a/lib/screens/alisveris/alisveris_screen.dart
++++ b/lib/screens/alisveris/alisveris_screen.dart
+@@ -6,7 +6,7 @@ import '../../core/api/api_client.dart';
+ import '../../core/api/endpoints.dart';
+ import '../../app.dart';
+ 
+-final shoppingListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
++final shoppingListProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+   try {
+     final response = await ApiClient.instance.get(Endpoints.shopping);
+     final data = response.data['items'] as List? ?? [];
+diff --git a/lib/screens/auth/login_screen.dart b/lib/screens/auth/login_screen.dart
+index 78d6a75..4bbd536 100644
+--- a/lib/screens/auth/login_screen.dart
++++ b/lib/screens/auth/login_screen.dart
+@@ -8,6 +8,7 @@ import '../../core/api/api_exceptions.dart';
+ import '../../core/api/endpoints.dart';
+ import '../../core/auth/token_manager.dart';
+ import '../../app.dart';
++import '../home/home_screen.dart';
+ 
+ class LoginScreen extends ConsumerStatefulWidget {
+   const LoginScreen({super.key});
+@@ -58,16 +59,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
+         'password': _passwordController.text,
+       });
+ 
+-      // ── HESAP DEĞİŞİMİ KORUMASI ──────────────────────────────────
+-      // Yeni token'ları yazmadan ÖNCE cihazda kayıtlı önceki user_id'yi oku.
+-      // saveTokens birazdan bunu üzerine yazacak, o yüzden şimdi yakalıyoruz.
+-      final previousUserId = await TokenManager.getCurrentUserId();
+-      final newUserId = (response.data['user_id'] ?? '').toString();
+-
+       final prefs = await SharedPreferences.getInstance();
+ 
++      // email_verified durumunu prefs'e kaydet → home banner için
++      final emailVerified = response.data['email_verified'] ?? true;
++      await prefs.setBool('email_verified', emailVerified as bool);
++
+       if (_rememberMe) {
+-        // Beni hatırla açık → token'ı kaydet, email'i kaydet
+         await TokenManager.saveTokens(
+           accessToken:  response.data['access_token'],
+           refreshToken: response.data['refresh_token'],
+@@ -77,8 +75,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
+         await prefs.setString('saved_email', _emailController.text.trim());
+         await prefs.setBool('remember_me', true);
+       } else {
+-        // Beni hatırla kapalı → token yine kaydedilir (oturum için gerekli)
+-        // ama email ve remember_me flag'ini temizle
+         await TokenManager.saveTokens(
+           accessToken:  response.data['access_token'],
+           refreshToken: response.data['refresh_token'],
+@@ -87,19 +83,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
+         );
+         await prefs.remove('saved_email');
+         await prefs.setBool('remember_me', false);
+-        // Session flag → splash'te kontrol edilecek
+         await prefs.setBool('session_only', true);
+       }
+ 
+-      // ── Token'lar yazıldı. Önceki kullanıcı FARKLIYSA eski cache'i temizle ──
+-      // Bu, "logout etmeden başka hesaba geçince eski kullanıcının diyet/öğün/
+-      // bildirim verisinin görünmesi" bug'ının kök çözümü. Aynı kullanıcı tekrar
+-      // giriş yaparsa (previousUserId == newUserId) kendi cache'i korunur.
+-      if (previousUserId != null && previousUserId != newUserId) {
+-        await TokenManager.clearUserScopedCache();
+-      }
+-
+       if (!mounted) return;
++      // FIX #6: login sonrası her zaman Dashboard (index 0) açılsın.
++      // Önceki session'ın bottomNavIndexProvider state'i Riverpod'da kalıyordu,
++      // bu yüzden farklı hesapla giriş yapınca son açık sekme (örn. More=4) geliyordu.
++      ref.read(bottomNavIndexProvider.notifier).state = 0;
+       context.go('/home');
+     } on ApiException catch (e) {
+       setState(() => _errorMessage = e.message);
+diff --git a/lib/screens/auth/register_screen.dart b/lib/screens/auth/register_screen.dart
+index 404a697..540a0a1 100644
+--- a/lib/screens/auth/register_screen.dart
++++ b/lib/screens/auth/register_screen.dart
+@@ -47,25 +47,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+         'email':    _emailController.text.trim(),
+         'password': _passwordController.text,
+       });
+-
+-      // ── HESAP DEĞİŞİMİ KORUMASI ──────────────────────────────────
+-      // Yeni token'ı yazmadan ÖNCE önceki user_id'yi oku. Yeni kayıt olan
+-      // kullanıcı, cihazda kalmış başka birinin cache'ini miras almamalı.
+-      final previousUserId = await TokenManager.getCurrentUserId();
+-      final newUserId = (loginResponse.data['user_id'] ?? '').toString();
+-
+       await TokenManager.saveTokens(
+         accessToken:  loginResponse.data['access_token'],
+         refreshToken: loginResponse.data['refresh_token'],
+         userId:       loginResponse.data['user_id'] ?? '',
+         isPremium:    loginResponse.data['is_premium'] ?? false,
+       );
+-
+-      // Önceki kullanıcı farklıysa eski lokal cache'i temizle (sızma önlemi).
+-      if (previousUserId != null && previousUserId != newUserId) {
+-        await TokenManager.clearUserScopedCache();
+-      }
+-
+       if (!mounted) return;
+       context.go('/onboarding');
+     } on ApiException catch (e) {
+diff --git a/lib/screens/cycle/cycle_screen.dart b/lib/screens/cycle/cycle_screen.dart
+index d8a918e..54d71da 100644
+--- a/lib/screens/cycle/cycle_screen.dart
++++ b/lib/screens/cycle/cycle_screen.dart
+@@ -10,7 +10,7 @@ import '../../core/utils/date_utils.dart';
+ import '../../app.dart';
+ 
+ // ── PROVIDER ────────────────────────────────────────────
+-final cycleProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
++final cycleProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+   try {
+     final response = await ApiClient.instance.get(Endpoints.cycle);
+     return Map<String, dynamic>.from(response.data);
+diff --git a/lib/screens/egzersiz/egzersiz_screen.dart b/lib/screens/egzersiz/egzersiz_screen.dart
+index 1f2c4ff..e0f450c 100644
+--- a/lib/screens/egzersiz/egzersiz_screen.dart
++++ b/lib/screens/egzersiz/egzersiz_screen.dart
+@@ -12,7 +12,7 @@ import 'seans_detay_screen.dart';
+ 
+ // ── Seanslar provider — egzersizleri de içeriyor ────────
+ // Her seans için ayrı /exercises endpoint'i çekiyoruz
+-final sessionsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
++final sessionsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+   try {
+     final response = await ApiClient.instance.get(
+       Endpoints.exerciseSessions,
+@@ -494,10 +494,19 @@ class _SeanslarTab extends StatelessWidget {
+               final notes = s['notes'] as String?;
+               final exercises = s['exercises'] as List? ?? [];
+               final exCount = exercises.length;
++              // FIX #19: tüm egzersizler completed=true ise seans tamamlandı sayılır.
++              // #19: backend is_completed öncelikli; fallback lokal hesap
++              final backendDone = s['is_completed'] == true;
++              final localDone   = exCount > 0 && exercises.every((ex) => ex['completed'] == true);
++              final allDone     = backendDone || localDone;
+ 
+               return Container(
+                 margin: const EdgeInsets.only(bottom: 10),
+-                decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
++                decoration: BoxDecoration(
++                  color: bgCard,
++                  borderRadius: BorderRadius.circular(20),
++                  border: Border.all(color: allDone ? accent.withOpacity(0.5) : border),
++                ),
+                 padding: const EdgeInsets.all(16),
+                 child: Row(
+                   children: [
+@@ -506,7 +515,7 @@ class _SeanslarTab extends StatelessWidget {
+                       child: Container(
+                         width: 44, height: 44,
+                         decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
+-                        child: const Center(child: Text('🏋️', style: TextStyle(fontSize: 20))),
++                        child: Center(child: Text(allDone ? '✅' : '🏋️', style: const TextStyle(fontSize: 20))),
+                       ),
+                     ),
+                     const SizedBox(width: 12),
+@@ -514,7 +523,18 @@ class _SeanslarTab extends StatelessWidget {
+                       child: GestureDetector(
+                         onTap: () => onSessionTap(s),
+                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+-                          Text(notes ?? 'Antrenman', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
++                          Row(children: [
++                            Expanded(child: Text(notes ?? 'Antrenman', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text))),
++                            if (allDone)
++                              Container(
++                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
++                                decoration: BoxDecoration(
++                                  color: accent.withOpacity(0.12),
++                                  borderRadius: BorderRadius.circular(99),
++                                ),
++                                child: Text('Tamamlandı', style: TextStyle(fontSize: 10, color: accent, fontWeight: FontWeight.w700)),
++                              ),
++                          ]),
+                           const SizedBox(height: 2),
+                           Text(
+                             '$date · $dur dk${cal != null ? ' · $cal kcal' : ''}${exCount > 0 ? ' · $exCount egzersiz' : ''}',
+diff --git a/lib/screens/egzersiz/seans_detay_screen.dart b/lib/screens/egzersiz/seans_detay_screen.dart
+index f3484a3..1abc596 100644
+--- a/lib/screens/egzersiz/seans_detay_screen.dart
++++ b/lib/screens/egzersiz/seans_detay_screen.dart
+@@ -10,7 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
+ import 'egzersiz_screen.dart';
+ 
+ final sessionExercisesProvider =
+-    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, sessionId) async {
++    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, sessionId) async {
+   try {
+     final response = await ApiClient.instance.get('${Endpoints.exerciseSessions}/$sessionId/exercises');
+     final list = response.data as List;
+@@ -44,12 +44,10 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
+ 
+   String get _sessionId => widget.session['id'] as String;
+ 
+-  // Egzersiz tamamlandı toggle
+-  // v8: tamamlama anında dokunsal geri bildirim
++  // Egzersiz tamamlandı toggle + tüm done'sa seansı backend'de complete yap
+   Future<void> _toggleCompleted(String exerciseId, bool current) async {
+     final newVal = !current;
+     setState(() => _completedState[exerciseId] = newVal);
+-    // v8: işaretleme anında dokunsal his — premium uygulamaların gizli imzası
+     if (newVal) {
+       HapticFeedback.lightImpact();
+     } else {
+@@ -61,8 +59,37 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
+         data: {'completed': newVal},
+       );
+       ref.invalidate(sessionExercisesProvider(_sessionId));
++
++      // #19: Tüm egzersizler tamamlandıysa seansı backend'de complete işaretle.
++      // Kısa bekleme: provider rebuild olsun, güncel listeyi oku.
++      if (newVal) {
++        await Future.delayed(const Duration(milliseconds: 300));
++        final exAsync = ref.read(sessionExercisesProvider(_sessionId));
++        final exercises = exAsync.valueOrNull ?? [];
++        // _completedState'i güncelleme dahil: hepsini kontrol et
++        final allDone = exercises.isNotEmpty &&
++            exercises.every((ex) {
++              final id = ex['id'] as String;
++              return _completedState[id] ?? (ex['completed'] as bool? ?? false);
++            });
++        if (allDone) {
++          try {
++            await ApiClient.instance.patch(
++              Endpoints.exerciseSessionComplete(_sessionId),
++            );
++            if (mounted) {
++              HapticFeedback.mediumImpact();
++              ScaffoldMessenger.of(context).showSnackBar(
++                const SnackBar(
++                  content: Text('🏆 Antrenman tamamlandı! Harika iş!'),
++                  duration: Duration(seconds: 2),
++                ),
++              );
++            }
++          } catch (_) {} // sessiz fail — UI zaten doğru gösteriyor
++        }
++      }
+     } catch (_) {
+-      // Hata olursa geri al
+       setState(() => _completedState[exerciseId] = current);
+       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+         const SnackBar(content: Text('Güncellenemedi')));
+diff --git a/lib/screens/gamification/gamification_screen.dart b/lib/screens/gamification/gamification_screen.dart
+index 2e0007e..6418eed 100644
+--- a/lib/screens/gamification/gamification_screen.dart
++++ b/lib/screens/gamification/gamification_screen.dart
+@@ -328,7 +328,9 @@ class GamificationScreen extends ConsumerWidget {
+                                   crossAxisCount: 3,
+                                   mainAxisSpacing: 10,
+                                   crossAxisSpacing: 10,
+-                                  childAspectRatio: 0.85,
++                                  // FIX (21px taşma): 0.85 kartları kısa bırakıyordu;
++                                  // uzun isim (ör. "İlk Antrenman") + 2 satır açıklama sığmıyordu.
++                                  childAspectRatio: 0.72,
+                                 ),
+                                 itemCount: badges.length,
+                                 itemBuilder: (ctx, i) {
+@@ -361,7 +363,9 @@ class GamificationScreen extends ConsumerWidget {
+                                         const SizedBox(height: 6),
+                                         Text(name,
+                                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: text),
+-                                          textAlign: TextAlign.center),
++                                          textAlign: TextAlign.center,
++                                          maxLines: 2,
++                                          overflow: TextOverflow.ellipsis),
+                                         if (desc.isNotEmpty) ...[
+                                           const SizedBox(height: 2),
+                                           Text(desc,
+diff --git a/lib/screens/health/blood_values_screen.dart b/lib/screens/health/blood_values_screen.dart
+index 3f14e5a..ad6be0c 100644
+--- a/lib/screens/health/blood_values_screen.dart
++++ b/lib/screens/health/blood_values_screen.dart
+@@ -9,14 +9,14 @@ import '../../app.dart';
+ import '../../core/api/api_client.dart';
+ import '../../core/api/endpoints.dart';
+ 
+-final bloodMarkersProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
++final bloodMarkersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+   try {
+     final res = await ApiClient.instance.get(Endpoints.bloodValuesMarkers);
+     return (res.data as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList();
+   } catch (_) { return []; }
+ });
+ 
+-final bloodValuesProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
++final bloodValuesProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+   try {
+     final res = await ApiClient.instance.get(Endpoints.bloodValues);
+     // {"grouped": {marker: [ {id, marker, value, unit, test_date, label} ]}}
+@@ -183,6 +183,7 @@ class _BloodValuesScreenState extends ConsumerState<BloodValuesScreen> {
+     final valueCtrl = TextEditingController();
+     String? selectedMarker = markers.isNotEmpty ? markers.first['marker'].toString() : null;
+     DateTime selectedDate = DateTime.now();
++    bool consentGiven = false; // KVKK açık rıza onayı
+ 
+     await showModalBottomSheet(
+       context: context,
+@@ -192,6 +193,7 @@ class _BloodValuesScreenState extends ConsumerState<BloodValuesScreen> {
+         Future<void> save() async {
+           final val = double.tryParse(valueCtrl.text.replaceAll(',', '.'));
+           if (selectedMarker == null || val == null) return;
++          if (!consentGiven) return; // onay olmadan kaydetme
+           try {
+             await ApiClient.instance.post(Endpoints.bloodValues, data: {
+               'marker': selectedMarker,
+@@ -244,10 +246,55 @@ class _BloodValuesScreenState extends ConsumerState<BloodValuesScreen> {
+                 child: const Text('Değiştir'),
+               ),
+             ]),
++            const SizedBox(height: 12),
++            // ── KVKK aydınlatma + açık rıza ──────────────────────────
++            // Sağlık verisi KVKK m.6'da "özel nitelikli kişisel veri"dir;
++            // işlenmesi için açık rıza şarttır. Kullanıcıya ne, neden, nerede
++            // ve ne kadar süreyle saklandığını net göster, onayını al.
++            Container(
++              padding: const EdgeInsets.all(12),
++              decoration: BoxDecoration(
++                color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.4),
++                borderRadius: BorderRadius.circular(12),
++              ),
++              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
++                Row(children: const [
++                  Icon(Icons.privacy_tip_outlined, size: 16),
++                  SizedBox(width: 6),
++                  Text('Kişisel Sağlık Verisi (KVKK)',
++                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
++                ]),
++                const SizedBox(height: 6),
++                Text(
++                  'Girdiğin tahlil sonuçları "özel nitelikli kişisel veri" sayılır. '
++                  'Yalnızca sana zaman içindeki sağlık trendini göstermek için, '
++                  'hesabına bağlı olarak güvenli sunucularda saklanır. Üçüncü '
++                  'taraflarla paylaşılmaz. İstediğin an silebilir, hesabını '
++                  'kapatınca tüm verin kalıcı olarak silinir.',
++                  style: TextStyle(fontSize: 11, height: 1.4,
++                      color: Theme.of(ctx).colorScheme.onSurfaceVariant),
++                ),
++                const SizedBox(height: 4),
++                CheckboxListTile(
++                  value: consentGiven,
++                  onChanged: (v) => setSheet(() => consentGiven = v ?? false),
++                  contentPadding: EdgeInsets.zero,
++                  controlAffinity: ListTileControlAffinity.leading,
++                  dense: true,
++                  title: const Text(
++                    'Sağlık verimin yukarıdaki amaçla işlenmesini onaylıyorum.',
++                    style: TextStyle(fontSize: 12),
++                  ),
++                ),
++              ]),
++            ),
+             const SizedBox(height: 8),
+             SizedBox(
+               width: double.infinity,
+-              child: FilledButton(onPressed: save, child: const Text('Kaydet')),
++              child: FilledButton(
++                onPressed: consentGiven ? save : null, // onay yoksa pasif
++                child: const Text('Kaydet'),
++              ),
+             ),
+           ]),
+         );
+diff --git a/lib/screens/health/progress_photos_screen.dart b/lib/screens/health/progress_photos_screen.dart
+index e07af82..ce47fc4 100644
+--- a/lib/screens/health/progress_photos_screen.dart
++++ b/lib/screens/health/progress_photos_screen.dart
+@@ -11,7 +11,7 @@ import '../../app.dart';
+ import '../../core/api/api_client.dart';
+ import '../../core/api/endpoints.dart';
+ 
+-final progressPhotosProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
++final progressPhotosProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+   try {
+     final res = await ApiClient.instance.get(Endpoints.photos);
+     final list = (res.data as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList();
+diff --git a/lib/screens/home/dashboard_screen.dart b/lib/screens/home/dashboard_screen.dart
+index 0c932a7..2df1fac 100644
+--- a/lib/screens/home/dashboard_screen.dart
++++ b/lib/screens/home/dashboard_screen.dart
+@@ -12,6 +12,7 @@ import '../../core/api/endpoints.dart';
+ import '../../core/utils/date_utils.dart';
+ import '../../app.dart';
+ import '../takip/takip_screen.dart';
++import '../ai/workout_plan_screen.dart';
+ import 'home_screen.dart';
+ 
+ class _C {
+@@ -669,7 +670,9 @@ class _StatGrid extends StatelessWidget {
+       crossAxisCount: 2,
+       mainAxisSpacing: 8,
+       crossAxisSpacing: 8,
+-      childAspectRatio: 1.5,
++      // FIX (taşma): 1.5 kartları kısa bırakıp 6-7px dikey overflow'a yol açıyordu.
++      // 1.35 ile kart yüksekliği içeriğe (başlık+değer+delta+bar) yetiyor.
++      childAspectRatio: 1.35,
+       children: items.map((item) => _StatMiniCard(t: t, item: item)).toList(),
+     );
+   }
+@@ -1153,6 +1156,21 @@ class _BankAdviceSheetState extends State<BankAdviceSheetPublic> {
+                           ]),
+                         ),
+                       ],
++                      // FIX (UX): koç metni "antrenman planına git" diyordu ama tıklanamıyordu.
++                      // Artık net bir CTA: sheet'i kapat, doğrudan Antrenman Planı ekranına götür.
++                      const SizedBox(height: 14),
++                      SizedBox(
++                        width: double.infinity,
++                        child: ElevatedButton.icon(
++                          onPressed: () {
++                            final nav = Navigator.of(context);
++                            nav.pop(); // koç sheet'ini kapat
++                            nav.push(MaterialPageRoute(builder: (_) => const WorkoutPlanScreen()));
++                          },
++                          icon: const Icon(Icons.fitness_center, size: 18),
++                          label: const Text('Antrenman Planına Git'),
++                        ),
++                      ),
+                     ],
+         ],
+       ),
+diff --git a/lib/screens/home/home_screen.dart b/lib/screens/home/home_screen.dart
+index 956f89f..2ebec5d 100644
+--- a/lib/screens/home/home_screen.dart
++++ b/lib/screens/home/home_screen.dart
+@@ -7,22 +7,59 @@ import '../ai/ai_screen.dart';
+ import 'dashboard_screen.dart';
+ import 'more_screen.dart';
+ import '../../app.dart';
++import '../../core/api/api_client.dart';
++import '../../core/api/endpoints.dart';
++import '../../core/auth/token_manager.dart';
+ 
+ final bottomNavIndexProvider = StateProvider<int>((ref) => 0);
+ 
+-class HomeScreen extends ConsumerWidget {
++class HomeScreen extends ConsumerStatefulWidget {
+   const HomeScreen({super.key});
++  @override
++  ConsumerState<HomeScreen> createState() => _HomeScreenState();
++}
+ 
++class _HomeScreenState extends ConsumerState<HomeScreen> {
+   static const List<Widget> _screens = [
+-    DashboardScreen(),
+-    TakipScreen(),
+-    EgzersizScreen(),
+-    AiScreen(),
+-    MoreScreen(),
++    DashboardScreen(), TakipScreen(), EgzersizScreen(), AiScreen(), MoreScreen(),
+   ];
+ 
++  bool _emailVerified = true;
++  bool _bannerDismissed = false;
++  bool _resending = false;
++
+   @override
+-  Widget build(BuildContext context, WidgetRef ref) {
++  void initState() {
++    super.initState();
++    _checkEmailVerified();
++  }
++
++  Future<void> _checkEmailVerified() async {
++    final verified = await TokenManager.isEmailVerified();
++    if (!verified && mounted) setState(() => _emailVerified = false);
++  }
++
++  Future<void> _resend() async {
++    setState(() => _resending = true);
++    try {
++      await ApiClient.instance.post(Endpoints.authResendVerification);
++      if (mounted) {
++        ScaffoldMessenger.of(context).showSnackBar(
++          const SnackBar(content: Text('✉️ Doğrulama emaili gönderildi!')));
++        setState(() => _bannerDismissed = true);
++      }
++    } catch (_) {
++      if (mounted) {
++        ScaffoldMessenger.of(context).showSnackBar(
++          const SnackBar(content: Text('Gönderilemedi, lütfen tekrar dene.')));
++      }
++    } finally {
++      if (mounted) setState(() => _resending = false);
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
+     final currentIndex = ref.watch(bottomNavIndexProvider);
+     final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
+ 
+@@ -33,26 +70,68 @@ class HomeScreen extends ConsumerWidget {
+     final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
+     final textSoft = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
+ 
++    final showBanner = !_emailVerified && !_bannerDismissed;
++
+     return Scaffold(
+       backgroundColor: bg,
+-      body: _screens[currentIndex],
++      body: Column(
++        children: [
++          // ── Email doğrulama banner'ı ───────────────────────────────
++          if (showBanner)
++            Material(
++              color: const Color(0xFFD97706),
++              child: SafeArea(
++                bottom: false,
++                child: Padding(
++                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
++                  child: Row(children: [
++                    const Icon(Icons.mail_outline, size: 16, color: Colors.black),
++                    const SizedBox(width: 8),
++                    Expanded(
++                      child: Text(
++                        'E-postanı doğrula — gelen kutuna bak.',
++                        style: const TextStyle(fontSize: 12, color: Colors.black, fontWeight: FontWeight.w600),
++                      ),
++                    ),
++                    GestureDetector(
++                      onTap: _resending ? null : _resend,
++                      child: Container(
++                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
++                        decoration: BoxDecoration(
++                          color: Colors.black.withOpacity(0.15),
++                          borderRadius: BorderRadius.circular(8),
++                        ),
++                        child: _resending
++                            ? const SizedBox(width: 12, height: 12,
++                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
++                            : const Text('Tekrar Gönder',
++                                style: TextStyle(fontSize: 11, color: Colors.black, fontWeight: FontWeight.w700)),
++                      ),
++                    ),
++                    const SizedBox(width: 6),
++                    GestureDetector(
++                      onTap: () => setState(() => _bannerDismissed = true),
++                      child: const Icon(Icons.close, size: 16, color: Colors.black),
++                    ),
++                  ]),
++                ),
++              ),
++            ),
++          Expanded(child: _screens[currentIndex]),
++        ],
++      ),
+       bottomNavigationBar: Container(
+-        decoration: BoxDecoration(
+-          color: bgCard,
+-          border: Border(top: BorderSide(color: border)),
+-        ),
++        decoration: BoxDecoration(color: bgCard, border: Border(top: BorderSide(color: border))),
+         child: SafeArea(
+           child: SizedBox(
+             height: 60,
+-            child: Row(
+-              children: [
+-                _NavItem(icon: Icons.home_outlined,        activeIcon: Icons.home,               label: 'Ana Sayfa', index: 0, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
+-                _NavItem(icon: Icons.track_changes_outlined, activeIcon: Icons.track_changes,    label: 'Takip',    index: 1, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
+-                _NavItem(icon: Icons.fitness_center_outlined, activeIcon: Icons.fitness_center,  label: 'Egzersiz', index: 2, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
+-                _NavItem(icon: Icons.auto_awesome_outlined,  activeIcon: Icons.auto_awesome,     label: 'AI Koç',   index: 3, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
+-                _NavItem(icon: Icons.more_horiz,            activeIcon: Icons.more_horiz,        label: 'Daha',     index: 4, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
+-              ],
+-            ),
++            child: Row(children: [
++              _NavItem(icon: Icons.home_outlined,          activeIcon: Icons.home,            label: 'Ana Sayfa', index: 0, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
++              _NavItem(icon: Icons.track_changes_outlined, activeIcon: Icons.track_changes,   label: 'Takip',    index: 1, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
++              _NavItem(icon: Icons.fitness_center_outlined,activeIcon: Icons.fitness_center,  label: 'Egzersiz', index: 2, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
++              _NavItem(icon: Icons.auto_awesome_outlined,  activeIcon: Icons.auto_awesome,    label: 'AI Koç',   index: 3, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
++              _NavItem(icon: Icons.more_horiz,             activeIcon: Icons.more_horiz,      label: 'Daha',     index: 4, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
++            ]),
+           ),
+         ),
+       ),
+diff --git a/lib/screens/home/more_screen.dart b/lib/screens/home/more_screen.dart
+index a3c7d89..714d4fa 100644
+--- a/lib/screens/home/more_screen.dart
++++ b/lib/screens/home/more_screen.dart
+@@ -5,7 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
+ import '../../app.dart';
+ import '../../core/api/api_client.dart';
+ import '../../core/api/endpoints.dart';
++import '../../core/auth/token_manager.dart';
++import '../../core/utils/rate_limiter.dart';
+ import '../home/dashboard_screen.dart'; // notificationsProvider için
++import '../home/home_screen.dart'; // bottomNavIndexProvider için
+ import '../raporlar/raporlar_screen.dart';
+ import '../sosyal/sosyal_screen.dart';
+ import '../alisveris/alisveris_screen.dart';
+@@ -25,8 +28,39 @@ final _genderProvider = FutureProvider.autoDispose<String>((ref) async {
+   } catch (_) { return 'male'; }
+ });
+ 
+-class MoreScreen extends ConsumerWidget {
++class MoreScreen extends ConsumerStatefulWidget {
+   const MoreScreen({super.key});
++  @override
++  ConsumerState<MoreScreen> createState() => _MoreScreenState();
++}
++
++class _MoreScreenState extends ConsumerState<MoreScreen> {
++
++  Future<void> _logout() async {
++    final confirm = await showDialog<bool>(
++      context: context,
++      builder: (ctx) => AlertDialog(
++        title: const Text('Çıkış Yap'),
++        content: const Text('Hesabından çıkmak istediğine emin misin?'),
++        actions: [
++          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
++          TextButton(
++            onPressed: () => Navigator.pop(ctx, true),
++            child: const Text('Çıkış Yap', style: TextStyle(color: Colors.red)),
++          ),
++        ],
++      ),
++    );
++    if (confirm != true) return;
++    try { await ApiClient.instance.post(Endpoints.authLogout); } catch (_) {}
++    await RateLimiter.clearUserLimits();
++    final prefs = await SharedPreferences.getInstance();
++    await prefs.clear();
++    await TokenManager.clearTokens();
++    if (!mounted) return;
++    ref.read(bottomNavIndexProvider.notifier).state = 0;
++    context.go('/login');
++  }
+ 
+   void _showNotifications(BuildContext context, WidgetRef ref, bool isDark,
+       Color bgCard, Color bgSoft, Color border, Color text, Color textSoft, Color muted, Color accent) {
+@@ -163,6 +197,8 @@ class MoreScreen extends ConsumerWidget {
+         'items': [
+           _Item('👤', 'Profil', 'Sağlık bilgileri ve tercihler', const Color(0xFF34D399), () => _push(context, const ProfilScreen())),
+           _Item('🔔', 'Bildirimler', 'Hatırlatıcı ayarları', const Color(0xFFFFB020), () => _push(context, const NotificationScreen())),
++          // FIX #7: Çıkış yap More'a taşındı (profil → More → profile → scroll yolculuğu kalktı)
++          _Item('🚪', 'Çıkış Yap', 'Hesabından güvenli çıkış yap', const Color(0xFFEF4444), _logout),
+         ],
+       },
+     ];
+diff --git a/lib/screens/onboarding/onboarding_screen.dart b/lib/screens/onboarding/onboarding_screen.dart
+index 25b666b..903037d 100644
+--- a/lib/screens/onboarding/onboarding_screen.dart
++++ b/lib/screens/onboarding/onboarding_screen.dart
+@@ -80,7 +80,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
+   // Step 4 — Kalori alışkanlığı ← YENİ
+   String _calorieHabit = '1500_2000';
+   final _calorieHabits = [
+-      {'key': 'under_1500', 'label': '1500 kcal altı',    'desc': 'Çok az yiyorum, genelde tok hissetmiyorum', 'emoji': '🥗'},
++      {'key': 'under_1500', 'label': '1500 kcal altı',    'desc': 'Çok az yiyorum, genelde aç hissediyorum', 'emoji': '🥗'},
+       {'key': '1500_2000',  'label': '1500–2000 kcal',    'desc': 'Ortalama, dengeli beslenirim',              'emoji': '🍽️'},
+       {'key': '2000_2500',  'label': '2000–2500 kcal',    'desc': 'Aktif biriyim, iyi iştahım var',           'emoji': '🍖'},
+       {'key': '2500_3000',  'label': '2500–3000 kcal',    'desc': 'Çok yerim veya çok spor yaparım',          'emoji': '🥩'},
+diff --git a/lib/screens/profil/profil_screen.dart b/lib/screens/profil/profil_screen.dart
+index fdf023e..e3198b8 100644
+--- a/lib/screens/profil/profil_screen.dart
++++ b/lib/screens/profil/profil_screen.dart
+@@ -17,12 +17,7 @@ import '../ai/ai_helpers.dart';
+ 
+ final profileUserProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+   final response = await ApiClient.instance.get(Endpoints.me);
+-  final me = Map<String, dynamic>.from(response.data);
+-  // Profil her açıldığında /auth/me taze geldiği için, prefs premium cache'ini
+-  // de burada senkronla. Böylece app'i yeniden başlatmadan da (sadece profile
+-  // girip çıkarak) PRO durumu güncellenir — splash dışındaki 2. senkron noktası.
+-  await TokenManager.syncFromMe(me);
+-  return me;
++  return Map<String, dynamic>.from(response.data);
+ });
+ 
+ final profilePrefsProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+@@ -924,6 +919,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
+                         style: TextStyle(color: text, fontSize: 14),
+                         items: const [
+                           DropdownMenuItem(value: 'weight_loss',     child: Text('Kilo Vermek')),
++                          DropdownMenuItem(value: 'weight_gain',     child: Text('Kilo Almak')),   // FIX #4: eksik seçenek
+                           DropdownMenuItem(value: 'muscle_gain',     child: Text('Kas Kazanmak')),
+                           DropdownMenuItem(value: 'maintain',        child: Text('Kilo Korumak')),
+                           DropdownMenuItem(value: 'endurance',       child: Text('Dayanıklılık')),
+diff --git a/lib/screens/raporlar/raporlar_screen.dart b/lib/screens/raporlar/raporlar_screen.dart
+index 4c5803a..26deb8b 100644
+--- a/lib/screens/raporlar/raporlar_screen.dart
++++ b/lib/screens/raporlar/raporlar_screen.dart
+@@ -13,7 +13,7 @@ import 'wrapped_screen.dart';
+ import '../health/insights_card.dart';
+ import '../../app.dart';
+ 
+-final weeklyReportDetailProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
++final weeklyReportDetailProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+   final response = await ApiClient.instance.get(
+     Endpoints.reportsWeekly,
+     queryParameters: {'reference_date': TFDateUtils.today()},
+@@ -21,7 +21,7 @@ final weeklyReportDetailProvider = FutureProvider.autoDispose<Map<String, dynami
+   return Map<String, dynamic>.from(response.data);
+ });
+ 
+-final weeklyLogsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
++final weeklyLogsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+   try {
+     final response = await ApiClient.instance.get(
+       '${Endpoints.reportsWeekly}/logs',
+@@ -33,7 +33,7 @@ final weeklyLogsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref
+   }
+ });
+ 
+-final monthlyReportProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
++final monthlyReportProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+   final now = DateTime.now();
+   final response = await ApiClient.instance.get(
+     Endpoints.reportsMonthly,
+diff --git a/lib/screens/raporlar/wrapped_screen.dart b/lib/screens/raporlar/wrapped_screen.dart
+index c759356..574a4a0 100644
+--- a/lib/screens/raporlar/wrapped_screen.dart
++++ b/lib/screens/raporlar/wrapped_screen.dart
+@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
+ import 'package:flutter_riverpod/flutter_riverpod.dart';
+ import '../../core/api/api_client.dart';
+ import '../../core/api/endpoints.dart';
++import '../../core/widgets/celebrate.dart';
+ 
+ final wrappedProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+   final res = await ApiClient.instance.get(Endpoints.reportsWrapped);
+@@ -102,7 +103,14 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
+               Expanded(
+                 child: PageView(
+                   controller: _pageController,
+-                  onPageChanged: (i) => setState(() => _page = i),
++                  onPageChanged: (i) {
++                    setState(() => _page = i);
++                    // FIX (kutlama hissi): son slayt "senin yılındı" → konfeti patlat.
++                    if (i == cards.length - 1) {
++                      HapticFeedback.mediumImpact();
++                      Celebrate.burst(context);
++                    }
++                  },
+                   children: cards,
+                 ),
+               ),
+@@ -132,7 +140,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
+   List<Widget> _buildCards(Map<String, dynamic> d) {
+     final cards = <Widget>[
+       _card(
+-        gradient: const [Color(0xFF1A1D2B), Color(0xFF2D1B4E)],
++        gradient: const [Color(0xFF7C3AED), Color(0xFF4F46E5)],
+         emoji: '🏋️',
+         big: _fmt(d['total_sessions']),
+         title: 'antrenman seansı',
+@@ -140,7 +148,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
+              '${_fmt(d['total_workout_calories'])} kcal yaktın 🔥',
+       ),
+       _card(
+-        gradient: const [Color(0xFF0E2A1E), Color(0xFF143524)],
++        gradient: const [Color(0xFF059669), Color(0xFF10B981)],
+         emoji: '👟',
+         big: _fmt(d['total_steps']),
+         title: 'adım attın',
+@@ -151,7 +159,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
+ 
+     if (d['favorite_exercise'] != null) {
+       cards.add(_card(
+-        gradient: const [Color(0xFF2B1A1A), Color(0xFF4E1B2D)],
++        gradient: const [Color(0xFFE11D48), Color(0xFFBE185D)],
+         emoji: '❤️',
+         big: d['favorite_exercise'].toString(),
+         bigSize: 34,
+@@ -164,7 +172,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
+     if (d['weight_change_kg'] != null) {
+       final ch = (d['weight_change_kg'] as num).toDouble();
+       cards.add(_card(
+-        gradient: const [Color(0xFF1A2530), Color(0xFF1B3A4E)],
++        gradient: const [Color(0xFF0EA5E9), Color(0xFF2563EB)],
+         emoji: '⚖️',
+         big: '${ch <= 0 ? '' : '+'}${ch.toStringAsFixed(1)} kg',
+         title: 'kilo yolculuğun',
+@@ -174,7 +182,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
+     }
+ 
+     cards.add(_card(
+-      gradient: const [Color(0xFF1A2B2B), Color(0xFF1B4E4A)],
++      gradient: const [Color(0xFF0891B2), Color(0xFF06B6D4)],
+       emoji: '💧',
+       big: '${d['total_water_liters']} L',
+       title: 'su içtin',
+@@ -183,7 +191,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
+     ));
+ 
+     cards.add(_card(
+-      gradient: const [Color(0xFF2B271A), Color(0xFF4E3D1B)],
++      gradient: const [Color(0xFFD97706), Color(0xFFF59E0B)],
+       emoji: '🏅',
+       big: '${d['badges_earned']}',
+       title: 'rozet kazandın',
+diff --git a/lib/screens/sosyal/sosyal_screen.dart b/lib/screens/sosyal/sosyal_screen.dart
+index aeccf1d..e844210 100644
+--- a/lib/screens/sosyal/sosyal_screen.dart
++++ b/lib/screens/sosyal/sosyal_screen.dart
+@@ -9,7 +9,7 @@ import '../../core/api/endpoints.dart';
+ import '../../app.dart';
+ 
+ // ── Kabul edilmiş arkadaşlar ──
+-final friendsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
++final friendsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+   try {
+     final response = await ApiClient.instance.get(Endpoints.friends);
+     final data = response.data as List? ?? [];
+@@ -20,7 +20,7 @@ final friendsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((
+ });
+ 
+ // ── Gelen bekleyen istekler ──
+-final pendingRequestsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
++final pendingRequestsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+   try {
+     final response = await ApiClient.instance.get('/social/friends/pending');
+     final data = response.data as List? ?? [];
+@@ -31,7 +31,7 @@ final pendingRequestsProvider = FutureProvider.autoDispose<List<Map<String, dyna
+ });
+ 
+ // ── Leaderboard ──
+-final leaderboardProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
++final leaderboardProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+   try {
+     final response = await ApiClient.instance.get(Endpoints.leaderboard);
+     final data = response.data as List? ?? [];
+@@ -42,7 +42,7 @@ final leaderboardProvider = FutureProvider.autoDispose<List<Map<String, dynamic>
+ });
+ 
+ // ── v5: Düellolar ──
+-final duelsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
++final duelsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+   try {
+     final response = await ApiClient.instance.get(Endpoints.socialDuels);
+     final data = response.data as List? ?? [];
+diff --git a/lib/screens/splash/splash_screen.dart b/lib/screens/splash/splash_screen.dart
+index 68b92a3..000a4cf 100644
+--- a/lib/screens/splash/splash_screen.dart
++++ b/lib/screens/splash/splash_screen.dart
+@@ -97,30 +97,39 @@ class _SplashScreenState extends State<SplashScreen>
+     }
+ 
+     // 3. Token VAR ama gerçekten geçerli mi? Backend'e sorup doğrula.
+-    // DB sıfırlandıysa / token expire olduysa burada yakalanır.
+     bool sessionValid = false;
+     try {
+       final res = await ApiClient.instance.get(Endpoints.me);
+       sessionValid = res.statusCode == 200;
+-
+-      // ── KRİTİK: cevabın gövdesini SENKRONLA ──────────────────────
+-      // Önceden sadece statusCode bakılıp body atılıyordu. Oysa /auth/me
+-      // taze 'is_premium' ve 'id' döndürüyor. set_premium.py DB'yi
+-      // değiştirdiğinde uygulama açılışında premium burada güncellenir;
+-      // yoksa cache login anındaki eski değerde kalıp PRO'yu kilitli tutuyordu.
+-      if (sessionValid && res.data is Map) {
+-        await TokenManager.syncFromMe(Map<String, dynamic>.from(res.data));
+-      }
+     } catch (_) {
+       sessionValid = false;
+     }
+ 
+     if (!mounted) return;
+-    if (sessionValid) {
+-      context.go('/home');
+-    } else {
++    if (!sessionValid) {
+       await TokenManager.clearTokens();
+       context.go('/login');
++      return;
++    }
++
++    // 4. Oturum geçerli ama onboarding tamamlanmamış olabilir.
++    // FIX #1: uygulama yeniden açılınca onboarding atlanıyordu çünkü
++    // splash sadece token varlığına bakıp /home'a gidiyordu.
++    // Şimdi /onboarding endpoint'i kontrol ediliyor; is_completed false
++    // ise (ya da kayıt yoksa) onboarding ekranına yönlendirilir.
++    try {
++      final ob = await ApiClient.instance.get(Endpoints.onboarding);
++      final isCompleted = ob.data?['is_completed'] == true;
++      if (!mounted) return;
++      if (isCompleted) {
++        context.go('/home');
++      } else {
++        context.go('/onboarding');
++      }
++    } catch (_) {
++      // Endpoint hata verirse (ör. 404 — kayıt yok) onboarding'e gönder
++      if (!mounted) return;
++      context.go('/onboarding');
+     }
+   }
+ 
+diff --git a/lib/screens/steps/steps_screen.dart b/lib/screens/steps/steps_screen.dart
+index dfca584..74d7c64 100644
+--- a/lib/screens/steps/steps_screen.dart
++++ b/lib/screens/steps/steps_screen.dart
+@@ -14,7 +14,7 @@ import '../../core/widgets/count_up_text.dart';
+ import '../../core/widgets/pulse_skeleton.dart';
+ 
+ // v8: son 7 günün adımları — mini grafik için
+-final weekStepsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
++final weekStepsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+   try {
+     final response = await ApiClient.instance.get(Endpoints.steps);
+     final list = (response.data as List? ?? [])
+@@ -24,7 +24,7 @@ final weekStepsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>
+   } catch (_) { return []; }
+ });
+ 
+-final todayStepsProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
++final todayStepsProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+   try {
+     final response = await ApiClient.instance.get('${Endpoints.steps}/date/${TFDateUtils.today()}');
+     return Map<String, dynamic>.from(response.data);
+diff --git a/lib/screens/takip/diyet_tab.dart b/lib/screens/takip/diyet_tab.dart
+index 7868e5d..0575765 100644
+--- a/lib/screens/takip/diyet_tab.dart
++++ b/lib/screens/takip/diyet_tab.dart
+@@ -12,7 +12,7 @@ import '../../core/auth/token_manager.dart';
+ import '../ai/calorie_vision_screen.dart'; // v2: foto-kalori kısayolu
+ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+ 
+-final todayMealProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
++final todayMealProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+   try {
+     final response = await ApiClient.instance.get('${Endpoints.mealCompliance}/date/${TFDateUtils.today()}');
+     return Map<String, dynamic>.from(response.data);
+@@ -192,22 +192,40 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
+     if (_shoppingList.isEmpty || _exportingShopping) return;
+     setState(() => _exportingShopping = true);
+     var added = 0;
++    var skipped = 0;
+     try {
++      // FIX #18: idempotency — mevcut listeyi çek, aynı isimde ürün varsa atla.
++      // Önceden her basışta aynı 25 malzeme yeniden eklenerek duplicate oluşuyordu.
++      Set<String> existing = {};
++      try {
++        final res = await ApiClient.instance.get(Endpoints.shopping);
++        final items = res.data['items'] as List? ?? [];
++        existing = items
++            .map((e) => ((e as Map)['name'] as String?)?.toLowerCase().trim() ?? '')
++            .where((n) => n.isNotEmpty)
++            .toSet();
++      } catch (_) {}
++
+       for (final item in _shoppingList) {
+         final m = item is Map ? item : {};
+         final name = (m['name'] as String?)?.trim();
+         if (name == null || name.isEmpty) continue;
++        if (existing.contains(name.toLowerCase())) { skipped++; continue; }
+         await ApiClient.instance.post(Endpoints.shopping, data: {
+           'name': name,
+           'quantity': (m['quantity'] as String?)?.trim() ?? '1',
+           'notes': 'AI diyet planından',
+         });
++        existing.add(name.toLowerCase()); // tekrar eklemeye karşı lokal güncelle
+         added++;
+       }
+       if (mounted) {
+-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+-          content: Text('🛒 $added malzeme alışveriş listene eklendi'),
+-        ));
++        final msg = added == 0
++            ? '🛒 Tüm malzemeler zaten listende var'
++            : skipped > 0
++                ? '🛒 $added malzeme eklendi, $skipped zaten vardı'
++                : '🛒 $added malzeme alışveriş listene eklendi';
++        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+       }
+     } catch (_) {
+       if (mounted) {
+@@ -222,6 +240,91 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
+     }
+   }
+ 
++  // ── FIX #13: Besin tercihleri inline bottom sheet ─────
++  // Kullanıcı diyet tabından çıkmadan liked/disliked besinlerini güncelleyebilir.
++  // Kaydet → /preferences PUT → toast "Yeni diyet planı oluştururken tercihler güncellendi"
++  Future<void> _showFoodPrefsSheet(BuildContext ctx, Color accent, Color bgCard, Color border, Color text, Color muted) async {
++    // Mevcut tercihleri çek
++    String liked = '', disliked = '';
++    try {
++      final res = await ApiClient.instance.get(Endpoints.preferences);
++      final likedList  = (res.data['liked_foods']    as List?)?.cast<String>() ?? [];
++      final dislikedList = (res.data['disliked_foods'] as List?)?.cast<String>() ?? [];
++      liked    = likedList.join(', ');
++      disliked = dislikedList.join(', ');
++    } catch (_) {}
++
++    final likedCtrl    = TextEditingController(text: liked);
++    final dislikedCtrl = TextEditingController(text: disliked);
++
++    await showModalBottomSheet(
++      context: ctx,
++      isScrollControlled: true,
++      backgroundColor: bgCard,
++      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
++      builder: (sheetCtx) => Padding(
++        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(sheetCtx).viewInsets.bottom + 24),
++        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
++          Center(child: Container(width: 36, height: 4,
++            decoration: BoxDecoration(color: border, borderRadius: BorderRadius.circular(99)))),
++          const SizedBox(height: 16),
++          Text('Besin Tercihlerini Güncelle',
++            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: text)),
++          const SizedBox(height: 4),
++          Text('Virgülle ayırarak yaz. AI koçun bir sonraki diyet planında kullanacak.',
++            style: TextStyle(fontSize: 12, color: muted)),
++          const SizedBox(height: 14),
++          TextField(controller: likedCtrl,
++            style: TextStyle(color: text),
++            maxLines: 2,
++            decoration: InputDecoration(
++              labelText: '✅ Sevdiğin besinler',
++              hintText: 'örn: tavuk, yumurta, brokoli',
++              hintStyle: TextStyle(color: muted, fontSize: 12),
++            )),
++          const SizedBox(height: 10),
++          TextField(controller: dislikedCtrl,
++            style: TextStyle(color: text),
++            maxLines: 2,
++            decoration: InputDecoration(
++              labelText: '❌ Sevmediğin / alerjin',
++              hintText: 'örn: zeytin, deniz ürünleri',
++              hintStyle: TextStyle(color: muted, fontSize: 12),
++            )),
++          const SizedBox(height: 16),
++          SizedBox(
++            width: double.infinity,
++            child: FilledButton(
++              onPressed: () async {
++                try {
++                  final likedList    = likedCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
++                  final dislikedList = dislikedCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
++                  await ApiClient.instance.put(Endpoints.preferences, data: {
++                    'liked_foods':    likedList,
++                    'disliked_foods': dislikedList,
++                  });
++                  if (ctx.mounted) {
++                    Navigator.pop(sheetCtx);
++                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
++                      content: Text('✅ Tercihler güncellendi — yeni diyet planında geçerli olacak'),
++                    ));
++                  }
++                } catch (_) {
++                  if (ctx.mounted) {
++                    ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Kaydedilemedi')));
++                  }
++                }
++              },
++              child: const Text('Kaydet'),
++            ),
++          ),
++        ]),
++      ),
++    );
++    likedCtrl.dispose();
++    dislikedCtrl.dispose();
++  }
++
+   Future<void> _loadAdvice() async {
+     final prefs  = await SharedPreferences.getInstance();
+     final userId = await TokenManager.getCurrentUserId() ?? 'guest';
+@@ -566,11 +669,32 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
+                         child: Row(children: [
+                           const Text('🛒', style: TextStyle(fontSize: 20)),
+                           const SizedBox(width: 10),
+-                          Expanded(child: Text(
+-                            _exportingShopping
+-                                ? 'Aktarılıyor...'
+-                                : 'Alışveriş listesine aktar (${_shoppingList.length} kalem)',
+-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text),
++                          Expanded(child: Column(
++                            crossAxisAlignment: CrossAxisAlignment.start,
++                            children: [
++                              Text(
++                                _exportingShopping ? 'Aktarılıyor...' : 'Alışveriş listesine aktar',
++                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text),
++                              ),
++                              if (!_exportingShopping) ...[
++                                const SizedBox(height: 3),
++                                // FIX #18: "25 kalem" yerine gerçek ürün isimleri
++                                Builder(builder: (_) {
++                                  final names = _shoppingList
++                                      .map((e) => (e is Map ? e['name'] as String? : null) ?? '')
++                                      .where((n) => n.isNotEmpty)
++                                      .toList();
++                                  final preview = names.take(3).join(', ');
++                                  final extra = names.length > 3 ? ' +${names.length - 3} daha' : '';
++                                  return Text(
++                                    '$preview$extra',
++                                    style: TextStyle(fontSize: 11, color: muted),
++                                    maxLines: 1,
++                                    overflow: TextOverflow.ellipsis,
++                                  );
++                                }),
++                              ],
++                            ],
+                           )),
+                           _exportingShopping
+                               ? SizedBox(width: 16, height: 16,
+@@ -608,7 +732,20 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
+                       child: Column(
+                         crossAxisAlignment: CrossAxisAlignment.start,
+                         children: [
+-                          Text('✅ Önerilen Besinler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: text)),
++                          Row(children: [
++                            Text('✅ Önerilen Besinler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: text)),
++                            const SizedBox(width: 4),
++                            // FIX #13: ? tooltip — nereden geldiğini açıkla
++                            Tooltip(
++                              message: 'AI koçun profildeki sevilen besinlerine göre belirledi.\nDeğiştirmek için "Düzenle"ye bas.',
++                              child: Icon(Icons.info_outline, size: 14, color: muted),
++                            ),
++                            const Spacer(),
++                            GestureDetector(
++                              onTap: () => _showFoodPrefsSheet(context, accent, bgCard, border, text, muted),
++                              child: Text('Düzenle', style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600)),
++                            ),
++                          ]),
+                           const SizedBox(height: 10),
+                           Wrap(
+                             spacing: 6, runSpacing: 6,
+@@ -636,7 +773,19 @@ class _DiyetTabState extends ConsumerState<DiyetTab> {
+                       child: Column(
+                         crossAxisAlignment: CrossAxisAlignment.start,
+                         children: [
+-                          Text('❌ Kaçınılacak Besinler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: text)),
++                          Row(children: [
++                            Text('❌ Kaçınılacak Besinler', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: text)),
++                            const SizedBox(width: 4),
++                            Tooltip(
++                              message: 'AI koçun profildeki sevilmeyen besinlere/alerjilere göre belirledi.\nDeğiştirmek için "Düzenle"ye bas.',
++                              child: Icon(Icons.info_outline, size: 14, color: muted),
++                            ),
++                            const Spacer(),
++                            GestureDetector(
++                              onTap: () => _showFoodPrefsSheet(context, accent, bgCard, border, text, muted),
++                              child: Text('Düzenle', style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600)),
++                            ),
++                          ]),
+                           const SizedBox(height: 10),
+                           Wrap(
+                             spacing: 6, runSpacing: 6,
+diff --git a/lib/screens/takip/olcum_tab.dart b/lib/screens/takip/olcum_tab.dart
+index 6d3abb4..dea1e33 100644
+--- a/lib/screens/takip/olcum_tab.dart
++++ b/lib/screens/takip/olcum_tab.dart
+@@ -86,6 +86,18 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
+     super.dispose();
+   }
+ 
++  // ── Kas kütlesi tahmini: kimse net bilmez, yağsız kütleden hesapla ──
++  // Yağsız Vücut Kütlesi (LBM) = kilo × (1 − yağ%/100).
++  // İskelet kası ≈ LBM'nin ~%50'si (yetişkin ortalaması). Bu yüzden:
++  //   tahmini kas kütlesi ≈ kilo × (1 − yağ%/100) × 0.5
++  double? _estimateMuscleMass() {
++    final w  = double.tryParse(_weightController.text);
++    final bf = double.tryParse(_bodyFatController.text);
++    if (w == null || bf == null || bf <= 0 || bf >= 100) return null;
++    final leanMass = w * (1 - bf / 100); // yağsız vücut kütlesi
++    return double.parse((leanMass * 0.5).toStringAsFixed(1));
++  }
++
+   // ── Navy Method yağ oranı hesaplama ──────────────────
+   double? _navyBodyFat({
+     required bool isMale,
+@@ -345,6 +357,28 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
+             crossAxisAlignment: CrossAxisAlignment.start,
+             children: [
+ 
++              // FIX (boş state): hiç ölçüm yokken kullanıcıya net bilgi ver.
++              if (latest == null) ...[
++                Container(
++                  width: double.infinity,
++                  decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
++                  padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
++                  child: Column(
++                    children: [
++                      Icon(Icons.straighten, size: 40, color: muted),
++                      const SizedBox(height: 10),
++                      Text('Henüz ölçüm yok',
++                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: text)),
++                      const SizedBox(height: 4),
++                      Text('İlk ölçümünü ekle; zamanla değişimini grafiklerle takip edelim.',
++                        textAlign: TextAlign.center,
++                        style: TextStyle(fontSize: 12, color: muted)),
++                    ],
++                  ),
++                ),
++                const SizedBox(height: 12),
++              ],
++
+               if (latest != null) ...[
+                 GridView.count(
+                   shrinkWrap: true,
+@@ -394,19 +428,24 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
+                       ]),
+                       const SizedBox(height: 14),
+                       ...([
+-                        ['Göğüs', latest['chest_cm'],  88.0],
+-                        ['Kalça', latest['hip_cm'],    82.0],
+-                        ['Kol',   latest['arm_cm'],    55.0],
+-                        ['Bacak', latest['leg_cm'],    65.0],
++                        // 3. değer artık SABİT dolum değil, görsel ölçek için REFERANS tavan.
++                        ['Göğüs', latest['chest_cm'],  120.0],
++                        ['Kalça', latest['hip_cm'],    120.0],
++                        ['Kol',   latest['arm_cm'],     50.0],
++                        ['Bacak', latest['leg_cm'],     80.0],
+                       ].map((row) {
+                         final val = (row[1] as num?)?.toDouble();
+-                        final pct = row[2] as double;
++                        final refMax = row[2] as double;
++                        // FIX (boş state): önceden bar her zaman sabit %88/%82... doluyordu;
++                        // ölçüm girilmese bile "veri varmış gibi" görünüyordu. Artık değer
++                        // yoksa bar boş (0), varsa referansa oranlı dolar.
++                        final barValue = val != null ? (val / refMax).clamp(0.0, 1.0) : 0.0;
+                         return Padding(
+                           padding: const EdgeInsets.only(bottom: 10),
+                           child: Row(children: [
+                             SizedBox(width: 60, child: Text(row[0] as String, style: TextStyle(fontSize: 12, color: textSoft))),
+                             Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(99),
+-                              child: LinearProgressIndicator(value: pct / 100, minHeight: 6, backgroundColor: bgSoft, color: accent))),
++                              child: LinearProgressIndicator(value: barValue, minHeight: 6, backgroundColor: bgSoft, color: accent))),
+                             const SizedBox(width: 10),
+                             SizedBox(width: 60, child: Text(val != null ? '$val cm' : '--',
+                               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: text), textAlign: TextAlign.right)),
+@@ -456,8 +495,42 @@ class _OlcumTabState extends ConsumerState<OlcumTab> {
+                           ),
+                         ]),
+                       ),
++                      // ── Kas Kütlesi + "hesapla" butonu (yağsız kütleden tahmin) ──
++                      Padding(
++                        padding: const EdgeInsets.only(bottom: 10),
++                        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
++                          Expanded(
++                            child: TextField(controller: _muscleMassController,
++                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
++                              style: TextStyle(color: text),
++                              decoration: const InputDecoration(
++                                labelText: 'Kas Kütlesi (kg)',
++                                prefixIcon: Icon(Icons.fitness_center, size: 18))),
++                          ),
++                          const SizedBox(width: 8),
++                          GestureDetector(
++                            onTap: () {
++                              final est = _estimateMuscleMass();
++                              if (est == null) {
++                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
++                                  content: Text('Önce kilo ve vücut yağ % gir, sonra hesaplayalım.'),
++                                  duration: Duration(seconds: 2)));
++                                return;
++                              }
++                              setState(() => _muscleMassController.text = est.toString());
++                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
++                                content: Text('Yağsız kütleden tahmin: ~$est kg (düzenleyebilirsin)'),
++                                duration: const Duration(seconds: 2)));
++                            },
++                            child: Container(
++                              height: 52, width: 52,
++                              decoration: BoxDecoration(color: accentDim, borderRadius: BorderRadius.circular(12), border: Border.all(color: accent)),
++                              child: Icon(Icons.calculate_outlined, size: 22, color: accent),
++                            ),
++                          ),
++                        ]),
++                      ),
+                       ...[
+-                        [_muscleMassController, 'Kas Kütlesi (kg)', Icons.fitness_center],
+                         [_waistController,      'Bel (cm)',         Icons.straighten],
+                         [_chestController,      'Göğüs (cm)',       Icons.straighten],
+                         [_hipController,        'Kalça (cm)',       Icons.straighten],
+diff --git a/lib/screens/takip/su_tab.dart b/lib/screens/takip/su_tab.dart
+index 46892d1..044ed57 100644
+--- a/lib/screens/takip/su_tab.dart
++++ b/lib/screens/takip/su_tab.dart
+@@ -279,23 +279,51 @@ class _GlassPainter extends CustomPainter {
+       ..strokeWidth = 3
+       ..color = accent.withOpacity(0.5);
+ 
+-    // Su seviyesi (alttan dolar)
++    // FIX: bardak ağzına kadar dolmasın — %100'de bile görsel tavan %85.
++    // Üstte bir miktar "hava payı" kalır, daha gerçekçi durur.
++    const fillCap = 0.85;
++    final visualFill = (progress.clamp(0.0, 1.0)) * fillCap;
++    // Hedef (günlük su hedefi) çizgisi: %100'ün denk geldiği seviye.
++    final targetY = h * (1 - fillCap);
++
++    // Su seviyesi (alttan dolar) — iki dalga katmanı ile akış hissi
+     canvas.save();
+     canvas.clipPath(glass);
+-    final fillTop = h * (1 - progress);
++    final fillTop = h * (1 - visualFill);
++
++    // Arka (açık) dalga
++    final backWave = Path()..moveTo(0, fillTop);
++    for (double x = 0; x <= w; x++) {
++      final y = fillTop + 4 * sinApprox(wavePhase * 1.3 + x / w * 6.28 + 1.6);
++      backWave.lineTo(x, y);
++    }
++    backWave..lineTo(w, h)..lineTo(0, h)..close();
++    canvas.drawPath(backWave, Paint()..color = accent.withOpacity(0.35));
++
++    // Ön (koyu) dalga
+     final wave = Path()..moveTo(0, fillTop);
+     for (double x = 0; x <= w; x++) {
+-      final y = fillTop + 5 * (1 - progress) *
+-          (x == 0 ? 0 : 1) * // sabit küçük dalga
+-          (0.5 + 0.5 * (x / w)) *
+-          (sinApprox(wavePhase + x / w * 6.28));
++      final y = fillTop + 5 * (0.5 + 0.5 * (x / w)) * sinApprox(wavePhase + x / w * 6.28);
+       wave.lineTo(x, y);
+     }
+     wave..lineTo(w, h)..lineTo(0, h)..close();
+     canvas.drawPath(wave, Paint()..color = accent.withOpacity(0.85));
+-    canvas.drawPath(wave, Paint()..color = accent.withOpacity(0.3));
+     canvas.restore();
+ 
++    // Hedef çizgisi (kesik kesik) — bardağın içinde, camın üstünde çizilir
++    final dashPaint = Paint()
++      ..color = accent.withOpacity(0.9)
++      ..strokeWidth = 1.6;
++    const dashW = 5.0, gapW = 4.0;
++    double dx = w * 0.22;
++    final lineEnd = w * 0.78;
++    while (dx < lineEnd) {
++      canvas.drawLine(Offset(dx, targetY), Offset((dx + dashW).clamp(0, lineEnd), targetY), dashPaint);
++      dx += dashW + gapW;
++    }
++    // Küçük "hedef" etiketi (bayrak noktası)
++    canvas.drawCircle(Offset(w * 0.78, targetY), 2.5, Paint()..color = accent);
++
+     canvas.drawPath(glass, stroke);
+   }
+ 
+diff --git a/lib/screens/takip/takip_screen.dart b/lib/screens/takip/takip_screen.dart
+index 15542b4..73d95fd 100644
+--- a/lib/screens/takip/takip_screen.dart
++++ b/lib/screens/takip/takip_screen.dart
+@@ -218,8 +218,11 @@ class _TakipScreenState extends ConsumerState<TakipScreen>
+                     dividerColor: Colors.transparent,
+                     labelColor: accent,
+                     unselectedLabelColor: muted,
+-                    labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+-                    unselectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
++                    // FIX: default 16px yan padding "Ölçümler"i "ölçüme" diye kesiyordu.
++                    // Padding'i kısıp fontu 11'e çekince 4 sekmeye de tam sığıyor.
++                    labelPadding: const EdgeInsets.symmetric(horizontal: 4),
++                    labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
++                    unselectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+                     tabs: _tabs.map((t) => Tab(text: t['label'] as String)).toList(),
+                   ),
+                 ),
+diff --git a/lib/screens/takip/uyku_tab.dart b/lib/screens/takip/uyku_tab.dart
+index a3ee47c..b00eefe 100644
+--- a/lib/screens/takip/uyku_tab.dart
++++ b/lib/screens/takip/uyku_tab.dart
+@@ -5,7 +5,7 @@ import '../../core/api/api_client.dart';
+ import '../../core/api/endpoints.dart';
+ import '../../core/utils/date_utils.dart';
+ 
+-final todaySleepProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
++final todaySleepProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+   try {
+     final response = await ApiClient.instance.get('${Endpoints.sleep}/date/${TFDateUtils.today()}');
+     return Map<String, dynamic>.from(response.data);
+@@ -164,7 +164,7 @@ class _UykuTabState extends ConsumerState<UykuTab> {
+                       crossAxisCount: 2,
+                       mainAxisSpacing: 8,
+                       crossAxisSpacing: 8,
+-                      childAspectRatio: 2.8, // ESKİ: 3.5 → YENİ: 2.8
++                      childAspectRatio: 2.5, // FIX: 2.8 → 2.5 (0.357px taşma için pay)
+                       children: [
+                         ['Yatış',  '${_sleepTime.hour.toString().padLeft(2,"0")}:${_sleepTime.minute.toString().padLeft(2,"0")}'],
+                         ['Uyanış', '${_wakeTime.hour.toString().padLeft(2,"0")}:${_wakeTime.minute.toString().padLeft(2,"0")}'],

@@ -1,9 +1,44 @@
 import uuid
+import re
 from datetime import datetime, timezone
 from backend.app.domain.entities.user import User
 from backend.app.domain.interfaces.i_user_repository import IUserRepository
 from backend.app.core.security import hash_password, verify_password, create_access_token, create_refresh_token
 from backend.app.core.exceptions import BadRequestException, UnauthorizedException
+from backend.app.core.email_service import generate_email_token, token_expiry, send_verification_email
+
+# FIX #2: Tam email doğrulama altyapısı (SMTP) ileride eklenecek.
+# Şimdilik bilinen throwaway/geçici email domain'lerini blokla.
+# Kaynak: yaygın disposable email sağlayıcıları listesi.
+_THROWAWAY_DOMAINS = {
+    'mailinator.com','guerrillamail.com','tempmail.com','10minutemail.com',
+    'throwaway.email','yopmail.com','sharklasers.com','guerrillamailblock.com',
+    'grr.la','guerrillamail.info','guerrillamail.biz','guerrillamail.de',
+    'guerrillamail.net','guerrillamail.org','spam4.me','trashmail.com',
+    'trashmail.me','trashmail.net','dispostable.com','maildrop.cc',
+    'fakeinbox.com','mailnull.com','spamgourmet.com','spamgourmet.net',
+    'spamgourmet.org','spamhereplease.com','spam.la','binkmail.com',
+    'bobmail.info','chammy.info','devnullmail.com','discard.email',
+    'discardmail.com','discardmail.de','dodgit.com','dumpmail.de',
+    'e4ward.com','emailias.com','emailsensei.com','emailtemporario.com.br',
+    'enterto.com','filzmail.com','fivemail.de','fleckens.hu',
+    'getonemail.com','getonemail.net','haltospam.com','ieh-mail.de',
+    'imgof.com','imstations.com','inoutmail.de','inoutmail.eu',
+    'jetable.com','jetable.fr.nf','jetable.net','jetable.org',
+    'kasmail.com','kaspop.com','killmail.com','killmail.net',
+    'klassmaster.com','klassmaster.net','link2mail.net','litedrop.com',
+    'lol.ovpn.to','lookugly.com','lopl.co.cc','lortemail.dk',
+    'lr78.com','maileater.com','mailexpire.com','mailfreeonline.com',
+    'mailguard.me','mailin8r.com','mailme.gq','mailme.ir',
+    'mailme24.com','mailmetrash.com','mailmoat.com','mailnew.com',
+    'mailnull.com','mailsiphon.com','mailslite.com','mailzilla.com',
+    'mbx.cc','mega.zik.dj','moncourrier.fr.nf','monemail.fr.nf',
+    'monmail.fr.nf','mt2009.com','mx0.wwwnew.eu','my10minutemail.com',
+    'mytempemail.com','mytempmail.com','netzidiot.de','noclickemail.com',
+    'nogmailspam.info','nomail.pw','nomail.xl.cx','nomail2me.com',
+    'nospam.ze.tc','nospam4.us','nospamfor.us','nospammail.net',
+    'nowmymail.com','nus.edu.sg','objectmail.com','obobbo.com',
+}
 
 
 class AuthService:
@@ -16,6 +51,20 @@ class AuthService:
         self.user_repository = user_repository
 
     async def register(self, email: str, password: str, full_name: str) -> dict:
+        # Throwaway domain kontrolü
+        domain = email.split('@')[-1].lower().strip()
+        if domain in _THROWAWAY_DOMAINS:
+            raise BadRequestException(
+                "Geçici/throwaway email adresleriyle kayıt olunamaz. "
+                "Lütfen kalıcı bir email adresi kullanın."
+            )
+
+        # Şifre minimum güç kontrolü
+        if len(password) < 8:
+            raise BadRequestException("Şifre en az 8 karakter olmalıdır.")
+        if not re.search(r'[A-Za-z]', password) or not re.search(r'\d', password):
+            raise BadRequestException("Şifre en az bir harf ve bir rakam içermelidir.")
+
         # Aynı email ile kayıt varsa hata fırlat
         existing_user = await self.user_repository.get_by_email(email)
         if existing_user:
@@ -33,20 +82,62 @@ class AuthService:
         )
         created_user = await self.user_repository.create(user)
 
+        # Email doğrulama token'ı oluştur ve gönder
+        ev_token  = generate_email_token()
+        ev_expiry = token_expiry()
+        await self.user_repository.set_email_token(created_user.id, ev_token, ev_expiry)
+        await send_verification_email(created_user.email, created_user.full_name, ev_token)
+
         return self._generate_tokens(created_user)
 
     async def login(self, email: str, password: str) -> dict:
-        # Kullanıcıyı email ile bul
         user = await self.user_repository.get_by_email(email)
         if not user:
             raise UnauthorizedException("Email veya şifre hatalı")
-
-        # Şifreyi doğrula
         if not verify_password(password, user.password_hash):
             raise UnauthorizedException("Email veya şifre hatalı")
 
-        # Token üret ve döndür
-        return self._generate_tokens(user)
+        # Email doğrulanmamışsa token döndür ama yanıta flag ekle.
+        # Engel koymuyoruz — kullanıcı uygulamayı kullanabilir, banner görür.
+        tokens = self._generate_tokens(user)
+        tokens["email_verified"] = getattr(user, "email_verified", True)
+        return tokens
+
+    async def verify_email_token(self, token: str) -> dict:
+        """GET /auth/verify-email?token=... — browser'dan açılır."""
+        from datetime import timezone
+        user = await self.user_repository.get_by_email_token(token)
+        if not user:
+            raise BadRequestException("Geçersiz doğrulama linki.")
+        expires = getattr(user, "email_token_expires", None)
+        if expires:
+            # Offset-naive datetime'leri karşılaştırırken UTC'ye normalize et
+            now = datetime.now(timezone.utc)
+            if expires.tzinfo is None:
+                from datetime import timezone as tz
+                expires = expires.replace(tzinfo=tz.utc)
+            if now > expires:
+                raise BadRequestException(
+                    "Doğrulama linkinin süresi dolmuş. Yeni link için uygulamadan tekrar talep et."
+                )
+        await self.user_repository.verify_email(user.id)
+        return {"message": "E-posta adresin başarıyla doğrulandı! Uygulamaya dönebilirsin. 🎉"}
+
+    async def resend_verification(self, user_id: str) -> dict:
+        """POST /auth/resend-verification — uygulama içinden."""
+        from backend.app.core.exceptions import BadRequestException
+        user = await self.user_repository.get_by_id(user_id)
+        if not user:
+            raise BadRequestException("Kullanıcı bulunamadı.")
+        if getattr(user, "email_verified", False):
+            return {"message": "Email zaten doğrulanmış."}
+        ev_token  = generate_email_token()
+        ev_expiry = token_expiry()
+        await self.user_repository.set_email_token(user.id, ev_token, ev_expiry)
+        sent = await send_verification_email(user.email, user.full_name, ev_token)
+        if sent:
+            return {"message": "Doğrulama emaili tekrar gönderildi."}
+        return {"message": "Email gönderilemedi. Lütfen daha sonra tekrar dene."}
 
     def _generate_tokens(self, user: User) -> dict:
         # access ve refresh token üretir — v3: token_version claim'i ile

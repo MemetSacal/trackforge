@@ -1,21 +1,21 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Optional
 
 
 @dataclass
 class User:
-    # Domain entity — SQLAlchemy'den bağımsız, saf Python sınıfı
-    # Clean Architecture'da domain katmanı hiçbir framework'e bağımlı değil
-    # Spring'deki @Entity değil, saf bir POJO gibi düşün
-
-    id: str #
+    id: str
     email: str
     password_hash: str
     full_name: str
     created_at: datetime
     updated_at: datetime
     is_premium: bool = False
-    token_version: int = 0  # v3: logout/şifre değişiminde +1 — eski refresh token'ları geçersizleşir
+    token_version: int = 0
+    email_verified: bool = False        # #2: email doğrulama
+    email_token: Optional[str] = None
+    email_token_expires: Optional[datetime] = None
 
 """
 id UUID olarak üretiliyor ve str(uuid.uuid4()) ile stringe çevriliyor — "796258c6-8f96-4a2f-..." formatında.

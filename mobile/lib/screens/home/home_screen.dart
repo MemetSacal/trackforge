@@ -7,22 +7,59 @@ import '../ai/ai_screen.dart';
 import 'dashboard_screen.dart';
 import 'more_screen.dart';
 import '../../app.dart';
+import '../../core/api/api_client.dart';
+import '../../core/api/endpoints.dart';
+import '../../core/auth/token_manager.dart';
 
 final bottomNavIndexProvider = StateProvider<int>((ref) => 0);
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
+  @override
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
 
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const List<Widget> _screens = [
-    DashboardScreen(),
-    TakipScreen(),
-    EgzersizScreen(),
-    AiScreen(),
-    MoreScreen(),
+    DashboardScreen(), TakipScreen(), EgzersizScreen(), AiScreen(), MoreScreen(),
   ];
 
+  bool _emailVerified = true;
+  bool _bannerDismissed = false;
+  bool _resending = false;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    _checkEmailVerified();
+  }
+
+  Future<void> _checkEmailVerified() async {
+    final verified = await TokenManager.isEmailVerified();
+    if (!verified && mounted) setState(() => _emailVerified = false);
+  }
+
+  Future<void> _resend() async {
+    setState(() => _resending = true);
+    try {
+      await ApiClient.instance.post(Endpoints.authResendVerification);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✉️ Doğrulama emaili gönderildi!')));
+        setState(() => _bannerDismissed = true);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gönderilemedi, lütfen tekrar dene.')));
+      }
+    } finally {
+      if (mounted) setState(() => _resending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final currentIndex = ref.watch(bottomNavIndexProvider);
     final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
 
@@ -33,26 +70,68 @@ class HomeScreen extends ConsumerWidget {
     final muted    = isDark ? const Color(0xFF4A4860) : const Color(0xFF9AA0B8);
     final textSoft = isDark ? const Color(0xFF8A88A8) : const Color(0xFF5A6078);
 
+    final showBanner = !_emailVerified && !_bannerDismissed;
+
     return Scaffold(
       backgroundColor: bg,
-      body: _screens[currentIndex],
+      body: Column(
+        children: [
+          // ── Email doğrulama banner'ı ───────────────────────────────
+          if (showBanner)
+            Material(
+              color: const Color(0xFFD97706),
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(children: [
+                    const Icon(Icons.mail_outline, size: 16, color: Colors.black),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'E-postanı doğrula — gelen kutuna bak.',
+                        style: const TextStyle(fontSize: 12, color: Colors.black, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _resending ? null : _resend,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: _resending
+                            ? const SizedBox(width: 12, height: 12,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                            : const Text('Tekrar Gönder',
+                                style: TextStyle(fontSize: 11, color: Colors.black, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () => setState(() => _bannerDismissed = true),
+                      child: const Icon(Icons.close, size: 16, color: Colors.black),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          Expanded(child: _screens[currentIndex]),
+        ],
+      ),
       bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: bgCard,
-          border: Border(top: BorderSide(color: border)),
-        ),
+        decoration: BoxDecoration(color: bgCard, border: Border(top: BorderSide(color: border))),
         child: SafeArea(
           child: SizedBox(
             height: 60,
-            child: Row(
-              children: [
-                _NavItem(icon: Icons.home_outlined,        activeIcon: Icons.home,               label: 'Ana Sayfa', index: 0, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
-                _NavItem(icon: Icons.track_changes_outlined, activeIcon: Icons.track_changes,    label: 'Takip',    index: 1, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
-                _NavItem(icon: Icons.fitness_center_outlined, activeIcon: Icons.fitness_center,  label: 'Egzersiz', index: 2, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
-                _NavItem(icon: Icons.auto_awesome_outlined,  activeIcon: Icons.auto_awesome,     label: 'AI Koç',   index: 3, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
-                _NavItem(icon: Icons.more_horiz,            activeIcon: Icons.more_horiz,        label: 'Daha',     index: 4, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
-              ],
-            ),
+            child: Row(children: [
+              _NavItem(icon: Icons.home_outlined,          activeIcon: Icons.home,            label: 'Ana Sayfa', index: 0, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
+              _NavItem(icon: Icons.track_changes_outlined, activeIcon: Icons.track_changes,   label: 'Takip',    index: 1, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
+              _NavItem(icon: Icons.fitness_center_outlined,activeIcon: Icons.fitness_center,  label: 'Egzersiz', index: 2, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
+              _NavItem(icon: Icons.auto_awesome_outlined,  activeIcon: Icons.auto_awesome,    label: 'AI Koç',   index: 3, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
+              _NavItem(icon: Icons.more_horiz,             activeIcon: Icons.more_horiz,      label: 'Daha',     index: 4, current: currentIndex, accent: accent, muted: muted, textSoft: textSoft),
+            ]),
           ),
         ),
       ),

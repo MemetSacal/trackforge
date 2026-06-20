@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
+import '../../core/widgets/celebrate.dart';
 
 final wrappedProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final res = await ApiClient.instance.get(Endpoints.reportsWrapped);
@@ -102,7 +103,14 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
               Expanded(
                 child: PageView(
                   controller: _pageController,
-                  onPageChanged: (i) => setState(() => _page = i),
+                  onPageChanged: (i) {
+                    setState(() => _page = i);
+                    // FIX (kutlama hissi): son slayt "senin yılındı" → konfeti patlat.
+                    if (i == cards.length - 1) {
+                      HapticFeedback.mediumImpact();
+                      Celebrate.burst(context);
+                    }
+                  },
                   children: cards,
                 ),
               ),
@@ -132,7 +140,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
   List<Widget> _buildCards(Map<String, dynamic> d) {
     final cards = <Widget>[
       _card(
-        gradient: const [Color(0xFF1A1D2B), Color(0xFF2D1B4E)],
+        gradient: const [Color(0xFF7C3AED), Color(0xFF4F46E5)],
         emoji: '🏋️',
         big: _fmt(d['total_sessions']),
         title: 'antrenman seansı',
@@ -140,7 +148,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
              '${_fmt(d['total_workout_calories'])} kcal yaktın 🔥',
       ),
       _card(
-        gradient: const [Color(0xFF0E2A1E), Color(0xFF143524)],
+        gradient: const [Color(0xFF059669), Color(0xFF10B981)],
         emoji: '👟',
         big: _fmt(d['total_steps']),
         title: 'adım attın',
@@ -151,7 +159,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
 
     if (d['favorite_exercise'] != null) {
       cards.add(_card(
-        gradient: const [Color(0xFF2B1A1A), Color(0xFF4E1B2D)],
+        gradient: const [Color(0xFFE11D48), Color(0xFFBE185D)],
         emoji: '❤️',
         big: d['favorite_exercise'].toString(),
         bigSize: 34,
@@ -164,7 +172,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
     if (d['weight_change_kg'] != null) {
       final ch = (d['weight_change_kg'] as num).toDouble();
       cards.add(_card(
-        gradient: const [Color(0xFF1A2530), Color(0xFF1B3A4E)],
+        gradient: const [Color(0xFF0EA5E9), Color(0xFF2563EB)],
         emoji: '⚖️',
         big: '${ch <= 0 ? '' : '+'}${ch.toStringAsFixed(1)} kg',
         title: 'kilo yolculuğun',
@@ -174,7 +182,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
     }
 
     cards.add(_card(
-      gradient: const [Color(0xFF1A2B2B), Color(0xFF1B4E4A)],
+      gradient: const [Color(0xFF0891B2), Color(0xFF06B6D4)],
       emoji: '💧',
       big: '${d['total_water_liters']} L',
       title: 'su içtin',
@@ -183,7 +191,7 @@ class _WrappedScreenState extends ConsumerState<WrappedScreen> {
     ));
 
     cards.add(_card(
-      gradient: const [Color(0xFF2B271A), Color(0xFF4E3D1B)],
+      gradient: const [Color(0xFFD97706), Color(0xFFF59E0B)],
       emoji: '🏅',
       big: '${d['badges_earned']}',
       title: 'rozet kazandın',

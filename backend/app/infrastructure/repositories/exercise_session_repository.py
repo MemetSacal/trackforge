@@ -58,8 +58,9 @@ class ExerciseSessionRepository(IExerciseSessionRepository):
             return None
         # id, user_id, date değişmez — sadece içerik alanları güncellenir
         db_obj.duration_minutes = exercise_session.duration_minutes
-        db_obj.calories_burned = exercise_session.calories_burned
-        db_obj.notes = exercise_session.notes
+        db_obj.calories_burned  = exercise_session.calories_burned
+        db_obj.notes            = exercise_session.notes
+        db_obj.is_completed     = getattr(exercise_session, 'is_completed', db_obj.is_completed)
         await self.session.flush()
         return self._to_entity(db_obj)
 
@@ -87,6 +88,7 @@ class ExerciseSessionRepository(IExerciseSessionRepository):
             notes=db_obj.notes,
             created_at=db_obj.created_at,
             source=getattr(db_obj, 'source', 'manual'),
+            is_completed=getattr(db_obj, 'is_completed', False),
         )
 
 """

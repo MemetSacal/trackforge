@@ -54,6 +54,7 @@ class ExerciseSessionUpdateRequest(BaseModel):
     duration_minutes: Optional[int] = Field(None, ge=1)
     calories_burned: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
+    is_completed: Optional[bool] = None   # #19
 
 
 class ExerciseSessionResponse(BaseModel):
@@ -64,9 +65,10 @@ class ExerciseSessionResponse(BaseModel):
     duration_minutes: Optional[int]
     calories_burned: Optional[float]
     notes: Optional[str]
-    source: str = "manual"                          # v4: seans kaynağı
+    source: str = "manual"
+    is_completed: bool = False             # #19
     created_at: datetime
-    exercises: list[SessionExerciseResponse] = []   # Seanstaki egzersizler — default boş liste
+    exercises: list[SessionExerciseResponse] = []
 
     class Config:
         from_attributes = True

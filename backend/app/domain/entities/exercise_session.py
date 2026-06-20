@@ -31,4 +31,5 @@ class ExerciseSession:
     calories_burned: Optional[float]        # Yakılan kalori — opsiyonel
     notes: Optional[str]                    # Seans notu — "Çok yoruldum" gibi
     created_at: datetime
-    source: str = "manual"  # v4: 'manual' | 'ai_plan' — son sırada: default'lu alan default'suzdan ÖNCE gelemez
+    source: str = "manual"  # v4: 'manual' | 'ai_plan'
+    is_completed: bool = False              # #19: tüm egzersizler done → seans tamamlandı

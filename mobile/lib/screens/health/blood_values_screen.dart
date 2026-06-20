@@ -9,14 +9,14 @@ import '../../app.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 
-final bloodMarkersProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final bloodMarkersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   try {
     final res = await ApiClient.instance.get(Endpoints.bloodValuesMarkers);
     return (res.data as List? ?? []).map((e) => Map<String, dynamic>.from(e)).toList();
   } catch (_) { return []; }
 });
 
-final bloodValuesProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+final bloodValuesProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     final res = await ApiClient.instance.get(Endpoints.bloodValues);
     // {"grouped": {marker: [ {id, marker, value, unit, test_date, label} ]}}
@@ -183,6 +183,7 @@ class _BloodValuesScreenState extends ConsumerState<BloodValuesScreen> {
     final valueCtrl = TextEditingController();
     String? selectedMarker = markers.isNotEmpty ? markers.first['marker'].toString() : null;
     DateTime selectedDate = DateTime.now();
+    bool consentGiven = false; // KVKK açık rıza onayı
 
     await showModalBottomSheet(
       context: context,
@@ -192,6 +193,7 @@ class _BloodValuesScreenState extends ConsumerState<BloodValuesScreen> {
         Future<void> save() async {
           final val = double.tryParse(valueCtrl.text.replaceAll(',', '.'));
           if (selectedMarker == null || val == null) return;
+          if (!consentGiven) return; // onay olmadan kaydetme
           try {
             await ApiClient.instance.post(Endpoints.bloodValues, data: {
               'marker': selectedMarker,
@@ -244,10 +246,55 @@ class _BloodValuesScreenState extends ConsumerState<BloodValuesScreen> {
                 child: const Text('Değiştir'),
               ),
             ]),
+            const SizedBox(height: 12),
+            // ── KVKK aydınlatma + açık rıza ──────────────────────────
+            // Sağlık verisi KVKK m.6'da "özel nitelikli kişisel veri"dir;
+            // işlenmesi için açık rıza şarttır. Kullanıcıya ne, neden, nerede
+            // ve ne kadar süreyle saklandığını net göster, onayını al.
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(ctx).colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: const [
+                  Icon(Icons.privacy_tip_outlined, size: 16),
+                  SizedBox(width: 6),
+                  Text('Kişisel Sağlık Verisi (KVKK)',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                ]),
+                const SizedBox(height: 6),
+                Text(
+                  'Girdiğin tahlil sonuçları "özel nitelikli kişisel veri" sayılır. '
+                  'Yalnızca sana zaman içindeki sağlık trendini göstermek için, '
+                  'hesabına bağlı olarak güvenli sunucularda saklanır. Üçüncü '
+                  'taraflarla paylaşılmaz. İstediğin an silebilir, hesabını '
+                  'kapatınca tüm verin kalıcı olarak silinir.',
+                  style: TextStyle(fontSize: 11, height: 1.4,
+                      color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 4),
+                CheckboxListTile(
+                  value: consentGiven,
+                  onChanged: (v) => setSheet(() => consentGiven = v ?? false),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  dense: true,
+                  title: const Text(
+                    'Sağlık verimin yukarıdaki amaçla işlenmesini onaylıyorum.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ]),
+            ),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: FilledButton(onPressed: save, child: const Text('Kaydet')),
+              child: FilledButton(
+                onPressed: consentGiven ? save : null, // onay yoksa pasif
+                child: const Text('Kaydet'),
+              ),
             ),
           ]),
         );

@@ -8,6 +8,7 @@ import '../../core/api/api_exceptions.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/auth/token_manager.dart';
 import '../../app.dart';
+import '../home/home_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -58,16 +59,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         'password': _passwordController.text,
       });
 
-      // ── HESAP DEĞİŞİMİ KORUMASI ──────────────────────────────────
-      // Yeni token'ları yazmadan ÖNCE cihazda kayıtlı önceki user_id'yi oku.
-      // saveTokens birazdan bunu üzerine yazacak, o yüzden şimdi yakalıyoruz.
-      final previousUserId = await TokenManager.getCurrentUserId();
-      final newUserId = (response.data['user_id'] ?? '').toString();
-
       final prefs = await SharedPreferences.getInstance();
 
+      // email_verified durumunu prefs'e kaydet → home banner için
+      final emailVerified = response.data['email_verified'] ?? true;
+      await prefs.setBool('email_verified', emailVerified as bool);
+
       if (_rememberMe) {
-        // Beni hatırla açık → token'ı kaydet, email'i kaydet
         await TokenManager.saveTokens(
           accessToken:  response.data['access_token'],
           refreshToken: response.data['refresh_token'],
@@ -77,8 +75,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         await prefs.setString('saved_email', _emailController.text.trim());
         await prefs.setBool('remember_me', true);
       } else {
-        // Beni hatırla kapalı → token yine kaydedilir (oturum için gerekli)
-        // ama email ve remember_me flag'ini temizle
         await TokenManager.saveTokens(
           accessToken:  response.data['access_token'],
           refreshToken: response.data['refresh_token'],
@@ -87,19 +83,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         );
         await prefs.remove('saved_email');
         await prefs.setBool('remember_me', false);
-        // Session flag → splash'te kontrol edilecek
         await prefs.setBool('session_only', true);
       }
 
-      // ── Token'lar yazıldı. Önceki kullanıcı FARKLIYSA eski cache'i temizle ──
-      // Bu, "logout etmeden başka hesaba geçince eski kullanıcının diyet/öğün/
-      // bildirim verisinin görünmesi" bug'ının kök çözümü. Aynı kullanıcı tekrar
-      // giriş yaparsa (previousUserId == newUserId) kendi cache'i korunur.
-      if (previousUserId != null && previousUserId != newUserId) {
-        await TokenManager.clearUserScopedCache();
-      }
-
       if (!mounted) return;
+      // FIX #6: login sonrası her zaman Dashboard (index 0) açılsın.
+      // Önceki session'ın bottomNavIndexProvider state'i Riverpod'da kalıyordu,
+      // bu yüzden farklı hesapla giriş yapınca son açık sekme (örn. More=4) geliyordu.
+      ref.read(bottomNavIndexProvider.notifier).state = 0;
       context.go('/home');
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);

@@ -17,12 +17,7 @@ import '../ai/ai_helpers.dart';
 
 final profileUserProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final response = await ApiClient.instance.get(Endpoints.me);
-  final me = Map<String, dynamic>.from(response.data);
-  // Profil her açıldığında /auth/me taze geldiği için, prefs premium cache'ini
-  // de burada senkronla. Böylece app'i yeniden başlatmadan da (sadece profile
-  // girip çıkarak) PRO durumu güncellenir — splash dışındaki 2. senkron noktası.
-  await TokenManager.syncFromMe(me);
-  return me;
+  return Map<String, dynamic>.from(response.data);
 });
 
 final profilePrefsProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
@@ -924,6 +919,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
                         style: TextStyle(color: text, fontSize: 14),
                         items: const [
                           DropdownMenuItem(value: 'weight_loss',     child: Text('Kilo Vermek')),
+                          DropdownMenuItem(value: 'weight_gain',     child: Text('Kilo Almak')),   // FIX #4: eksik seçenek
                           DropdownMenuItem(value: 'muscle_gain',     child: Text('Kas Kazanmak')),
                           DropdownMenuItem(value: 'maintain',        child: Text('Kilo Korumak')),
                           DropdownMenuItem(value: 'endurance',       child: Text('Dayanıklılık')),

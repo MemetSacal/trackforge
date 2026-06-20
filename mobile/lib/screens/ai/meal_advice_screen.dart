@@ -14,7 +14,7 @@ import '../../core/utils/rate_limiter.dart';
 import 'dart:convert';
 import '../../core/auth/token_manager.dart';
 
-final preferencesProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+final preferencesProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.preferences);
     return Map<String, dynamic>.from(response.data);
@@ -315,43 +315,77 @@ class _MealAdviceScreenState extends ConsumerState<MealAdviceScreen>
                           .toList(),
                     ),
                     const SizedBox(height: 10),
-                    Row(children: [
-                      Expanded(
-                          child: TextField(
-                              controller: addRecommCtrl,
-                              style: TextStyle(color: text, fontSize: 13),
-                              decoration: InputDecoration(
-                                  hintText: 'Besin ekle (örn: ceviz)',
-                                  hintStyle:
-                                      TextStyle(color: muted, fontSize: 13),
+                    // FIX #14: Serbest giriş kısıtlaması — özelliğin amacı
+                    // istenmeyen besini sağlıklı alternatifle DEĞİŞTİRMEK,
+                    // cips/burger gibi diyet dışı gıda eklemek değil.
+                    // Bilinen junk food anahtar kelimelerini reddedip kullanıcıya
+                    // amacı hatırlatıyoruz; meşru besinler serbestçe girilebilir.
+                    Builder(builder: (bCtx) {
+                      String? errorMsg;
+                      const _junkKeywords = [
+                        'cips','chips','burger','hamburger','pizza','hot dog','hotdog',
+                        'kızarmış tavuk','fried chicken','nugget','sosisli','sosis',
+                        'patates kızartma','french fry','fries','çikolata','chocolate',
+                        'gofret','wafer','bisküvi','kurabiye','kek','pasta','tatlı',
+                        'şeker','candy','şekerleme','gummy','limonata','kola','soda',
+                        'enerji içeceği','energy drink','alkol','beer','bira','şarap',
+                        'wine','viski','vodka','rakı',
+                      ];
+                      return StatefulBuilder(builder: (_, setErr) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Expanded(
+                              child: TextField(
+                                controller: addRecommCtrl,
+                                style: TextStyle(color: text, fontSize: 13),
+                                decoration: InputDecoration(
+                                  hintText: 'Alternatif sağlıklı besin ekle (örn: ceviz)',
+                                  hintStyle: TextStyle(color: muted, fontSize: 13),
                                   isDense: true,
-                                  contentPadding:
-                                      const EdgeInsets.symmetric(
-                                          horizontal: 12, vertical: 10),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                   border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide:
-                                          BorderSide(color: border))))),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () {
-                          final v = addRecommCtrl.text.trim();
-                          if (v.isNotEmpty) {
-                            setModal(() {
-                              recommended.add(v);
-                              addRecommCtrl.clear();
-                            });
-                          }
-                        },
-                        child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                                color: accent,
-                                borderRadius: BorderRadius.circular(12)),
-                            child: const Icon(Icons.add,
-                                color: Colors.black, size: 18)),
-                      ),
-                    ]),
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: errorMsg != null ? danger : border),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            GestureDetector(
+                              onTap: () {
+                                final v = addRecommCtrl.text.trim();
+                                if (v.isEmpty) return;
+                                final lower = v.toLowerCase();
+                                final isJunk = _junkKeywords.any((k) => lower.contains(k));
+                                if (isJunk) {
+                                  setErr(() => errorMsg = 'Bu alan diyet planına uygun alternatif besinler içindir. Lütfen sağlıklı bir seçenek gir.');
+                                  return;
+                                }
+                                setErr(() => errorMsg = null);
+                                setModal(() {
+                                  recommended.add(v);
+                                  addRecommCtrl.clear();
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(12)),
+                                child: const Icon(Icons.add, color: Colors.black, size: 18),
+                              ),
+                            ),
+                          ]),
+                          if (errorMsg != null) ...[
+                            const SizedBox(height: 4),
+                            Row(children: [
+                              Icon(Icons.info_outline, size: 13, color: danger),
+                              const SizedBox(width: 4),
+                              Expanded(child: Text(errorMsg!, style: TextStyle(fontSize: 11, color: danger))),
+                            ]),
+                          ],
+                        ],
+                      ));
+                    }),
                     const SizedBox(height: 20),
                     Text('❌ Kaçınılacak Besinler',
                         style: TextStyle(

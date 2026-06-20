@@ -10,7 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'egzersiz_screen.dart';
 
 final sessionExercisesProvider =
-    FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, sessionId) async {
+    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, sessionId) async {
   try {
     final response = await ApiClient.instance.get('${Endpoints.exerciseSessions}/$sessionId/exercises');
     final list = response.data as List;
@@ -44,12 +44,10 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
 
   String get _sessionId => widget.session['id'] as String;
 
-  // Egzersiz tamamlandı toggle
-  // v8: tamamlama anında dokunsal geri bildirim
+  // Egzersiz tamamlandı toggle + tüm done'sa seansı backend'de complete yap
   Future<void> _toggleCompleted(String exerciseId, bool current) async {
     final newVal = !current;
     setState(() => _completedState[exerciseId] = newVal);
-    // v8: işaretleme anında dokunsal his — premium uygulamaların gizli imzası
     if (newVal) {
       HapticFeedback.lightImpact();
     } else {
@@ -61,8 +59,37 @@ class _SeansDetayScreenState extends ConsumerState<SeansDetayScreen> {
         data: {'completed': newVal},
       );
       ref.invalidate(sessionExercisesProvider(_sessionId));
+
+      // #19: Tüm egzersizler tamamlandıysa seansı backend'de complete işaretle.
+      // Kısa bekleme: provider rebuild olsun, güncel listeyi oku.
+      if (newVal) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        final exAsync = ref.read(sessionExercisesProvider(_sessionId));
+        final exercises = exAsync.valueOrNull ?? [];
+        // _completedState'i güncelleme dahil: hepsini kontrol et
+        final allDone = exercises.isNotEmpty &&
+            exercises.every((ex) {
+              final id = ex['id'] as String;
+              return _completedState[id] ?? (ex['completed'] as bool? ?? false);
+            });
+        if (allDone) {
+          try {
+            await ApiClient.instance.patch(
+              Endpoints.exerciseSessionComplete(_sessionId),
+            );
+            if (mounted) {
+              HapticFeedback.mediumImpact();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('🏆 Antrenman tamamlandı! Harika iş!'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          } catch (_) {} // sessiz fail — UI zaten doğru gösteriyor
+        }
+      }
     } catch (_) {
-      // Hata olursa geri al
       setState(() => _completedState[exerciseId] = current);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Güncellenemedi')));

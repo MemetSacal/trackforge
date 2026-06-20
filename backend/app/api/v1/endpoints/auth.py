@@ -96,12 +96,51 @@ async def get_me(
     if not user:
         raise UnauthorizedException("Kullanıcı bulunamadı")
     return {
-        "id": user.id,
-        "email": user.email,
-        "full_name": user.full_name,
-        "created_at": user.created_at,
-        "is_premium": user.is_premium,
+        "id":             user.id,
+        "email":          user.email,
+        "full_name":      user.full_name,
+        "created_at":     user.created_at,
+        "is_premium":     user.is_premium,
+        "email_verified": getattr(user, "email_verified", True),
     }
+
+
+@router.get("/verify-email")
+async def verify_email(token: str, auth_service: AuthService = Depends(get_auth_service)):
+    """Email doğrulama linki — browser'dan açılır, HTML döner."""
+    from fastapi.responses import HTMLResponse
+    _style = ("body{margin:0;background:#0C0D10;display:flex;align-items:center;"
+              "justify-content:center;min-height:100vh;font-family:-apple-system,sans-serif}"
+              ".card{background:#141620;border:1px solid rgba(255,255,255,.07);"
+              "border-radius:20px;padding:40px;max-width:400px;text-align:center}"
+              "h1{font-size:22px;margin:0 0 10px}p{color:#8A88A8;font-size:14px;line-height:1.6;margin:0}")
+    try:
+        result = await auth_service.verify_email_token(token)
+        html = (f'<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8">'
+                f'<title>TrackForge</title><style>{_style}</style></head><body>'
+                f'<div class="card"><div style="font-size:48px;margin-bottom:16px">✅</div>'
+                f'<h1 style="color:#4ADE80">Email Doğrulandı!</h1>'
+                f'<p>{result["message"]}</p></div></body></html>')
+        return HTMLResponse(content=html)
+    except Exception as e:
+        html = (f'<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8">'
+                f'<title>TrackForge</title><style>{_style}</style></head><body>'
+                f'<div class="card"><div style="font-size:48px;margin-bottom:16px">❌</div>'
+                f'<h1 style="color:#EF4444">Geçersiz Link</h1>'
+                f'<p>{str(e)}</p></div></body></html>')
+        return HTMLResponse(content=html, status_code=400)
+
+
+@router.post("/resend-verification")
+async def resend_verification(
+    user_id: str = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """Doğrulama emailini tekrar gönder."""
+    result = await auth_service.resend_verification(user_id)
+    await db.commit()
+    return result
 
 """
 Genel akış:

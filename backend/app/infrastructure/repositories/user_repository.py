@@ -55,6 +55,40 @@ class UserRepository(IUserRepository):
         await self.session.flush()
         return self._to_entity(db_user)
 
+    async def get_by_email_token(self, token: str) -> User | None:
+        """Email doğrulama token'ıyla kullanıcı bul."""
+        result = await self.session.execute(
+            select(UserModel).where(UserModel.email_token == token)
+        )
+        db_user = result.scalar_one_or_none()
+        return self._to_entity(db_user) if db_user else None
+
+    async def set_email_token(
+        self, user_id: str, token: str | None, expires: "datetime | None"
+    ) -> None:
+        """Email token'ı güncelle (doğrulama talebi veya temizleme)."""
+        from datetime import datetime
+        result = await self.session.execute(
+            select(UserModel).where(UserModel.id == user_id)
+        )
+        db_user = result.scalar_one_or_none()
+        if db_user:
+            db_user.email_token = token
+            db_user.email_token_expires = expires
+            await self.session.flush()
+
+    async def verify_email(self, user_id: str) -> None:
+        """email_verified=True yap, token'ı temizle."""
+        result = await self.session.execute(
+            select(UserModel).where(UserModel.id == user_id)
+        )
+        db_user = result.scalar_one_or_none()
+        if db_user:
+            db_user.email_verified = True
+            db_user.email_token = None
+            db_user.email_token_expires = None
+            await self.session.flush()
+
     async def bump_token_version(self, user_id: str) -> None:
         """v3: Tüm aktif refresh token'ları geçersizleştirir (logout / şifre değişimi).
         Access token zaten 15 dk ömürlü — refresh ölünce oturum biter."""
@@ -93,8 +127,6 @@ class UserRepository(IUserRepository):
         return True
 
     def _to_entity(self, db_user: UserModel) -> User:
-        # UserModel (SQLAlchemy) → User (domain entity) dönüşümü
-        # Servis katmanı SQLAlchemy'yi hiç görmez, sadece User entity'si görür
         return User(
             id=db_user.id,
             email=db_user.email,
@@ -103,6 +135,9 @@ class UserRepository(IUserRepository):
             created_at=db_user.created_at,
             updated_at=db_user.updated_at,
             token_version=getattr(db_user, 'token_version', 0),
+            email_verified=getattr(db_user, 'email_verified', False),
+            email_token=getattr(db_user, 'email_token', None),
+            email_token_expires=getattr(db_user, 'email_token_expires', None),
         )
 
 """

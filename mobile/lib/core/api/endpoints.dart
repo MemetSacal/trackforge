@@ -40,6 +40,7 @@ class Endpoints {
 
   // ── Exercises ────────────────────────────────────────
   static const String exerciseSessions = '/exercises/sessions';
+  static String exerciseSessionComplete(String id) => '/exercises/sessions/$id/complete';
 
   // ── Files ────────────────────────────────────────────
   static const String photos = '/files/photos';
@@ -81,7 +82,8 @@ class Endpoints {
   static const String aiFeedback = '/ai/feedback';  // v2: 👍/👎 geri bildirim
   static const String aiRecipeFromPhoto = '/ai/recipe-from-photo';  // v3: buzdolabı→tarif
   static const String aiPlateauStatus = '/ai/plateau-status';       // v3: plato kontrolü (kotasız)
-  static const String authLogout = '/auth/logout';                  // v3: sunucu tarafı logout
+  static const String authLogout             = '/auth/logout';
+  static const String authResendVerification = '/auth/resend-verification';                  // v3: sunucu tarafı logout
   static const String authDeleteMe = '/auth/me';                    // v3: hesap silme (DELETE)
   static const String reportsDashboardSummary = '/reports/dashboard-summary'; // v4: tek istekte dashboard
   static const String reportsWrapped = '/reports/wrapped';      // v5: yıl özeti

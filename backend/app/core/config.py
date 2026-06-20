@@ -32,6 +32,16 @@ class Settings(BaseSettings):
 
     ANTHROPIC_API_KEY: str = ""
 
+    # ── Email doğrulama (Resend) ──────────────────────────────────
+    # Render'da Environment Variables'a ekle:
+    #   RESEND_API_KEY  → Resend dashboard'dan (resend.com)
+    #   APP_BASE_URL    → https://trackforge-3o2j.onrender.com
+    #   FROM_EMAIL      → noreply@yourdomain.com (Resend'de doğrulanmış domain)
+    RESEND_API_KEY: str = ""
+    APP_BASE_URL:   str = "https://trackforge-3o2j.onrender.com"
+    FROM_EMAIL:     str = "TrackForge <noreply@trackforge.app>"
+    EMAIL_VERIFY_EXPIRE_HOURS: int = 24  # Token geçerlilik süresi
+
     # ── Sentry (hata izleme) ──
     SENTRY_DSN: str = ""
     ENVIRONMENT: str = "development"

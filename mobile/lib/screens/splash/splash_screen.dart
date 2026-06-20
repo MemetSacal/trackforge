@@ -97,30 +97,39 @@ class _SplashScreenState extends State<SplashScreen>
     }
 
     // 3. Token VAR ama gerçekten geçerli mi? Backend'e sorup doğrula.
-    // DB sıfırlandıysa / token expire olduysa burada yakalanır.
     bool sessionValid = false;
     try {
       final res = await ApiClient.instance.get(Endpoints.me);
       sessionValid = res.statusCode == 200;
-
-      // ── KRİTİK: cevabın gövdesini SENKRONLA ──────────────────────
-      // Önceden sadece statusCode bakılıp body atılıyordu. Oysa /auth/me
-      // taze 'is_premium' ve 'id' döndürüyor. set_premium.py DB'yi
-      // değiştirdiğinde uygulama açılışında premium burada güncellenir;
-      // yoksa cache login anındaki eski değerde kalıp PRO'yu kilitli tutuyordu.
-      if (sessionValid && res.data is Map) {
-        await TokenManager.syncFromMe(Map<String, dynamic>.from(res.data));
-      }
     } catch (_) {
       sessionValid = false;
     }
 
     if (!mounted) return;
-    if (sessionValid) {
-      context.go('/home');
-    } else {
+    if (!sessionValid) {
       await TokenManager.clearTokens();
       context.go('/login');
+      return;
+    }
+
+    // 4. Oturum geçerli ama onboarding tamamlanmamış olabilir.
+    // FIX #1: uygulama yeniden açılınca onboarding atlanıyordu çünkü
+    // splash sadece token varlığına bakıp /home'a gidiyordu.
+    // Şimdi /onboarding endpoint'i kontrol ediliyor; is_completed false
+    // ise (ya da kayıt yoksa) onboarding ekranına yönlendirilir.
+    try {
+      final ob = await ApiClient.instance.get(Endpoints.onboarding);
+      final isCompleted = ob.data?['is_completed'] == true;
+      if (!mounted) return;
+      if (isCompleted) {
+        context.go('/home');
+      } else {
+        context.go('/onboarding');
+      }
+    } catch (_) {
+      // Endpoint hata verirse (ör. 404 — kayıt yok) onboarding'e gönder
+      if (!mounted) return;
+      context.go('/onboarding');
     }
   }
 

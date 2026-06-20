@@ -24,7 +24,18 @@ class IUserRepository(ABC):
 
     @abstractmethod
     async def update(self, user: User) -> User:
-        # Kullanıcıyı güncelle
+        pass
+
+    @abstractmethod
+    async def get_by_email_token(self, token: str) -> User | None:
+        pass
+
+    @abstractmethod
+    async def set_email_token(self, user_id: str, token, expires) -> None:
+        pass
+
+    @abstractmethod
+    async def verify_email(self, user_id: str) -> None:
         pass
 
 """

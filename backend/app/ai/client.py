@@ -9,8 +9,11 @@ def get_claude_client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
 
-# Kullanılacak model — en güncel Claude Sonnet
-CLAUDE_MODEL = "claude-sonnet-4-5"
+# Kullanılacak model — Sonnet 4.5'in KANONİK pinned snapshot'ı.
+# NOT: Tarihsiz 'claude-sonnet-4-5' alias'ı yerine tarihli ID kullanıyoruz:
+# pinned snapshot her zaman geçerli (alias bazı durumlarda 400 verebiliyor),
+# chat modeli zaten tarihli (-20251001) — tutarlılık için generation da öyle.
+CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
 
 # v1.1: Sohbet asistanı için ucuz/hızlı model — plan üretimindeki ağır
 # Sonnet yerine Haiku. Sohbet sık ve kısa olduğu için maliyet kritik.
@@ -20,7 +23,9 @@ CLAUDE_CHAT_MODEL = "claude-haiku-4-5-20251001"
 MAX_TOKENS_SUMMARY = 1500      # Haftalık özet için
 MAX_TOKENS_WORKOUT = 4000      # Antrenman planı için
 MAX_TOKENS_MEAL = 3000         # Diyet tavsiyesi için
-MAX_TOKENS_RECIPE = 1000       # Tarif önerisi için
+MAX_TOKENS_RECIPE = 2200       # Tarif önerisi için (1000 düşüktü: malzeme+adım
+                               # listesi uzun tarifte JSON'u kesip parse/zorunlu
+                               # alan hatası → 500 yapıyordu)
 MAX_TOKENS_CHAT = 600          # v1.1: Sohbet yanıtı — kısa tutulur (token tavanı = uzun plan dökülemez)
 
 

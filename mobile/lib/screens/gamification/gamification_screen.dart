@@ -328,7 +328,9 @@ class GamificationScreen extends ConsumerWidget {
                                   crossAxisCount: 3,
                                   mainAxisSpacing: 10,
                                   crossAxisSpacing: 10,
-                                  childAspectRatio: 0.85,
+                                  // FIX (21px taşma): 0.85 kartları kısa bırakıyordu;
+                                  // uzun isim (ör. "İlk Antrenman") + 2 satır açıklama sığmıyordu.
+                                  childAspectRatio: 0.72,
                                 ),
                                 itemCount: badges.length,
                                 itemBuilder: (ctx, i) {
@@ -361,7 +363,9 @@ class GamificationScreen extends ConsumerWidget {
                                         const SizedBox(height: 6),
                                         Text(name,
                                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: text),
-                                          textAlign: TextAlign.center),
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis),
                                         if (desc.isNotEmpty) ...[
                                           const SizedBox(height: 2),
                                           Text(desc,

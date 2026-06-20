@@ -52,19 +52,62 @@ class MealComplianceService:
         multiplier = multipliers.get(prefs.activity_level or "moderate", 1.55)
         return round(bmr * multiplier)
 
-    # ── Yardımcı: Hedefe göre günlük kalori hedefi ──
-    def _calculate_daily_target(self, tdee: float, fitness_goal: str) -> float:
-        goal_adjustments = {
-            "weight_loss": -500,   # Sürdürülebilir açık (eskiden -700, çok agresifti)
-            "muscle_gain": +250,
-            "maintenance": 0,
-            "health": 0,
-        }
-        adjustment = goal_adjustments.get(fitness_goal or "maintenance", 0)
-        daily_target = tdee + adjustment
-        return max(daily_target, 1500)  # Güvenli minimum
+    # ── Yardımcı: Bu haftaki uyumlu gün sayısını getir ──
+    async def _get_compliant_days_this_week(self, user_id: str, today: date) -> int:
+        """Son 7 günde 'complied=True' olan gün sayısı — haftalık kalori adımı için."""
+        week_start = today - timedelta(days=6)
+        records = await self.compliance_repository.get_by_date_range(user_id, week_start, today)
+        return sum(1 for r in records if r.complied)
 
-    # ── YENİ: complied otomatik hesapla ──
+    # ── Yardımcı: Hedefe ve alışkanlığa göre günlük kalori hedefi ──
+    # FIX #16: Önceden TDEE'ye sabit offset uygulanıyordu; "under_1500"
+    # kullanıcısına direkt 2500 hedef geliyordu. Şimdi:
+    #   1. Başlangıç noktası → habit_base (alışkanlık ortalaması)
+    #   2. Haftalık uyum skoruna göre +200/+400 kcal adım (kademeli)
+    #   3. Hedef asla TDEE + goal_offset'i aşmaz (tavan)
+    async def _calculate_daily_target(
+        self,
+        tdee: float,
+        fitness_goal: str,
+        daily_calorie_habit: Optional[str] = None,
+        user_id: Optional[str] = None,
+        today: Optional[date] = None,
+    ) -> float:
+        goal_adjustments = {
+            "weight_loss":  -500,
+            "weight_gain":  +300,
+            "muscle_gain":  +250,
+            "maintenance":  0,
+            "health":       0,
+        }
+        goal_offset = goal_adjustments.get(fitness_goal or "maintenance", 0)
+        final_target = tdee + goal_offset
+
+        # Kademeli başlangıç: düşük alışkanlık varsa habit_base'den başla
+        habit_base_map = {
+            "under_1500": 1500,
+            "1500_2000":  1750,
+            "2000_2500":  2250,
+            "over_2500":  None,  # TDEE'ye bırak
+        }
+        habit_base = habit_base_map.get(daily_calorie_habit or "", None) if daily_calorie_habit else None
+
+        if habit_base and habit_base < final_target:
+            # Haftalık uyum skoru: iyi gidiyorsa +400, zayıfsa +200
+            step = 200
+            if user_id and today:
+                try:
+                    compliant_days = await self._get_compliant_days_this_week(user_id, today)
+                    step = 400 if compliant_days >= 6 else 200
+                except Exception:
+                    pass
+            # Kademeli artış: habit_base'den step adımlarla, final_target tavanına
+            progressive = min(habit_base + step, final_target)
+            return max(progressive, 1200)  # mutlak minimum
+
+        return max(final_target, 1200)
+
+    # ── Yardımcı: complied otomatik hesapla ──
     def _calculate_complied(
         self,
         calories_consumed: Optional[float],
@@ -73,9 +116,12 @@ class MealComplianceService:
     ) -> bool:
         """
         Kullanıcı switch'e dokunmaz, sistem belirler.
-        Net tüketim = yenen - yakılan
-        Hedefin %80-120 arasındaysa uyuldu sayılır.
-        Egzersiz yaparsa tolerans artar çünkü yakılan kalori hesaba girer.
+        Net tüketim = yenen - yakılan.
+        UYUM MANTIĞI (v2 düzeltme): yalnızca hedefi AŞMAK uyumsuzdur.
+        Kilo verme senaryosunda hedefin altında kalmak (eksik tüketim) başarıdır,
+        bu yüzden "uyumsuz" sayılmaz — önceki %80 alt sınırı 406/1739 gibi günleri
+        yanlışlıkla %0 uyum yapıyordu. Tolerans olarak %20 aşıma kadar uyumlu sayılır
+        (egzersiz yakımı net tüketimi düşürdüğü için zaten hesaba katılır).
         """
         if not calories_consumed or not calories_target:
             return True  # Veri yoksa varsayılan True
@@ -83,8 +129,8 @@ class MealComplianceService:
         net_consumed = calories_consumed - calories_burned
         ratio = net_consumed / calories_target
 
-        # %80-120 arası → uyuldu
-        return 0.80 <= ratio <= 1.20
+        # Sadece aşımı cezalandır: %120'ye kadar (dahil) uyumlu, üzeri uyumsuz.
+        return ratio <= 1.20
 
     # ── Yardımcı: Haftalık banka bakiyesi ──
     async def _calculate_weekly_bank(
@@ -189,7 +235,13 @@ class MealComplianceService:
             weight_kg = await self._get_last_weight(user_id, db)
             tdee = self._calculate_tdee(prefs, weight_kg)
             if tdee:
-                daily_target = self._calculate_daily_target(tdee, prefs.fitness_goal)
+                daily_target = await self._calculate_daily_target(
+                    tdee,
+                    prefs.fitness_goal,
+                    daily_calorie_habit=getattr(prefs, 'daily_calorie_habit', None),
+                    user_id=user_id,
+                    today=data.date,
+                )
 
                 if data.calories_consumed is not None:
                     # ── Egzersiz kalorisi dahil ──
@@ -258,7 +310,13 @@ class MealComplianceService:
                 weight_kg = await self._get_last_weight(user_id, db)
                 tdee = self._calculate_tdee(prefs, weight_kg)
                 if tdee:
-                    existing.calories_target = self._calculate_daily_target(tdee, prefs.fitness_goal)
+                    existing.calories_target = await self._calculate_daily_target(
+                        tdee,
+                        prefs.fitness_goal,
+                        daily_calorie_habit=getattr(prefs, 'daily_calorie_habit', None),
+                        user_id=user_id,
+                        today=existing.date,
+                    )
                     net_consumed = data.calories_consumed - calories_burned
                     existing.calorie_balance = round(net_consumed - existing.calories_target, 1)
                     existing.weekly_bank_balance = await self._calculate_weekly_bank(

@@ -218,8 +218,11 @@ class _TakipScreenState extends ConsumerState<TakipScreen>
                     dividerColor: Colors.transparent,
                     labelColor: accent,
                     unselectedLabelColor: muted,
-                    labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                    unselectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                    // FIX: default 16px yan padding "Ölçümler"i "ölçüme" diye kesiyordu.
+                    // Padding'i kısıp fontu 11'e çekince 4 sekmeye de tam sığıyor.
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                    unselectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
                     tabs: _tabs.map((t) => Tab(text: t['label'] as String)).toList(),
                   ),
                 ),

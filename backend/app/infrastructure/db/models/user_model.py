@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional, TYPE_CHECKING
-from sqlalchemy import String, DateTime
+from sqlalchemy import String, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.infrastructure.db.base import Base
 
@@ -34,7 +34,17 @@ class UserModel(Base):
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     full_name: Mapped[str] = mapped_column(String, nullable=False)
     is_premium: Mapped[bool] = mapped_column(default=False, nullable=False)
-    token_version: Mapped[int] = mapped_column(default=0, nullable=False)  # v3: token versiyonlama
+    token_version: Mapped[int] = mapped_column(default=0, nullable=False)
+
+    # ── Email doğrulama (#2) ───────────────────────────────────────
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False,
+        # server_default migration'da tanımlanır — mevcut kullanıcılar False başlar
+    )
+    email_token: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    email_token_expires: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)

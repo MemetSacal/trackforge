@@ -5,7 +5,7 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../core/utils/date_utils.dart';
 
-final todaySleepProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+final todaySleepProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   try {
     final response = await ApiClient.instance.get('${Endpoints.sleep}/date/${TFDateUtils.today()}');
     return Map<String, dynamic>.from(response.data);
@@ -164,7 +164,7 @@ class _UykuTabState extends ConsumerState<UykuTab> {
                       crossAxisCount: 2,
                       mainAxisSpacing: 8,
                       crossAxisSpacing: 8,
-                      childAspectRatio: 2.8, // ESKİ: 3.5 → YENİ: 2.8
+                      childAspectRatio: 2.5, // FIX: 2.8 → 2.5 (0.357px taşma için pay)
                       children: [
                         ['Yatış',  '${_sleepTime.hour.toString().padLeft(2,"0")}:${_sleepTime.minute.toString().padLeft(2,"0")}'],
                         ['Uyanış', '${_wakeTime.hour.toString().padLeft(2,"0")}:${_wakeTime.minute.toString().padLeft(2,"0")}'],

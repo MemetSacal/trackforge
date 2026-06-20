@@ -6,7 +6,7 @@ import '../../core/api/api_client.dart';
 import '../../core/api/endpoints.dart';
 import '../../app.dart';
 
-final shoppingListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final shoppingListProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   try {
     final response = await ApiClient.instance.get(Endpoints.shopping);
     final data = response.data['items'] as List? ?? [];

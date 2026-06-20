@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, Integer, Float, Date, DateTime, ForeignKey
+from sqlalchemy import String, Text, Integer, Float, Date, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.infrastructure.db.base import Base
 
@@ -37,9 +37,11 @@ class ExerciseSessionModel(Base):
     )
     source: Mapped[str] = mapped_column(
         String, nullable=False, default="manual"
-        # v4: 'manual' | 'ai_plan' — AI planından oluşan seansla kullanıcının
-        # kendi açtığı serbest seans ayrışır. Compliance AI planı üzerinden
-        # ölçülür, serbest seanslar bonus sinyal olur (plan kilidi mantığı).
+    )
+    is_completed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+        # #19: tüm egzersizler tamamlanınca True olur.
+        # PATCH /sessions/{id}/complete endpoint'i tarafından güncellenir.
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

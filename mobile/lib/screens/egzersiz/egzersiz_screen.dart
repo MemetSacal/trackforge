@@ -12,7 +12,7 @@ import 'seans_detay_screen.dart';
 
 // ── Seanslar provider — egzersizleri de içeriyor ────────
 // Her seans için ayrı /exercises endpoint'i çekiyoruz
-final sessionsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+final sessionsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   try {
     final response = await ApiClient.instance.get(
       Endpoints.exerciseSessions,
@@ -494,10 +494,19 @@ class _SeanslarTab extends StatelessWidget {
               final notes = s['notes'] as String?;
               final exercises = s['exercises'] as List? ?? [];
               final exCount = exercises.length;
+              // FIX #19: tüm egzersizler completed=true ise seans tamamlandı sayılır.
+              // #19: backend is_completed öncelikli; fallback lokal hesap
+              final backendDone = s['is_completed'] == true;
+              final localDone   = exCount > 0 && exercises.every((ex) => ex['completed'] == true);
+              final allDone     = backendDone || localDone;
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                decoration: BoxDecoration(color: bgCard, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                decoration: BoxDecoration(
+                  color: bgCard,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: allDone ? accent.withOpacity(0.5) : border),
+                ),
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
@@ -506,7 +515,7 @@ class _SeanslarTab extends StatelessWidget {
                       child: Container(
                         width: 44, height: 44,
                         decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(14)),
-                        child: const Center(child: Text('🏋️', style: TextStyle(fontSize: 20))),
+                        child: Center(child: Text(allDone ? '✅' : '🏋️', style: const TextStyle(fontSize: 20))),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -514,7 +523,18 @@ class _SeanslarTab extends StatelessWidget {
                       child: GestureDetector(
                         onTap: () => onSessionTap(s),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(notes ?? 'Antrenman', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text)),
+                          Row(children: [
+                            Expanded(child: Text(notes ?? 'Antrenman', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: text))),
+                            if (allDone)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: accent.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
+                                child: Text('Tamamlandı', style: TextStyle(fontSize: 10, color: accent, fontWeight: FontWeight.w700)),
+                              ),
+                          ]),
                           const SizedBox(height: 2),
                           Text(
                             '$date · $dur dk${cal != null ? ' · $cal kcal' : ''}${exCount > 0 ? ' · $exCount egzersiz' : ''}',

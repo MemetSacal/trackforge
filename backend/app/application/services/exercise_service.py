@@ -55,17 +55,29 @@ class ExerciseService:
         return await self.session_repository.get_by_date_range(user_id, from_date, to_date)
 
     async def update_session(self, user_id: str, session_id: str, data) -> ExerciseSession:
-        # Seansı getir, sahiplik kontrol et, güncelle
         existing = await self.session_repository.get_by_id(session_id)
         if not existing:
             raise NotFoundException("Seans bulunamadı")
         if existing.user_id != user_id:
             raise NotFoundException("Seans bulunamadı")
-
-        # Sadece gönderilen alanları güncelle
         existing.duration_minutes = data.duration_minutes if data.duration_minutes is not None else existing.duration_minutes
-        existing.calories_burned = data.calories_burned if data.calories_burned is not None else existing.calories_burned
-        existing.notes = data.notes if data.notes is not None else existing.notes
+        existing.calories_burned  = data.calories_burned  if data.calories_burned  is not None else existing.calories_burned
+        existing.notes            = data.notes            if data.notes            is not None else existing.notes
+        if data.is_completed is not None:       # #19
+            existing.is_completed = data.is_completed
+        return await self.session_repository.update(existing)
+
+    async def complete_session(self, user_id: str, session_id: str) -> ExerciseSession:
+        """#19: Seansı tamamlandı olarak işaretle.
+        Tüm egzersizler done olmadan da çağrılabilir (kullanıcı override edebilir),
+        ama normalde Flutter tüm egzersizler done'ken otomatik çağırır.
+        """
+        existing = await self.session_repository.get_by_id(session_id)
+        if not existing:
+            raise NotFoundException("Seans bulunamadı")
+        if existing.user_id != user_id:
+            raise NotFoundException("Seans bulunamadı")
+        existing.is_completed = True
         return await self.session_repository.update(existing)
 
     async def delete_session(self, user_id: str, session_id: str) -> bool:
