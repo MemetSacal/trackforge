@@ -50,3 +50,9 @@ uploads/
 
 # count_lines script
 count_lines.py
+
+# Firebase
+mobile/android/app/google-services.json
+
+# Patch dosyaları
+*.patch
